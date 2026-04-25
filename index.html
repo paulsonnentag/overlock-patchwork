@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>overlock</title>
+  </head>
+  <body>
+    <pre id="out">loading…</pre>
+    <script src="./dist/overlock.js"></script>
+    <script type="module">
+      const ROOT = "automerge:9BDwp1BSLXiMZJ4kZoLDBjNKW9X";
+      const PATH = "./hello/index.js";
+
+      const out = document.getElementById("out");
+      try {
+        await window.overlock.ready;
+        const mod = await window.automergeImport(ROOT, PATH);
+        window._mod = mod;
+        out.textContent = JSON.stringify(mod, null, 2);
+        console.log("loaded module", mod);
+      } catch (error) {
+        out.textContent = String(error?.stack ?? error);
+        console.error(error);
+      }
+    </script>
+  </body>
+</html>
