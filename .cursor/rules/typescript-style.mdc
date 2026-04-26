@@ -1,0 +1,57 @@
+---
+description: TypeScript style
+globs: **/*.ts
+alwaysApply: false
+---
+
+# Prefer `type` over `interface`
+
+Use `type` aliases for all object shapes, unions, and other type declarations. Do not use `interface` unless there is a concrete reason (e.g. declaration merging with an external library).
+
+```ts
+// ❌ BAD
+interface ComponentManifest {
+  name: string;
+  url: string;
+}
+```
+
+```ts
+// ✅ GOOD
+type ComponentManifest = {
+  name: string;
+  url: string;
+};
+```
+
+Rationale: `type` is a superset of what `interface` can express (unions, intersections, mapped and conditional types), so using a single form keeps the codebase consistent and avoids arbitrary choices per file.
+
+# Prefer `#private` over `private`
+
+Use ECMAScript private fields and methods (`#name`) for all class-private members. Do not use the TypeScript `private` keyword.
+
+```ts
+// ❌ BAD
+export class Runtime {
+  private registry = new Map<string, MountFn>();
+  private destroyed = false;
+
+  private assertAlive(): void {
+    if (this.destroyed) throw new Error("destroyed");
+  }
+}
+```
+
+```ts
+// ✅ GOOD
+export class Runtime {
+  readonly #registry = new Map<string, MountFn>();
+  #destroyed = false;
+
+  #assertAlive(): void {
+    if (this.#destroyed) throw new Error("destroyed");
+  }
+}
+```
+
+Rationale: `#private` is enforced at runtime (not just by the compiler), cannot be accessed via bracket notation or `Object.keys`, and is preserved across plain JS output. The `private` keyword disappears after compilation and is only advisory. Use `readonly` alongside `#` when the field should not be reassigned.

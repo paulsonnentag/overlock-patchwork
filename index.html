@@ -6,15 +6,16 @@
   </head>
   <body>
     <script src="./dist/overlock.js"></script>
-    <script type="module">
-      const SPEC = "automerge:9BDwp1BSLXiMZJ4kZoLDBjNKW9X/hello/index.js";
 
+    <patchwork-view
+      src="automerge:3F8HWx9Hm8JDDrSA1GZP9fRGSXi9/component.json"
+    ></patchwork-view>
+
+    <script type="module">
       try {
         await window.isPatchworkReady;
-        const mod = await window.automergeImport(SPEC);
-        console.log("loaded module", mod);
+        window.createComponentRegistry(document.body);
       } catch (error) {
-        out.textContent = String(error?.stack ?? error);
         console.error(error);
       }
     </script>

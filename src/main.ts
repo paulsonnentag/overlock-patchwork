@@ -11,6 +11,7 @@ import { WebCryptoSigner } from "@automerge/automerge-subduction/slim";
 
 import { ensureWasm } from "./wasm-loader";
 import { automergeImport } from "./automerge-import";
+import { ComponentRegistry } from "./components";
 
 const SUBDUCTION_ENDPOINT = "wss://subduction.sync.inkandswitch.com";
 
@@ -41,3 +42,13 @@ window.automergeImport = async (spec) => {
   await isPatchworkReady;
   return automergeImport(window.repo, spec);
 };
+
+// `<patchwork-view>`-driven component registry. Page scripts call this
+// once, after `isPatchworkReady`, to attach the observer to a root element
+// (typically `document.body`). The factory closes over the bootstrapped
+// repo + automergeImport so the page only has to pick a root.
+window.createComponentRegistry = (root) =>
+  new ComponentRegistry(root, {
+    repo: window.repo,
+    automergeImport: window.automergeImport,
+  });
