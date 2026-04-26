@@ -201,30 +201,6 @@ export class ComponentRegistry {
     this.#observer = observer;
   }
 
-  /**
-   * `doc=` changed on an element we care about. Three cases:
-   *
-   * 1. `<patchwork-view>` pre-bootstrap — let the in-flight (or future)
-   *    bootstrap pick up the new value when it reads the attribute.
-   * 2. Mounted component — rebuild the instance under the same tag and
-   *    mount fn. The rebuild path runs `#resolveContext` against the new
-   *    element, which re-reads `doc=` and produces the fresh handle.
-   * 3. Anything else — ignore.
-   */
-  #handleDocAttributeChange(el: HTMLElement): void {
-    const comp = componentStore.lookup(el);
-    if (!comp || !this.#mounted.has(comp)) {
-      log(
-        `doc-change: <${el.localName}> doc="${el.getAttribute(DOC_ATTR) ?? ""}" — no mounted component, skipping`,
-      );
-      return;
-    }
-    log(
-      `doc-change: <${el.localName}> #${comp.id} doc="${el.getAttribute(DOC_ATTR) ?? ""}" — rebuilding`,
-    );
-    this.#rebuildInstance(comp, comp.el.localName, comp.mountFn);
-  }
-
   destroy(): void {
     if (this.#observer === null) return;
     log(`registry: destroy (mounted=${this.#mounted.size})`);
@@ -267,6 +243,30 @@ export class ComponentRegistry {
       return;
     }
     this.#mountIfRegistered(el);
+  }
+
+  /**
+   * `doc=` changed on an element we care about. Three cases:
+   *
+   * 1. `<patchwork-view>` pre-bootstrap — let the in-flight (or future)
+   *    bootstrap pick up the new value when it reads the attribute.
+   * 2. Mounted component — rebuild the instance under the same tag and
+   *    mount fn. The rebuild path runs `#resolveContext` against the new
+   *    element, which re-reads `doc=` and produces the fresh handle.
+   * 3. Anything else — ignore.
+   */
+  #handleDocAttributeChange(el: HTMLElement): void {
+    const comp = componentStore.lookup(el);
+    if (!comp || !this.#mounted.has(comp)) {
+      log(
+        `doc-change: <${el.localName}> doc="${el.getAttribute(DOC_ATTR) ?? ""}" — no mounted component, skipping`,
+      );
+      return;
+    }
+    log(
+      `doc-change: <${el.localName}> #${comp.id} doc="${el.getAttribute(DOC_ATTR) ?? ""}" — rebuilding`,
+    );
+    this.#rebuildInstance(comp, comp.el.localName, comp.mountFn);
   }
 
   /**
