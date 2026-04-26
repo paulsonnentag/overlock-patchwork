@@ -15,7 +15,7 @@ import {
 import { Component } from "./component.js";
 import * as componentStore from "./component-store.js";
 import { log } from "./log.js";
-import type { ComponentManifest, MountFn } from "./types.js";
+import type { ComponentManifest, ComponentRoot, MountFn } from "./types.js";
 
 const BOOTSTRAP_TAG = "patchwork-view";
 const REPO_TAG = "automerge-repo";
@@ -97,8 +97,6 @@ class AutomergeRepoElement extends HTMLElement {
 if (!customElements.get(REPO_TAG)) {
   customElements.define(REPO_TAG, AutomergeRepoElement);
 }
-
-type ComponentHostElement = HTMLElement & { handle?: DocHandle<unknown> };
 
 type AutomergeImport = (spec: string) => Promise<unknown>;
 
@@ -336,7 +334,7 @@ export class ComponentRegistry {
 
     log(`resolveContext: <${el.localName}> doc=${docUrl} → repo.find`);
     const handle = await repoEl.repo.find(docUrl);
-    (el as ComponentHostElement).handle = handle as DocHandle<unknown>;
+    (el as ComponentRoot).handle = handle as DocHandle<unknown>;
     log(`resolveContext: <${el.localName}> doc=${docUrl} → handle ready`);
   }
 

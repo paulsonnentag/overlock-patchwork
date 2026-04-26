@@ -83,7 +83,10 @@ src/components/
   component.ts            Component lifecycle: async mount, cleanup,
                           generation guard
   component-store.ts      Singleton WeakMap<Element, Component>
-  types.ts                ComponentManifest, MountFn
+  ancestor-lookup.ts      closestComponent / ancestorComponent walker,
+                          element method stamping
+  types.ts                ComponentManifest, MountFn, Schema,
+                          ComponentRoot, SchemaComponentRoot
   index.ts                public re-exports
   log.ts                  scoped console logger
 ```
@@ -113,11 +116,17 @@ through `window.createComponentRegistry(root)`.
   `<patchwork-view>` outside any `<automerge-repo>` ancestor is an
   error; the mount is aborted with a logged exception. Components
   that don't need a doc (e.g. `clock`) work fine with no scope.
-- **No `parentComponent` / `closestComponent` yet.** The element
-  handed to a mount fn is a plain `HTMLElement` plus an optional
-  `el.handle`. The `componentStore` is in place so
-  ancestor-component lookups can land later without reshuffling the
-  lifecycle.
-- **No schema validation.** A component's input contract (attributes,
-  children, `el.handle` document shape) is whatever its mount fn
-  chooses to read.
+- **Ancestor lookups race `doc=` resolution.** `closestComponent` /
+  `ancestorComponent` are synchronous snapshots of `componentStore`.
+  Tree-order construction guarantees a parent's `Component` is
+  registered before its children construct, but `el.handle` is set
+  asynchronously, so a schema-filtered walk run from a child mount fn
+  can briefly miss a parent that is still resolving. Documented in
+  [`documents.md`](./documents.md#race-against-doc-resolution); call
+  the lookup from a reactive scope when the result must be live.
+- **Structural-only schema matching.** Components don't register their
+  schemas with the framework. `closestComponent(schema)` walks ancestors
+  and returns the first whose `handle.doc()` parses under the schema —
+  any duck-equivalent doc is a hit. The framework never calls
+  `schema.init()`; that's reserved for the consumer's own bootstrap
+  logic.

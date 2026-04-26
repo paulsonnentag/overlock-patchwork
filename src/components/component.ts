@@ -1,6 +1,7 @@
+import { stampLookups } from "./ancestor-lookup.js";
 import * as componentStore from "./component-store.js";
 import { log } from "./log.js";
-import type { MountFn } from "./types.js";
+import type { ComponentRoot, MountFn } from "./types.js";
 
 let nextId = 0;
 
@@ -36,6 +37,10 @@ export class Component {
     // the freshly-swapped element finds nothing in the store and
     // double-mounts via `#mountIfRegistered`.
     componentStore.register(el, this);
+    // Stamp ancestor-lookup methods now (also synchronously) so a child
+    // mount fn that runs while this component is still resolving its own
+    // doc context can already walk up to find this element.
+    stampLookups(el);
   }
 
   async mount(): Promise<void> {
@@ -45,7 +50,7 @@ export class Component {
 
     let result: (() => void) | void;
     try {
-      result = await this.mountFn(this.el);
+      result = await this.mountFn(this.el as ComponentRoot);
     } catch (err) {
       console.error(
         `[overlock-patchwork] mount threw on <${this.el.localName}> #${this.id}:`,

@@ -36,7 +36,14 @@ Start with the doc closest to the change you want to make.
 - **Mount fn.** The default export of `component.js`. An async
   function that gets the host element and returns an optional
   cleanup — equivalent to
-  `(element: HTMLElement) => Promise<(() => void) | void>`.
+  `(element: ComponentRoot) => Promise<(() => void) | void>`.
+  `ComponentRoot` is `HTMLElement` plus an optional `handle` and the
+  ancestor-walk methods `closestComponent` / `ancestorComponent`. See
+  [`documents.md`](./documents.md#looking-up-ancestor-components).
+- **Schema.** Duck-typed `{ init(): T; parse(value): T }` interface.
+  Consumers pass one to `closestComponent` / `ancestorComponent` to
+  filter ancestors by structural match against their `handle.doc()`.
+  `init` is for consumer bootstrap logic; the framework never calls it.
 - **Bootstrap tag.** `<patchwork-view src="automerge:.../component.json">`.
   The registry's only hard-coded mount tag. See
   [`components.md`](./components.md).
@@ -63,6 +70,7 @@ Start with the doc closest to the change you want to make.
 | [`src/components/component-registry.ts`](../src/components/component-registry.ts) | `<patchwork-view>` observer, manifest fetch, HMR, `swapTag` |
 | [`src/components/component.ts`](../src/components/component.ts) | `Component` lifecycle, generation guard |
 | [`src/components/component-store.ts`](../src/components/component-store.ts) | `WeakMap<Element, Component>` lookup |
-| [`src/components/types.ts`](../src/components/types.ts) | `ComponentManifest`, `MountFn` types |
+| [`src/components/ancestor-lookup.ts`](../src/components/ancestor-lookup.ts) | `closestComponent` / `ancestorComponent` walker, element method stamping |
+| [`src/components/types.ts`](../src/components/types.ts) | `ComponentManifest`, `MountFn`, `Schema`, `ComponentRoot`, `SchemaComponentRoot` |
 | [`src/components/index.ts`](../src/components/index.ts) | public re-exports |
 | [`src/components/log.ts`](../src/components/log.ts) | scoped console logger |
