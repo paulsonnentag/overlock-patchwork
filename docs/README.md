@@ -1,0 +1,68 @@
+# Architecture
+
+overlock-patchwork is two layers stacked:
+
+1. **Loader.** Resolve `automerge:` URLs against the in-page Repo,
+   rewrite every import in the source, and `import()` the rewritten
+   module as a blob URL. Lives in `src/`.
+2. **Component runtime.** A `<patchwork-view>` bootstrap tag, a
+   registry that watches the DOM, and a `Component` lifecycle with
+   HMR. Lives in `src/components/`.
+
+Start with the doc closest to the change you want to make.
+
+- [`loader.md`](./loader.md) — `automergeImport`, blob URLs, package
+  exports, heads pinning, wasm bootstrap.
+- [`components.md`](./components.md) — package layout, manifest
+  schema, mount-fn contract, embedding `<patchwork-view>`, composition.
+- [`documents.md`](./documents.md) — `<automerge-repo>` scope, `doc=`
+  attribute, `el.handle`, reactive doc rebuilds.
+- [`lifecycle.md`](./lifecycle.md) — mount/unmount sequence diagram,
+  HMR semantics, generation guard, race handling.
+- [`internals.md`](./internals.md) — registry data structures,
+  custom-element rationale, module layout, constraints.
+
+## Glossary
+
+- **Component package.** A folder document containing `component.json`
+  (the manifest) and the file the manifest points at — typically
+  `component.js`. Pushed independently with `pushwork`, so each package
+  has a stable `rootDirectoryUrl` that can be referenced from other
+  components or pages.
+- **Manifest.** A JSON document with `{ name, url }`. `name` is the
+  custom tag name the component will mount under (must contain a
+  hyphen, per HTML custom-element rules). `url` is a `./`-relative
+  path to the JS module.
+- **Mount fn.** The default export of `component.js`. An async
+  function that gets the host element and returns an optional
+  cleanup — equivalent to
+  `(element: HTMLElement) => Promise<(() => void) | void>`.
+- **Bootstrap tag.** `<patchwork-view src="automerge:.../component.json">`.
+  The registry's only hard-coded mount tag. See
+  [`components.md`](./components.md).
+- **Repo scope.** `<automerge-repo>` is a marker tag. The registry
+  stamps a `Repo` reference onto every `<automerge-repo>` it
+  discovers; descendant `<patchwork-view doc=...>` elements look it up
+  via `closest("automerge-repo").repo`. See
+  [`documents.md`](./documents.md).
+- **Component registry.** A per-root orchestrator owning a
+  `MutationObserver`, the bootstrap-load cache, the name table, and
+  the set of mounted instances. See [`internals.md`](./internals.md).
+- **Generation guard.** Counter on `Component` that lets `unmount()`
+  invalidate an in-flight `mount()` so its eventual cleanup runs and
+  is discarded rather than installed. See [`lifecycle.md`](./lifecycle.md).
+
+## File map
+
+| Path | Role |
+| --- | --- |
+| [`src/main.ts`](../src/main.ts) | bootstrap: wasm, Repo, `window.automergeImport`, `window.createComponentRegistry` |
+| [`src/automerge-import.ts`](../src/automerge-import.ts) | resolve → parse → rewrite → blob URL → `import()` |
+| [`src/resolve.ts`](../src/resolve.ts) | folder walk + `package.json` `exports` lookup |
+| [`src/wasm-loader.ts`](../src/wasm-loader.ts) | base64-inline wasm init for automerge + subduction |
+| [`src/components/component-registry.ts`](../src/components/component-registry.ts) | `<patchwork-view>` observer, manifest fetch, HMR, `swapTag` |
+| [`src/components/component.ts`](../src/components/component.ts) | `Component` lifecycle, generation guard |
+| [`src/components/component-store.ts`](../src/components/component-store.ts) | `WeakMap<Element, Component>` lookup |
+| [`src/components/types.ts`](../src/components/types.ts) | `ComponentManifest`, `MountFn` types |
+| [`src/components/index.ts`](../src/components/index.ts) | public re-exports |
+| [`src/components/log.ts`](../src/components/log.ts) | scoped console logger |

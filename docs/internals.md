@@ -1,0 +1,123 @@
+# Internals
+
+Implementation details of the component registry. Read this before
+changing
+[`src/components/component-registry.ts`](../src/components/component-registry.ts)
+or [`src/components/component.ts`](../src/components/component.ts).
+
+## Why `<patchwork-view>` and `<automerge-repo>` are custom elements
+
+Two registrations live in
+[`src/components/component-registry.ts`](../src/components/component-registry.ts):
+
+```ts
+class PatchworkView extends HTMLElement {
+  get src(): string { return this.getAttribute("src") ?? ""; }
+  set src(v: string) { this.setAttribute("src", String(v ?? "")); }
+  get doc(): string { return this.getAttribute("doc") ?? ""; }
+  set doc(v: string) { this.setAttribute("doc", String(v ?? "")); }
+}
+class AutomergeRepoElement extends HTMLElement {
+  repo: Repo | null = null;
+}
+```
+
+Frameworks that template-render hyphenated tags tend to write attribute
+slots as JS *properties* (Solid does, Lit does). On a plain
+`HTMLElement` that's a JS expando — never reflects to the attribute,
+so the registry's `getAttribute(...)` read sees nothing. Reflecting
+`src` and `doc` accessors back through `setAttribute` keeps the
+MutationObserver-based bootstrap working.
+
+`PatchworkView`'s constructor also runs the standard "lazy property
+upgrade" dance for `src` and `doc`: when an element is cloned out of
+a `<template>` (Solid does this), dynamic attribute writes happen
+*before* the prototype has been swapped to `PatchworkView`, so they
+land as own data properties. Reading + deleting + re-assigning forces
+the value back through the setter so the attribute shows up.
+
+`AutomergeRepoElement` doesn't reflect anything — `repo` is a typed
+*property* slot for the registry to write into and for components to
+read out of. Putting it on a registered class instead of a plain
+expando just means TypeScript / DevTools recognize it.
+
+These are the *only* two places in the system that use
+`customElements`. User components stay plain
+`document.createElement(name)` elements and are never registered
+globally — `customElements.define` is a one-shot ratchet that would
+block HMR. Component identity instead lives in the registry's data
+structures (see below).
+
+## Registry data structures
+
+The registry's identity tracking is split across a process-wide store
+and three per-`ComponentRegistry` collections:
+
+- **`componentStore`** — a process-wide `WeakMap<Element, Component>`
+  for element-to-instance lookup. Lives in
+  [`component-store.ts`](../src/components/component-store.ts).
+  `WeakMap` so the store never keeps DOM nodes alive on its own.
+  Components unregister themselves on `unmount()`; entries for
+  GC'd elements vanish with them.
+- **`#registry`** — `Map<string, MountFn>` for name-to-mount-fn.
+  Throws on collision both on initial load and on HMR rename.
+- **`#mounted`** — `Set<Component>` for iteration on HMR teardown
+  and `destroy()`.
+- **`#loaded` / `#loading`** — manifest spec → `LoadedComponent` (and
+  in-flight promise dedup). Each unique manifest spec has exactly one
+  HMR subscription.
+- **`#bootstrapping`** — `WeakSet<Element>` tracking which
+  `<patchwork-view>` elements have already been claimed, so a remove
+  + re-add cycle on the same node doesn't kick off a duplicate load.
+
+Two `ComponentRegistry` instances over disjoint subtrees never see
+each other's elements. On overlapping subtrees they would conflict —
+which is the same answer either way.
+
+## Module layout
+
+```
+src/components/
+  component-registry.ts   ComponentRegistry, PatchworkView,
+                          AutomergeRepoElement, manifest/spec helpers
+  component.ts            Component lifecycle: async mount, cleanup,
+                          generation guard
+  component-store.ts      Singleton WeakMap<Element, Component>
+  types.ts                ComponentManifest, MountFn
+  index.ts                public re-exports
+  log.ts                  scoped console logger
+```
+
+The registry depends on the loader half of overlock for two things:
+
+- `repo: Repo` — used to resolve folders, manifests, and read
+  `.heads()` for pinning.
+- `automergeImport: (spec) => Promise<unknown>` — used to fetch and
+  evaluate `component.js` as an ES module.
+
+Both are wired up in [`src/main.ts`](../src/main.ts) and exposed
+through `window.createComponentRegistry(root)`.
+
+## Constraints and limits
+
+- **Tag names need a hyphen.** Enforced when reading the manifest.
+  Matches the HTML custom-element naming rule and avoids accidental
+  collisions with built-ins.
+- **Manifest `url` must start with `./`.** Cross-package and bare
+  specifiers in the manifest are rejected so HMR's pinning semantics
+  stay obvious — the JS module always lives in the same folder doc
+  as its manifest.
+- **No namespaces yet.** Component name collisions throw immediately,
+  both on initial load and on HMR rename.
+- **`doc=` requires `<automerge-repo>`.** Setting `doc=` on a
+  `<patchwork-view>` outside any `<automerge-repo>` ancestor is an
+  error; the mount is aborted with a logged exception. Components
+  that don't need a doc (e.g. `clock`) work fine with no scope.
+- **No `parentComponent` / `closestComponent` yet.** The element
+  handed to a mount fn is a plain `HTMLElement` plus an optional
+  `el.handle`. The `componentStore` is in place so
+  ancestor-component lookups can land later without reshuffling the
+  lifecycle.
+- **No schema validation.** A component's input contract (attributes,
+  children, `el.handle` document shape) is whatever its mount fn
+  chooses to read.

@@ -1,0 +1,130 @@
+# Loader
+
+`automergeImport(spec)` is the bottom layer of overlock-patchwork. It
+resolves an `automerge:` URL into an executable ES module by walking
+the folder document in the in-page `Repo`, rewriting every import in
+the source to a sibling blob URL, and dynamically importing the
+rewritten module.
+
+This is the in-page equivalent of patchwork's service-worker loader
+(`patchwork-next/core/bootloader/src/service-worker.ts`): instead of
+intercepting `fetch` and returning real HTTP responses, the loader
+stays inside the page so the bundle works under `file://`.
+
+Implementation lives in
+[`src/automerge-import.ts`](../src/automerge-import.ts), with
+package-exports lookup in [`src/resolve.ts`](../src/resolve.ts) and
+the wasm bootstrap in [`src/wasm-loader.ts`](../src/wasm-loader.ts).
+
+## API
+
+`automergeImport(spec) -> Promise<Module>` is exposed on
+`window.automergeImport` after `await window.isPatchworkReady`:
+
+```js
+await window.isPatchworkReady;
+const mod = await window.automergeImport(
+  "automerge:3F8HWx9Hm8JDDrSA1GZP9fRGSXi9/index.js",
+);
+console.log(mod.message);
+```
+
+A `spec` is `automerge:<documentId>[?heads=...][/<path>]`. The loader
+splits at the first `/` after the `automerge:` prefix:
+
+- `automerge:abc...` → root URL, path `.`
+- `automerge:abc.../greet.js` → root URL, path `greet.js`
+
+`path` falls back to `package.json` `exports` (and then `main`) the
+same way patchwork's service worker does
+(`core/bootloader/src/service-worker.ts` lines 249–315). The fallback
+is implemented in `resolveFileHandle` in
+[`src/resolve.ts`](../src/resolve.ts).
+
+## Specifier rewriting
+
+After fetching the source, the loader parses it with `es-module-lexer`
+and rewrites every static `import`, dynamic `import("...")`, and
+`export ... from` specifier:
+
+| Specifier | Behavior |
+| --- | --- |
+| `./foo.js`, `../lib/bar.js` | Resolved relative to the importer's path inside the same folder doc. |
+| `automerge:abc/some/path.js` | Cross-doc reference; pinned to current heads on first sight. |
+| `/foo.js` | Resolved against the importer's root folder. |
+| Bare (`react`, `solid-js`, …) | Pass-through — left untouched. The browser will fail at import time unless the host page provides an import map. |
+| `https://esm.sh/...` | Pass-through, same as bare specifiers. The browser fetches them directly. |
+
+Rewriting splices end → start so byte offsets returned by the lexer
+stay valid.
+
+## Heads pinning
+
+If a spec has no `?heads=...`, the loader pins the root URL to its
+current heads on first sight (`pinHeads` in
+[`src/automerge-import.ts`](../src/automerge-import.ts)). The pinned
+URL is cached in `pinnedRootCache`, and the resulting blob URL is
+cached in `blobUrlCache` keyed by `(rootUrl, path)`.
+
+That keeps the cache stable across calls — two `automergeImport(spec)`
+calls with the same effective heads return the same blob URL — and
+lets the component registry produce a *fresh* module on HMR by
+re-pinning to the new heads (see [`lifecycle.md`](./lifecycle.md)).
+
+## Cycles
+
+ESM cycles aren't supported and throw a clear error on detection. Blob
+URLs can't be allocated before their content exists, so a cycle would
+deadlock the rewriter. The loader tracks an `inFlight` set per
+`materialize` call and throws on re-entry:
+
+```
+overlock: import cycle detected at automerge:.../foo.js. Cycles are
+not supported because blob URLs cannot be allocated before their
+content exists.
+```
+
+## Wasm bootstrap
+
+[`src/wasm-loader.ts`](../src/wasm-loader.ts) initializes the slim
+entry points of `@automerge/automerge` and
+`@automerge/automerge-subduction` from base64-inlined wasm blobs.
+That's why `dist/overlock.js` is ~5.8 MB unminified — ~3 MB automerge
+wasm, ~1 MB subduction wasm, plus base64 overhead.
+
+The base64 path mirrors the SW init in
+`patchwork-next/core/bootloader/src/service-worker.ts` lines 116–122
+but runs in the page so no separate `.wasm` fetch is needed and the
+bundle works under `file://`.
+
+## Sync configuration
+
+The bootstrap in [`src/main.ts`](../src/main.ts) connects to a single
+hard-coded Subduction endpoint:
+
+```ts
+const SUBDUCTION_ENDPOINT = "wss://subduction.sync.inkandswitch.com";
+```
+
+Override by editing the constant and rebuilding (`pnpm build`). There
+is no per-page query-string or hash override yet.
+
+Identity is provided by `WebCryptoSigner.setup()` from
+`@automerge/automerge-subduction/slim` — an Ed25519 keypair persisted
+in IndexedDB so the peer ID is stable across page loads.
+
+## Caveats
+
+- **Bundle size.** ~5.8 MB unminified (~2 MB gzipped), ~90 % of which
+  is the two inlined wasm blobs. If you need a smaller footprint,
+  switch to `?url` imports + `assetsInlineLimit: Infinity` with a
+  separate `.wasm` file — but that breaks `file://`.
+- **No transpile.** Modules pulled out of automerge are loaded as-is.
+  They need to be valid ES modules in whatever syntax the target
+  browser supports. TypeScript / JSX / etc. would need to be pre-built
+  before pushing.
+- **Cycles unsupported.** See above.
+- **Cross-Origin-Embedder-Policy.** Not needed for the loader itself,
+  but if a hosted module wants to use SharedArrayBuffer-backed APIs,
+  you're on your own — there's no SW to inject COEP headers like
+  patchwork does.
