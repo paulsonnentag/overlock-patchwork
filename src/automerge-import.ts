@@ -13,34 +13,42 @@ import {
   type DocHandle,
   type Repo,
 } from "@automerge/automerge-repo/slim";
+import type {
+  FolderDoc,
+  UnixFileEntry,
+} from "@inkandswitch/patchwork-filesystem";
 import { init as lexerInit, parse as lexerParse } from "es-module-lexer";
 
 import { resolveFileHandle } from "./resolve";
-import type { FileDoc, FolderDoc } from "./types";
 
 type CacheKey = string;
 const blobUrlCache = new Map<CacheKey, Promise<string>>();
 const pinnedRootCache = new Map<AutomergeUrl, Promise<AutomergeUrl>>();
 
-export interface ImportOptions {
-  /**
-   * If true (default), every cross-doc reference is pinned to the doc's heads
-   * at first sight, so the resulting graph is reproducible and the cache is
-   * keyed on a stable identity. Disable only for live reload experiments.
-   */
-  pinHeads?: boolean;
-}
-
 export async function automergeImport(
   repo: Repo,
-  rootUrl: AutomergeUrl,
-  path: string,
-  options: ImportOptions = {},
+  spec: string,
 ): Promise<unknown> {
   await lexerInit;
-  const root = options.pinHeads === false ? rootUrl : await pinHeads(repo, rootUrl);
-  const blobUrl = await materialize(repo, root, normalizePath(path), options);
+  const { url, path } = parseAutomergeSpec(spec);
+  const pinned = await pinHeads(repo, url);
+  const blobUrl = await materialize(repo, pinned, normalizePath(path));
   return import(/* @vite-ignore */ blobUrl);
+}
+
+function parseAutomergeSpec(spec: string): { url: AutomergeUrl; path: string } {
+  if (!spec.startsWith("automerge:")) {
+    throw new Error(
+      `overlock: expected an automerge: spec, got "${spec}"`,
+    );
+  }
+  const slash = spec.indexOf("/", "automerge:".length);
+  const urlPart = (slash === -1 ? spec : spec.slice(0, slash)) as AutomergeUrl;
+  const path = slash === -1 ? "." : spec.slice(slash + 1);
+  if (!isValidAutomergeUrl(urlPart)) {
+    throw new Error(`overlock: not a valid automerge URL: "${urlPart}"`);
+  }
+  return { url: urlPart, path };
 }
 
 // ── core resolution ────────────────────────────────────────────────────
@@ -49,7 +57,6 @@ async function materialize(
   repo: Repo,
   rootUrl: AutomergeUrl,
   path: string,
-  options: ImportOptions,
   inFlight: Set<CacheKey> = new Set(),
 ): Promise<string> {
   const key = `${rootUrl}|${path}`;
@@ -78,7 +85,7 @@ async function materialize(
     // on "dist/index.js"; imports inside should be relative to "dist/").
     const canonicalPath = canonicalPathOf(folderHandle, fileHandle, path);
 
-    const fileDoc = fileHandle.doc() as FileDoc;
+    const fileDoc = fileHandle.doc() as UnixFileEntry;
     const content = fileDoc?.content;
     if (content == null) {
       throw new Error(`overlock: file ${rootUrl}/${path} has no content`);
@@ -95,14 +102,13 @@ async function materialize(
     const source =
       typeof content === "string"
         ? content
-        : new TextDecoder().decode(content);
+        : new TextDecoder().decode(toUint8Array(content));
 
     const rewritten = await rewriteImports(
       repo,
       rootUrl,
       canonicalPath ?? path,
       source,
-      options,
       inFlight,
     );
 
@@ -121,7 +127,6 @@ async function rewriteImports(
   rootUrl: AutomergeUrl,
   fromPath: string,
   source: string,
-  options: ImportOptions,
   inFlight: Set<CacheKey>,
 ): Promise<string> {
   const [imports] = lexerParse(source);
@@ -138,7 +143,6 @@ async function rewriteImports(
           rootUrl,
           fromPath,
           spec,
-          options,
           inFlight,
         );
         if (replacement == null) return null;
@@ -166,27 +170,21 @@ async function resolveSpecifier(
   rootUrl: AutomergeUrl,
   fromPath: string,
   spec: string,
-  options: ImportOptions,
   inFlight: Set<CacheKey>,
 ): Promise<string | null> {
   if (spec.startsWith("automerge:")) {
-    const slash = spec.indexOf("/", "automerge:".length);
-    const urlPart = (slash === -1 ? spec : spec.slice(0, slash)) as AutomergeUrl;
-    const subpath = slash === -1 ? "." : spec.slice(slash + 1);
-    if (!isValidAutomergeUrl(urlPart)) {
-      throw new Error(`not a valid automerge URL: "${urlPart}"`);
-    }
-    const pinned = options.pinHeads === false ? urlPart : await pinHeads(repo, urlPart);
-    return materialize(repo, pinned, normalizePath(subpath), options, inFlight);
+    const { url, path } = parseAutomergeSpec(spec);
+    const pinned = await pinHeads(repo, url);
+    return materialize(repo, pinned, normalizePath(path), inFlight);
   }
 
   if (spec.startsWith("./") || spec.startsWith("../")) {
     const resolvedPath = resolveRelative(fromPath, spec);
-    return materialize(repo, rootUrl, resolvedPath, options, inFlight);
+    return materialize(repo, rootUrl, resolvedPath, inFlight);
   }
 
   if (spec.startsWith("/")) {
-    return materialize(repo, rootUrl, normalizePath(spec), options, inFlight);
+    return materialize(repo, rootUrl, normalizePath(spec), inFlight);
   }
 
   // Bare specifier — caller asked for passthrough behavior. The browser will
@@ -230,7 +228,7 @@ function resolveRelative(fromFile: string, spec: string): string {
 
 function canonicalPathOf(
   folderHandle: DocHandle<FolderDoc>,
-  _fileHandle: DocHandle<FileDoc>,
+  _fileHandle: DocHandle<UnixFileEntry>,
   requestedPath: string,
 ): string | null {
   // The walker in resolveFileHandle already followed the path; for the v1 we
@@ -263,8 +261,14 @@ function isJavaScript(mimeType: string, path: string): boolean {
   );
 }
 
-function toBlobPart(content: string | Uint8Array): BlobPart {
+function toBlobPart(content: UnixFileEntry["content"]): BlobPart {
   if (typeof content === "string") return content;
-  // Re-wrap to detach from automerge's internal buffer if needed.
-  return new Uint8Array(content);
+  if (content instanceof Uint8Array) return new Uint8Array(content);
+  // ImmutableString — coerce to a real string.
+  return String(content);
+}
+
+function toUint8Array(content: UnixFileEntry["content"]): Uint8Array {
+  if (content instanceof Uint8Array) return content;
+  return new TextEncoder().encode(String(content));
 }

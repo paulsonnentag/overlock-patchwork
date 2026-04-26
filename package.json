@@ -5,14 +5,14 @@
   "private": true,
   "description": "Load source code from automerge documents via blob URLs (no service worker, works under file://)",
   "scripts": {
-    "build": "vite build",
-    "preview": "vite preview"
+    "build": "vite build"
   },
   "dependencies": {
     "@automerge/automerge": "3.2.5",
     "@automerge/automerge-repo": "2.6.0-subduction.13",
     "@automerge/automerge-repo-storage-indexeddb": "2.6.0-subduction.13",
     "@automerge/automerge-subduction": "0.7.0",
+    "@inkandswitch/patchwork-filesystem": "0.0.4",
     "es-module-lexer": "^1.5.4",
     "resolve.exports": "^2.0.3"
   },
