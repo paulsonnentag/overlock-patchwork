@@ -14,18 +14,30 @@ import {
 
 import { Component } from "./component.js";
 import * as componentStore from "./component-store.js";
+import { log } from "./log.js";
 import type { ComponentManifest, MountFn } from "./types.js";
 
 const BOOTSTRAP_TAG = "patchwork-view";
+const REPO_TAG = "automerge-repo";
 const SRC_ATTR = "src";
+const DOC_ATTR = "doc";
 
 /**
  * Autonomous custom element for `<patchwork-view>`. The only thing it adds
- * over a plain `HTMLElement` is a `src` accessor that reflects to the
- * attribute, so frameworks that property-assign on hyphenated tags (Solid's
- * `html` template, Lit, etc.) end up writing through `setAttribute`. The
- * existing MutationObserver-based bootstrap then reads the attribute as
- * usual.
+ * over a plain `HTMLElement` is `src` and `doc` accessors that reflect to
+ * the attribute, so frameworks that property-assign on hyphenated tags
+ * (Solid's `html` template, Lit, etc.) end up writing through
+ * `setAttribute`. The existing MutationObserver-based bootstrap then reads
+ * the attributes as usual.
+ *
+ * The constructor runs the standard "lazy property upgrade" dance for
+ * `src` and `doc`: when an element is cloned out of a `<template>` (Solid
+ * does this), the dynamic attribute writes happen *before* the prototype
+ * has been swapped to `PatchworkView`, so they land as own data
+ * properties on the element. After upgrade those own properties shadow
+ * the prototype accessors and the setter never reflects to the attribute.
+ * Reading + deleting + re-assigning here forces the value back through
+ * our setter so the attribute shows up.
  *
  * Defined once at module load. Registry orchestration for actual components
  * (`my-counter`, `wall-clock`, ...) does NOT go through `customElements` —
@@ -33,17 +45,60 @@ const SRC_ATTR = "src";
  * rebuild them freely without hitting the global one-shot ratchet.
  */
 class PatchworkView extends HTMLElement {
+  constructor() {
+    super();
+    log(
+      `<patchwork-view>: ctor (own-src=${Object.prototype.hasOwnProperty.call(this, "src")}, own-doc=${Object.prototype.hasOwnProperty.call(this, "doc")})`,
+    );
+    upgradeProperty(this, "src");
+    upgradeProperty(this, "doc");
+  }
   get src(): string {
     return this.getAttribute(SRC_ATTR) ?? "";
   }
   set src(v: string) {
+    log(`<patchwork-view>: setter src=${v}`);
     this.setAttribute(SRC_ATTR, String(v ?? ""));
   }
+  get doc(): string {
+    return this.getAttribute(DOC_ATTR) ?? "";
+  }
+  set doc(v: string) {
+    log(`<patchwork-view>: setter doc=${v}`);
+    this.setAttribute(DOC_ATTR, String(v ?? ""));
+  }
+}
+
+function upgradeProperty(el: HTMLElement, prop: string): void {
+  if (!Object.prototype.hasOwnProperty.call(el, prop)) return;
+  const value = (el as unknown as Record<string, unknown>)[prop];
+  log(`<patchwork-view>: upgradeProperty ${prop}=${String(value)}`);
+  delete (el as unknown as Record<string, unknown>)[prop];
+  (el as unknown as Record<string, unknown>)[prop] = value;
 }
 
 if (!customElements.get(BOOTSTRAP_TAG)) {
   customElements.define(BOOTSTRAP_TAG, PatchworkView);
 }
+
+/**
+ * Scope marker for a `Repo` instance. Descendant `<patchwork-view>`s
+ * resolve their `doc=` attribute against `closest("automerge-repo").repo`.
+ *
+ * The element holds a reference to the repo as a property (not an
+ * attribute — repos aren't strings). The `ComponentRegistry` is the thing
+ * that injects the repo on discovery, so `<automerge-repo>` itself stays a
+ * dumb DOM marker.
+ */
+class AutomergeRepoElement extends HTMLElement {
+  repo: Repo | null = null;
+}
+
+if (!customElements.get(REPO_TAG)) {
+  customElements.define(REPO_TAG, AutomergeRepoElement);
+}
+
+type ComponentHostElement = HTMLElement & { handle?: DocHandle<unknown> };
 
 type AutomergeImport = (spec: string) => Promise<unknown>;
 
@@ -109,10 +164,18 @@ export class ComponentRegistry {
     this.#repo = deps.repo;
     this.#automergeImport = deps.automergeImport;
 
+    log(`registry: init on <${root.localName}>`);
     this.#forEachElementIn(root, (el) => this.#handleElement(el));
 
     const observer = new MutationObserver((records) => {
       for (const record of records) {
+        if (record.type === "attributes") {
+          if (record.attributeName !== DOC_ATTR) continue;
+          const target = record.target;
+          if (!(target instanceof HTMLElement)) continue;
+          this.#handleDocAttributeChange(target);
+          continue;
+        }
         for (const node of record.addedNodes) {
           if (node instanceof Element) {
             this.#forEachElement(node, (el) => this.#handleElement(el));
@@ -129,12 +192,42 @@ export class ComponentRegistry {
         }
       }
     });
-    observer.observe(root, { childList: true, subtree: true });
+    observer.observe(root, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: [DOC_ATTR],
+    });
     this.#observer = observer;
+  }
+
+  /**
+   * `doc=` changed on an element we care about. Three cases:
+   *
+   * 1. `<patchwork-view>` pre-bootstrap — let the in-flight (or future)
+   *    bootstrap pick up the new value when it reads the attribute.
+   * 2. Mounted component — rebuild the instance under the same tag and
+   *    mount fn. The rebuild path runs `#resolveContext` against the new
+   *    element, which re-reads `doc=` and produces the fresh handle.
+   * 3. Anything else — ignore.
+   */
+  #handleDocAttributeChange(el: HTMLElement): void {
+    const comp = componentStore.lookup(el);
+    if (!comp || !this.#mounted.has(comp)) {
+      log(
+        `doc-change: <${el.localName}> doc="${el.getAttribute(DOC_ATTR) ?? ""}" — no mounted component, skipping`,
+      );
+      return;
+    }
+    log(
+      `doc-change: <${el.localName}> #${comp.id} doc="${el.getAttribute(DOC_ATTR) ?? ""}" — rebuilding`,
+    );
+    this.#rebuildInstance(comp, comp.el.localName, comp.mountFn);
   }
 
   destroy(): void {
     if (this.#observer === null) return;
+    log(`registry: destroy (mounted=${this.#mounted.size})`);
     this.#observer.disconnect();
     this.#observer = null;
     for (const comp of Array.from(this.#mounted)) comp.unmount();
@@ -146,11 +239,30 @@ export class ComponentRegistry {
   }
 
   #handleElement(el: Element): void {
+    if (el.localName === REPO_TAG) {
+      // Inject the repo onto the marker element so descendants can do
+      // `el.closest("automerge-repo").repo`. Tree order from the initial
+      // walk and from MO addedNodes guarantees this runs before any
+      // descendant <patchwork-view> bootstrap.
+      (el as AutomergeRepoElement).repo = this.#repo;
+      log(`<automerge-repo>: repo assigned`);
+      return;
+    }
     if (el.localName === BOOTSTRAP_TAG) {
       const src = el.getAttribute(SRC_ATTR);
-      if (!src) return;
-      if (this.#bootstrapping.has(el)) return;
+      const doc = el.getAttribute(DOC_ATTR);
+      if (!src) {
+        log(`<patchwork-view>: skipping (no src=)`);
+        return;
+      }
+      if (this.#bootstrapping.has(el)) {
+        log(`<patchwork-view>: skipping (already bootstrapping) src=${src}`);
+        return;
+      }
       this.#bootstrapping.add(el);
+      log(
+        `<patchwork-view>: bootstrap start src=${src} doc=${doc ?? "(none)"}`,
+      );
       void this.#bootstrap(el as HTMLElement, src);
       return;
     }
@@ -164,6 +276,11 @@ export class ComponentRegistry {
    *   3. replace <patchwork-view> with <manifest.name> (keep non-src attrs + children)
    *   4. construct Component, run async mountFn against the new element
    *
+   * If the element carries a `doc=` attribute, step 4 also resolves a
+   * `DocHandle` against the closest `<automerge-repo>` ancestor and stamps
+   * it onto the new element as `el.handle` before the user's mount fn
+   * runs.
+   *
    * The folder subscription that drives HMR is set up inside `#load`.
    */
   async #bootstrap(viewEl: HTMLElement, spec: string): Promise<void> {
@@ -175,12 +292,52 @@ export class ComponentRegistry {
       return;
     }
 
-    if (!viewEl.isConnected) return;
+    if (!viewEl.isConnected) {
+      log(`<patchwork-view>: bootstrap aborted — element disconnected during load (${spec})`);
+      return;
+    }
 
     this.#registerComponent(loaded.manifest.name, loaded.mountFn);
+    log(
+      `<patchwork-view>: bootstrap loaded "${loaded.manifest.name}" → swap + mount`,
+    );
 
     const newEl = swapTag(viewEl, loaded.manifest.name);
     this.#mountElement(newEl, loaded.mountFn);
+  }
+
+  /**
+   * Resolve the per-element doc context: read the `doc=` attribute, find
+   * the closest `<automerge-repo>` ancestor, await `repo.find(docUrl)`,
+   * and stamp the resulting `DocHandle` onto the element as `el.handle`.
+   *
+   * Strict: a `doc=` attribute without an `<automerge-repo>` ancestor is
+   * an error. No `doc=` attribute is fine and leaves `el.handle`
+   * untouched.
+   */
+  async #resolveContext(el: HTMLElement): Promise<void> {
+    const docUrl = el.getAttribute(DOC_ATTR);
+    if (!docUrl) {
+      log(`resolveContext: <${el.localName}> no doc= attribute, skipping`);
+      return;
+    }
+
+    const repoEl = el.closest(REPO_TAG) as AutomergeRepoElement | null;
+    if (!repoEl?.repo) {
+      throw new Error(
+        `[overlock-patchwork] <${el.localName} ${DOC_ATTR}="${docUrl}"> requires an <${REPO_TAG}> ancestor`,
+      );
+    }
+    if (!isValidAutomergeUrl(docUrl)) {
+      throw new Error(
+        `[overlock-patchwork] ${DOC_ATTR} attribute is not a valid automerge URL: "${docUrl}"`,
+      );
+    }
+
+    log(`resolveContext: <${el.localName}> doc=${docUrl} → repo.find`);
+    const handle = await repoEl.repo.find(docUrl);
+    (el as ComponentHostElement).handle = handle as DocHandle<unknown>;
+    log(`resolveContext: <${el.localName}> doc=${docUrl} → handle ready`);
   }
 
   #registerComponent(name: string, mountFn: MountFn): void {
@@ -190,6 +347,7 @@ export class ComponentRegistry {
         `[overlock-patchwork] component name collision: "${name}" is already registered`,
       );
     }
+    if (!existing) log(`registry: register name="${name}"`);
     this.#registry.set(name, mountFn);
   }
 
@@ -268,6 +426,8 @@ export class ComponentRegistry {
     const old = this.#loaded.get(spec);
     if (!old) return;
 
+    log(`hmr: change detected on ${spec} (was "${old.manifest.name}")`);
+
     const { path } = parseSpec(spec);
     const parts = splitPath(path);
     const manifestName = parts[parts.length - 1];
@@ -285,6 +445,7 @@ export class ComponentRegistry {
       fresh.manifest.name === old.manifest.name &&
       fresh.mountFn === old.mountFn
     ) {
+      log(`hmr: ${spec} no-op (manifest + mountFn unchanged)`);
       return;
     }
 
@@ -309,6 +470,9 @@ export class ComponentRegistry {
     old.manifest = fresh.manifest;
     old.mountFn = fresh.mountFn;
 
+    log(
+      `hmr: ${spec} reload "${previousName}" → "${fresh.manifest.name}" (rebuilding ${instances.length} instance${instances.length === 1 ? "" : "s"})`,
+    );
     for (const comp of instances) {
       this.#rebuildInstance(comp, fresh.manifest.name, fresh.mountFn);
     }
@@ -344,7 +508,9 @@ export class ComponentRegistry {
    * Tear down the old element fully and recreate it under the new tag name.
    * Runs cleanup, copies the current attrs and children to the new element,
    * inserts in place of the old, then mounts. Element identity is lost on
-   * purpose — that's the chosen HMR semantics.
+   * purpose — that's the chosen HMR semantics; it's also reused for
+   * `doc=` attribute changes so the rebuild path always re-resolves the
+   * handle from scratch.
    */
   #rebuildInstance(
     comp: Component,
@@ -354,10 +520,16 @@ export class ComponentRegistry {
     const oldEl = comp.el;
     const parent = oldEl.parentNode;
 
+    log(
+      `rebuild: <${oldEl.localName}> #${comp.id} → <${newName}> (teardown + recreate)`,
+    );
     this.#mounted.delete(comp);
     comp.unmount();
 
-    if (!parent) return;
+    if (!parent) {
+      log(`rebuild: <${oldEl.localName}> #${comp.id} skipped — no parent`);
+      return;
+    }
 
     const newEl = oldEl.ownerDocument.createElement(newName);
     for (const attr of Array.from(oldEl.attributes)) {
@@ -370,21 +542,64 @@ export class ComponentRegistry {
   }
 
   #mountIfRegistered(el: Element): void {
-    if (componentStore.lookup(el)) return;
+    if (componentStore.lookup(el)) {
+      log(
+        `mountIfRegistered: <${el.localName}> already has a Component, skipping`,
+      );
+      return;
+    }
     const mountFn = this.#registry.get(el.localName);
     if (!mountFn) return;
+    log(`mountIfRegistered: <${el.localName}> registered, mounting`);
     this.#mountElement(el as HTMLElement, mountFn);
   }
 
+  /**
+   * Construct a Component, await any doc-context resolution against the
+   * new element, then run the user's mount fn. The component is added to
+   * the mounted set up-front so a removal mid-resolve still invokes the
+   * removal path; the post-await `isConnected` guard then short-circuits
+   * without calling the user's mount fn.
+   */
   #mountElement(el: HTMLElement, mountFn: MountFn): void {
-    const comp = new Component(el);
+    const comp = new Component(el, mountFn);
     this.#mounted.add(comp);
-    void comp.mount(mountFn);
+    log(
+      `mountElement: <${el.localName}> #${comp.id} (mounted set size=${this.#mounted.size})`,
+    );
+    void this.#performMount(comp);
+  }
+
+  async #performMount(comp: Component): Promise<void> {
+    try {
+      await this.#resolveContext(comp.el);
+    } catch (err) {
+      console.error("[overlock-patchwork] doc context resolution failed:", err);
+      this.#mounted.delete(comp);
+      // `comp.unmount()` here just unregisters from componentStore; no
+      // user cleanup has been installed yet. Without this the WeakMap
+      // entry would survive a re-add of the same element and prevent a
+      // future mount.
+      comp.unmount();
+      return;
+    }
+    if (!comp.el.isConnected) {
+      log(
+        `performMount: <${comp.el.localName}> #${comp.id} disconnected during resolve — aborting`,
+      );
+      this.#mounted.delete(comp);
+      comp.unmount();
+      return;
+    }
+    await comp.mount();
   }
 
   #unmountIfMounted(el: Element): void {
     const comp = componentStore.lookup(el);
     if (!comp || !this.#mounted.has(comp)) return;
+    log(
+      `unmountIfMounted: <${el.localName}> #${comp.id} removed from DOM`,
+    );
     this.#mounted.delete(comp);
     comp.unmount();
   }
