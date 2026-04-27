@@ -11,12 +11,12 @@
  *
  * Usage:
  *   pnpm push <folder>
- *   pnpm push <folder> --shallow
+ *   pnpm push <folder> --force
  *
- *   --shallow    Skip the per-subfolder pushwork sync; only update the
- *                root folder doc from each subfolder's existing snapshot.
- *                Subfolders that haven't been initialized fall back to
- *                running pushwork init+sync just for themselves.
+ *   --force      Always run pushwork on every subfolder. By default a
+ *                subfolder is skipped when no file under it has been
+ *                modified since the mtime of its `.pushwork/snapshot.json`
+ *                (which pushwork rewrites on each sync).
  */
 
 import * as fs from "node:fs/promises";
@@ -37,11 +37,11 @@ const TOLERATED_TOP_LEVEL_ENTRIES = new Set([".pushwork", ".DS_Store"]);
 
 function printHelpAndExit(code) {
   const msg = [
-    "Usage: pnpm push <folder> [--shallow]",
+    "Usage: pnpm push <folder> [--force]",
     "",
     "  <folder>     Folder containing subfolders to push (required).",
-    "  --shallow    Don't re-sync each subfolder via pushwork; just refresh",
-    "               the root folder doc from existing per-subfolder snapshots.",
+    "  --force      Run pushwork on every subfolder even if no local files",
+    "               have changed since the last sync.",
   ].join("\n");
   console.log(msg);
   process.exit(code);
@@ -50,10 +50,10 @@ function printHelpAndExit(code) {
 function parseArgs(argv) {
   const args = argv.slice(2);
   let folder = null;
-  let shallow = false;
+  let force = false;
   for (const a of args) {
-    if (a === "--shallow") {
-      shallow = true;
+    if (a === "--force") {
+      force = true;
     } else if (a === "--help" || a === "-h") {
       printHelpAndExit(0);
     } else if (a.startsWith("--")) {
@@ -70,7 +70,7 @@ function parseArgs(argv) {
     console.error("Missing required <folder> argument.");
     printHelpAndExit(1);
   }
-  return { folder, shallow };
+  return { folder, force };
 }
 
 async function pathExists(p) {
@@ -127,6 +127,30 @@ async function readSubfolderRootUrl(absPath) {
   return data.rootDirectoryUrl ?? null;
 }
 
+// Names skipped while computing a subfolder's "last touched" mtime. We
+// purposely ignore .pushwork (pushwork rewrites files in there during
+// sync) and .DS_Store (Finder churn is not interesting).
+const MTIME_IGNORED_NAMES = new Set([".pushwork", ".DS_Store"]);
+
+// Find the most recent mtime (in ms) anywhere under `rootAbs`, including
+// directory mtimes so that adding/removing files (which doesn't touch
+// existing files' mtimes) still bumps the answer.
+async function findMaxMtimeMs(rootAbs) {
+  let maxMs = 0;
+  async function walk(p) {
+    const stat = await fs.stat(p);
+    if (stat.mtimeMs > maxMs) maxMs = stat.mtimeMs;
+    if (!stat.isDirectory()) return;
+    const entries = await fs.readdir(p, { withFileTypes: true });
+    for (const e of entries) {
+      if (MTIME_IGNORED_NAMES.has(e.name)) continue;
+      await walk(path.join(p, e.name));
+    }
+  }
+  await walk(rootAbs);
+  return maxMs;
+}
+
 async function readRootSnapshot(rootSnapshotPath) {
   if (!(await pathExists(rootSnapshotPath))) return null;
   const raw = await fs.readFile(rootSnapshotPath, "utf8");
@@ -140,6 +164,42 @@ async function writeRootSnapshot(rootSnapshotPath, snapshot) {
     JSON.stringify(snapshot, null, 2) + "\n",
     "utf8"
   );
+}
+
+// Mirrors pushwork's safeRepoShutdown (see
+// /Users/paulsonnentag/repos/pushwork/src/commands.ts). Two things
+// matter here:
+//
+// 1. A pre-shutdown grace period. Our `waitForHandleStable` only
+//    watches *local* head stability, which doesn't prove the server
+//    received anything. Giving in-flight `syncWithAllPeers` calls a few
+//    seconds to actually deliver before we tear the repo down avoids
+//    silently losing the latest change.
+// 2. WebSocket errors during shutdown are common and non-critical;
+//    pushwork suppresses them rather than crashing the process.
+//
+// Override the grace period via PUSHWORK_SYNC_GRACE_MS for parity with
+// pushwork.
+async function safeRepoShutdown(repo) {
+  const graceMsEnv = process.env.PUSHWORK_SYNC_GRACE_MS;
+  const graceMs = graceMsEnv !== undefined ? Number(graceMsEnv) : 3000;
+  if (Number.isFinite(graceMs) && graceMs > 0) {
+    await new Promise((r) => setTimeout(r, graceMs));
+  }
+
+  const onUncaught = (err) => {
+    if (err?.message?.includes("WebSocket")) return;
+    throw err;
+  };
+  process.on("uncaughtException", onUncaught);
+  try {
+    await repo.shutdown();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!msg.includes("WebSocket")) throw err;
+  } finally {
+    process.off("uncaughtException", onUncaught);
+  }
 }
 
 // Subduction has no StorageId we can verify against, so we wait for the
@@ -170,7 +230,7 @@ async function waitForHandleStable(handle, {
 }
 
 async function main() {
-  const { folder, shallow } = parseArgs(process.argv);
+  const { folder, force } = parseArgs(process.argv);
   const absFolder = path.resolve(folder);
 
   const stat = await fs.stat(absFolder).catch(() => null);
@@ -211,16 +271,24 @@ async function main() {
   for (const sub of subfolders) {
     const subSnapshot = path.join(sub.absPath, ".pushwork", "snapshot.json");
     const hasSnapshot = await pathExists(subSnapshot);
-    if (shallow && hasSnapshot) {
-      console.log(`(--shallow) skipping pushwork sync for ${sub.name}`);
+
+    let skip = false;
+    if (!force && hasSnapshot) {
+      // Pushwork rewrites snapshot.json on every sync run, so its file
+      // mtime is a reliable "last successful sync" marker. The
+      // `timestamp` field *inside* it only moves when an entry is
+      // actually added/updated/removed, so it isn't.
+      const lastPushMs = (await fs.stat(subSnapshot)).mtimeMs;
+      const maxMs = await findMaxMtimeMs(sub.absPath);
+      if (maxMs <= lastPushMs) skip = true;
+    }
+
+    if (skip) {
+      console.log(`(unchanged) skipping pushwork sync for ${sub.name}`);
     } else {
-      if (shallow && !hasSnapshot) {
-        console.log(
-          `(--shallow) ${sub.name} not initialized yet; running init+sync`
-        );
-      }
       await syncSubfolder(sub.absPath);
     }
+
     sub.url = await readSubfolderRootUrl(sub.absPath);
     if (!sub.url) {
       throw new Error(
@@ -301,7 +369,8 @@ async function main() {
 
   console.log(`\nRoot folder URL: ${rootHandle.url}`);
 
-  await repo.shutdown();
+  await safeRepoShutdown(repo);
+  process.exit(0);
 }
 
 main().catch((err) => {

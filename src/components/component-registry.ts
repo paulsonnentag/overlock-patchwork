@@ -11,7 +11,7 @@ import {
   type UnixFileEntry,
 } from "@inkandswitch/patchwork-filesystem";
 
-import { BranchableRepo } from "../branchable-repo.js";
+import { BranchableRepo, type ForkOpts } from "../branchable-repo.js";
 import { Component } from "./component.js";
 import * as componentStore from "./component-store.js";
 import type { ComponentManifest, ComponentRoot, MountFn } from "./types.js";
@@ -79,12 +79,50 @@ if (!customElements.get(BOOTSTRAP_TAG)) {
  * resolve their `doc=` attribute against `closest("automerge-repo").repo`.
  *
  * The element holds a reference to the repo as a property (not an
- * attribute — repos aren't strings). The `ComponentRegistry` is the thing
- * that injects the repo on discovery, so `<automerge-repo>` itself stays a
- * dumb DOM marker.
+ * attribute — repos aren't strings). The `ComponentRegistry` injects the
+ * initial repo on discovery; it inherits from the closest enclosing
+ * `<automerge-repo>` ancestor (if any), or falls back to the registry's
+ * root repo.
+ *
+ * The element also exposes `checkout`/`fork`/`reset` mutators that swap
+ * its `.repo` to a different `BranchableRepo` view of the underlying
+ * `Repo`. After each swap, every component descendant that resolves
+ * against this `<automerge-repo>` is rebuilt so its `doc=` re-resolves
+ * through the new repo. The rebuild hook is set by the
+ * `ComponentRegistry` (via `_rebuildDescendants`) the first time it sees
+ * this element.
  */
 class AutomergeRepoElement extends HTMLElement {
   repo: BranchableRepo | null = null;
+  /** @internal */
+  _rebuildDescendants: (() => void) | null = null;
+
+  async checkout(branchDocUrl: AutomergeUrl): Promise<BranchableRepo> {
+    if (!this.repo) {
+      throw new Error("automerge-repo: cannot checkout before .repo is set");
+    }
+    this.repo = await this.repo.checkout(branchDocUrl);
+    this._rebuildDescendants?.();
+    return this.repo;
+  }
+
+  async fork(opts: ForkOpts = {}): Promise<BranchableRepo> {
+    if (!this.repo) {
+      throw new Error("automerge-repo: cannot fork before .repo is set");
+    }
+    this.repo = await this.repo.fork(opts);
+    this._rebuildDescendants?.();
+    return this.repo;
+  }
+
+  reset(): BranchableRepo {
+    if (!this.repo) {
+      throw new Error("automerge-repo: cannot reset before .repo is set");
+    }
+    this.repo = BranchableRepo.wrap(this.repo.repo);
+    this._rebuildDescendants?.();
+    return this.repo;
+  }
 }
 
 if (!customElements.get(REPO_TAG)) {
@@ -209,7 +247,22 @@ export class ComponentRegistry {
       // `el.closest("automerge-repo").repo`. Tree order from the initial
       // walk and from MO addedNodes guarantees this runs before any
       // descendant <patchwork-view> bootstrap.
-      (el as AutomergeRepoElement).repo = this.#repo;
+      //
+      // Nested <automerge-repo>s inherit from the nearest enclosing
+      // <automerge-repo>; only the outermost one falls back to the
+      // registry's root repo. A repo already set on the element (e.g.
+      // by user code that wants to seed a forked repo) is preserved.
+      const repoEl = el as AutomergeRepoElement;
+      if (!repoEl.repo) {
+        const ancestor = el.parentElement?.closest(
+          REPO_TAG,
+        ) as AutomergeRepoElement | null;
+        repoEl.repo = ancestor?.repo ?? this.#repo;
+      }
+      if (!repoEl._rebuildDescendants) {
+        repoEl._rebuildDescendants = () =>
+          this.#rebuildDescendantsOfRepoEl(repoEl);
+      }
       return;
     }
     if (el.localName === BOOTSTRAP_TAG) {
@@ -489,6 +542,30 @@ export class ComponentRegistry {
     parent.replaceChild(newEl, oldEl);
 
     this.#mountElement(newEl, mountFn);
+  }
+
+  /**
+   * Called when an `<automerge-repo>` element's `.repo` was swapped (via
+   * its `checkout` / `fork` / `reset` methods). Rebuilds every Component
+   * descendant whose nearest enclosing `<automerge-repo>` is `repoEl`,
+   * so each descendant's `doc=` is re-resolved against the new repo and
+   * any cached `el.handle` / `el.repo` references are refreshed by
+   * `stampLookups`.
+   *
+   * Components inside a *nested* `<automerge-repo>` are skipped — their
+   * scope hasn't changed.
+   */
+  #rebuildDescendantsOfRepoEl(repoEl: HTMLElement): void {
+    const targets: Component[] = [];
+    for (const comp of this.#mounted) {
+      if (comp.el === repoEl) continue;
+      if (!repoEl.contains(comp.el)) continue;
+      if (comp.el.closest(REPO_TAG) !== repoEl) continue;
+      targets.push(comp);
+    }
+    for (const comp of targets) {
+      this.#rebuildInstance(comp, comp.el.localName, comp.mountFn);
+    }
   }
 
   #mountIfRegistered(el: Element): void {

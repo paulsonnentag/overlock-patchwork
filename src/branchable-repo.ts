@@ -37,12 +37,25 @@ const BRANCH_TYPE = "branch" as const;
 
 export type BranchDoc = {
   [BRANCH_MARKER]: { type: typeof BRANCH_TYPE };
+  // Human-readable branch name. Optional; populated by `fork({ name })`.
+  name?: string;
+  // Wall-clock millis at fork time. Optional; populated by `fork()`.
+  createdAt?: number;
   // Map of *original* AutomergeUrl → cloned AutomergeUrl. The clone url
   // has `?heads=` set to the heads of the original at the moment the
   // clone was created — i.e. the fork point. Because `Repo.clone` shares
   // history with the original, those heads are also valid heads inside
   // the clone, which is what makes `handle.diff()` cheap.
   clones: Record<AutomergeUrl, AutomergeUrl>;
+};
+
+export type ForkOpts = {
+  // Documents to clone eagerly at fork time. URLs may include a
+  // `?heads=` segment to fork at a specific point in time. Without this
+  // list, documents are cloned lazily on first write (copy-on-write).
+  urls?: AutomergeUrl[];
+  // Human-readable branch name stored on the new branch document.
+  name?: string;
 };
 
 function isBranchDoc(value: unknown): value is BranchDoc {
@@ -107,20 +120,25 @@ export class BranchableRepo {
   //
   // Without `urls`, documents are cloned lazily on first write
   // (copy-on-write). With `urls`, the listed documents are cloned
-  // eagerly — at the heads encoded in each url, if any.
-  async fork(urls?: AutomergeUrl[]): Promise<BranchableRepo> {
+  // eagerly — at the heads encoded in each url, if any. `name` is
+  // recorded on the branch document so UI can render a label without
+  // separately tracking metadata.
+  async fork(opts: ForkOpts = {}): Promise<BranchableRepo> {
     if (this.branchHandle) {
       throw new Error(
         "branchable-repo: nested branching is not yet supported",
       );
     }
-    const branchHandle = this.repo.create<BranchDoc>({
+    const initial: BranchDoc = {
       [BRANCH_MARKER]: { type: BRANCH_TYPE },
+      createdAt: Date.now(),
       clones: {},
-    });
+    };
+    if (opts.name !== undefined) initial.name = opts.name;
+    const branchHandle = this.repo.create<BranchDoc>(initial);
     const branched = new BranchableRepo(this.repo, branchHandle);
-    if (urls?.length) {
-      await Promise.all(urls.map((u) => branched.#snapshotEager(u)));
+    if (opts.urls?.length) {
+      await Promise.all(opts.urls.map((u) => branched.#snapshotEager(u)));
     }
     return branched;
   }

@@ -12,9 +12,11 @@ import { makeDocumentProjection } from "https://esm.sh/@automerge/automerge-repo
 // `rootDirectoryUrl`.
 const ROOT_FOLDER_CONTEXT_SRC = "automerge:3fhi2BowJ5TCC1BDq3RF97B7uthB/component.json";
 const SELECTED_DOC_CONTEXT_SRC = "automerge:3dh4SQH6EBf5ToXiVtAMnu62My5t/component.json";
+const CHECKED_OUT_BRANCH_CONTEXT_SRC = "automerge:3r7viUjGF5TLFAMewKBNtg4Yvx4R/component.json";
 const NEW_MARKDOWN_BUTTON_SRC = "automerge:CM2VRcrcFReYz65Q7xcBV5z84uS/component.json";
 const FOLDER_LIST_SRC = "automerge:2WgECNBYQ7ScAysUcQVDeQu6JbLR/component.json";
 const DOC_TITLE_SRC = "automerge:3E9kcXgLXrbQgideScbAzDFqcHXt/component.json";
+const BRANCH_PICKER_SRC = "automerge:bhg3NCu9QB47N2UGLLMpghY1Dc8/component.json";
 const MARKDOWN_EDITOR_SRC = "automerge:ktem5LsqihaRgoZbz9SXQ9uJ5J4/component.json";
 const URL_SYNC_SRC = "automerge:quU9eE2Wqih6SLVzS7fAeZJc13c/component.json";
 
@@ -54,15 +56,28 @@ function Layout({ accountDoc }) {
         flex-direction: column;
         min-width: 0;
       }
-      app-root > .content > .header {
+      app-root .header {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
         padding: 1rem 1.75rem;
         background: #fff;
         border-bottom: 1px solid #d4d4d4;
         box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
       }
-      app-root > .content > markdown-editor {
+      app-root .header > doc-title {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+      app-root markdown-editor {
         flex: 1 1 auto;
         display: flex;
+        min-height: 0;
+      }
+      app-root checked-out-branch-context {
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: column;
         min-height: 0;
       }
       app-root > .content > .empty {
@@ -87,10 +102,13 @@ function Layout({ accountDoc }) {
         fallback=${html`<div class="empty">No document selected</div>`}
       >
         <patchwork-view src=${SELECTED_DOC_CONTEXT_SRC}>
-          <header class="header">
-            <patchwork-view src=${DOC_TITLE_SRC}></patchwork-view>
-          </header>
-          <patchwork-view src=${MARKDOWN_EDITOR_SRC}></patchwork-view>
+          <patchwork-view src=${CHECKED_OUT_BRANCH_CONTEXT_SRC}>
+            <header class="header">
+              <patchwork-view src=${DOC_TITLE_SRC}></patchwork-view>
+              <patchwork-view src=${BRANCH_PICKER_SRC}></patchwork-view>
+            </header>
+            <patchwork-view src=${MARKDOWN_EDITOR_SRC}></patchwork-view>
+          </patchwork-view>
         </patchwork-view>
       <//>
     </section>
