@@ -77,6 +77,8 @@ which is the same answer either way.
 ## Module layout
 
 ```
+src/types.ts              ComponentManifest, MountFn, Schema,
+                          ComponentRoot, SchemaComponentRoot
 src/components/
   component-registry.ts   ComponentRegistry, PatchworkView,
                           AutomergeRepoElement, manifest/spec helpers
@@ -87,10 +89,6 @@ src/components/
                           componentChildren walkers, element method
                           stamping (also stamps el.repo from closest
                           <automerge-repo>)
-  events.ts               OpenDocumentEvent, "patchwork:open-document"
-                          declaration
-  types.ts                ComponentManifest, MountFn, Schema,
-                          ComponentRoot, SchemaComponentRoot
   index.ts                public re-exports
   log.ts                  scoped console logger
 ```

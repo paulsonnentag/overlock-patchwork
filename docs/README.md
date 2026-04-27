@@ -73,7 +73,6 @@ Start with the doc closest to the change you want to make.
 | [`src/components/component.ts`](../src/components/component.ts) | `Component` lifecycle, generation guard |
 | [`src/components/component-store.ts`](../src/components/component-store.ts) | `WeakMap<Element, Component>` lookup |
 | [`src/components/ancestor-lookup.ts`](../src/components/ancestor-lookup.ts) | `closestComponent` / `ancestorComponent` / `componentChildren` walkers, element method stamping (also stamps `el.repo`) |
-| [`src/components/events.ts`](../src/components/events.ts) | `OpenDocumentEvent` + `"patchwork:open-document"` typing |
-| [`src/components/types.ts`](../src/components/types.ts) | `ComponentManifest`, `MountFn`, `Schema`, `ComponentRoot`, `SchemaComponentRoot` |
+| [`src/types.ts`](../src/types.ts) | `ComponentManifest`, `MountFn`, `Schema`, `ComponentRoot`, `SchemaComponentRoot` |
 | [`src/components/index.ts`](../src/components/index.ts) | public re-exports |
 | [`src/components/log.ts`](../src/components/log.ts) | scoped console logger |

@@ -14,7 +14,7 @@ import {
 import { BranchableRepo, type ForkOpts } from "../branchable-repo";
 import { Component } from "./component";
 import * as componentStore from "./component-store";
-import type { ComponentManifest, ComponentRoot, MountFn } from "./types";
+import type { ComponentManifest, ComponentRoot, MountFn } from "../types";
 
 const BOOTSTRAP_TAG = "patchwork-view";
 const REPO_TAG = "automerge-repo";

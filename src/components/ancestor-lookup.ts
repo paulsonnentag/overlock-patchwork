@@ -4,7 +4,7 @@ import type {
   ComponentRoot,
   Schema,
   SchemaComponentRoot,
-} from "./types";
+} from "../types";
 
 // Source of truth for these tag names is `component-registry.ts`. Duplicated
 // here as string literals to avoid a registry → component → ancestor-lookup

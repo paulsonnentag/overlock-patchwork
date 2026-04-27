@@ -5,8 +5,4 @@ export type {
   MountFn,
   Schema,
   SchemaComponentRoot,
-} from "./types";
-export {
-  OpenDocumentEvent,
-  type OpenDocumentEventDetail,
-} from "./events";
+} from "../types";

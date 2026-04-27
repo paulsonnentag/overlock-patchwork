@@ -1,6 +1,6 @@
 import { stampLookups } from "./ancestor-lookup";
 import * as componentStore from "./component-store";
-import type { ComponentRoot, MountFn } from "./types";
+import type { ComponentRoot, MountFn } from "../types";
 
 let nextId = 0;
 
