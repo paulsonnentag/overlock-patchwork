@@ -14,7 +14,8 @@ stays inside the page so the bundle works under `file://`.
 Implementation lives in
 [`src/automerge-import.ts`](../src/automerge-import.ts), with
 package-exports lookup in [`src/resolve.ts`](../src/resolve.ts) and
-the wasm bootstrap in [`src/wasm-loader.ts`](../src/wasm-loader.ts).
+the wasm bootstrap inlined at the top of
+[`src/main.ts`](../src/main.ts).
 
 ## API
 
@@ -86,11 +87,12 @@ content exists.
 
 ## Wasm bootstrap
 
-[`src/wasm-loader.ts`](../src/wasm-loader.ts) initializes the slim
-entry points of `@automerge/automerge` and
-`@automerge/automerge-subduction` from base64-inlined wasm blobs.
-That's why `dist/overlock.js` is ~5.8 MB unminified — ~3 MB automerge
-wasm, ~1 MB subduction wasm, plus base64 overhead.
+The first step of the bootstrap IIFE in
+[`src/main.ts`](../src/main.ts) initializes the slim entry points of
+`@automerge/automerge` and `@automerge/automerge-subduction` from
+base64-inlined wasm blobs. That's why `dist/overlock.js` is ~5.8 MB
+unminified — ~3 MB automerge wasm, ~1 MB subduction wasm, plus base64
+overhead.
 
 The base64 path mirrors the SW init in
 `patchwork-next/core/bootloader/src/service-worker.ts` lines 116–122
