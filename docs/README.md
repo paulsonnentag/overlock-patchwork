@@ -48,10 +48,12 @@ Start with the doc closest to the change you want to make.
   The registry's only hard-coded mount tag. See
   [`components.md`](./components.md).
 - **Repo scope.** `<automerge-repo>` is a marker tag. The registry
-  stamps a `Repo` reference onto every `<automerge-repo>` it
+  stamps a `BranchableRepo` reference onto every `<automerge-repo>` it
   discovers; descendant `<patchwork-view doc=...>` elements look it up
-  via `closest("automerge-repo").repo`. See
-  [`documents.md`](./documents.md).
+  via `closest("automerge-repo").repo`. `BranchableRepo` is a thin
+  forkable wrapper around the underlying Automerge `Repo` (see
+  [`documents.md`](./documents.md#branching) and
+  [`src/branchable-repo.ts`](../src/branchable-repo.ts)).
 - **Component registry.** A per-root orchestrator owning a
   `MutationObserver`, the bootstrap-load cache, the name table, and
   the set of mounted instances. See [`internals.md`](./internals.md).
@@ -63,7 +65,8 @@ Start with the doc closest to the change you want to make.
 
 | Path | Role |
 | --- | --- |
-| [`src/main.ts`](../src/main.ts) | bootstrap: wasm, Repo, `window.automergeImport`, `window.createComponentRegistry` |
+| [`src/main.ts`](../src/main.ts) | bootstrap: wasm, Repo, `BranchableRepo` wrap, `window.automergeImport`, `window.createComponentRegistry` |
+| [`src/branchable-repo.ts`](../src/branchable-repo.ts) | `BranchableRepo` / `BranchedDocHandle`: forkable wrapper over `Repo` with copy-on-write per doc |
 | [`src/automerge-import.ts`](../src/automerge-import.ts) | resolve → parse → rewrite → blob URL → `import()` |
 | [`src/resolve.ts`](../src/resolve.ts) | folder walk + `package.json` `exports` lookup |
 | [`src/wasm-loader.ts`](../src/wasm-loader.ts) | base64-inline wasm init for automerge + subduction |

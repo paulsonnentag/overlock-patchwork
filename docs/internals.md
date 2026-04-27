@@ -18,7 +18,7 @@ class PatchworkView extends HTMLElement {
   set doc(v: string) { this.setAttribute("doc", String(v ?? "")); }
 }
 class AutomergeRepoElement extends HTMLElement {
-  repo: Repo | null = null;
+  repo: BranchableRepo | null = null;
 }
 ```
 
@@ -97,10 +97,15 @@ src/components/
 
 The registry depends on the loader half of overlock for two things:
 
-- `repo: Repo` — used to resolve folders, manifests, and read
-  `.heads()` for pinning.
+- `repo: BranchableRepo` — used to resolve folders, manifests, and read
+  `.heads()` for pinning. The wrapper passes through to the underlying
+  `Repo` while unbranched, so the registry doesn't care about the
+  branch state. Operations that must never be branched (e.g.
+  `findHandleInFolderHandle` from `@inkandswitch/patchwork-filesystem`)
+  call into `repo.repo` directly.
 - `automergeImport: (spec) => Promise<unknown>` — used to fetch and
-  evaluate `component.js` as an ES module.
+  evaluate `component.js` as an ES module. Always runs against the raw
+  `Repo` so module resolution is never affected by branches.
 
 Both are wired up in [`src/main.ts`](../src/main.ts) and exposed
 through `window.createComponentRegistry(root)`.

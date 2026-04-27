@@ -11,6 +11,7 @@ import { WebCryptoSigner } from "@automerge/automerge-subduction/slim";
 
 import { ensureWasm } from "./wasm-loader";
 import { automergeImport } from "./automerge-import";
+import { BranchableRepo } from "./branchable-repo";
 import { ComponentRegistry } from "./components";
 
 const SUBDUCTION_ENDPOINT = "wss://subduction.sync.inkandswitch.com";
@@ -28,7 +29,10 @@ const isPatchworkReady = (async () => {
     subductionWebsocketEndpoints: [SUBDUCTION_ENDPOINT],
   });
 
-  window.repo = repo;
+  // Expose the forkable wrapper as `window.repo`. While unbranched it
+  // delegates straight to the underlying `Repo`, so existing component
+  // code (`repo.find`, `repo.create`, …) keeps working unchanged.
+  window.repo = BranchableRepo.wrap(repo);
 })().catch((error) => {
   console.error("overlock: bootstrap failed", error);
   throw error;
@@ -38,7 +42,9 @@ window.isPatchworkReady = isPatchworkReady;
 
 window.automergeImport = async (spec) => {
   await isPatchworkReady;
-  return automergeImport(window.repo, spec);
+  // Module resolution is system-level and must never see branched docs,
+  // so it runs against the underlying raw `Repo`.
+  return automergeImport(window.repo.repo, spec);
 };
 
 // `<patchwork-view>`-driven component registry. Page scripts call this

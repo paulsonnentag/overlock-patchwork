@@ -1,4 +1,4 @@
-import type { Repo } from "@automerge/automerge-repo/slim";
+import type { BranchableRepo } from "../branchable-repo.js";
 import * as componentStore from "./component-store.js";
 import type {
   ComponentRoot,
@@ -160,7 +160,7 @@ export function stampLookups(el: HTMLElement): void {
   root.componentChildren = componentChildren;
 
   const repoEl = el.closest(REPO_TAG) as
-    | (HTMLElement & { repo?: Repo | null })
+    | (HTMLElement & { repo?: BranchableRepo | null })
     | null;
   root.repo = repoEl?.repo ?? undefined;
 }

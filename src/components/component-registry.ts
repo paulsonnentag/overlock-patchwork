@@ -4,7 +4,6 @@ import {
   stringifyAutomergeUrl,
   type AutomergeUrl,
   type DocHandle,
-  type Repo,
 } from "@automerge/automerge-repo/slim";
 import {
   findHandleInFolderHandle,
@@ -12,6 +11,7 @@ import {
   type UnixFileEntry,
 } from "@inkandswitch/patchwork-filesystem";
 
+import { BranchableRepo } from "../branchable-repo.js";
 import { Component } from "./component.js";
 import * as componentStore from "./component-store.js";
 import type { ComponentManifest, ComponentRoot, MountFn } from "./types.js";
@@ -84,7 +84,7 @@ if (!customElements.get(BOOTSTRAP_TAG)) {
  * dumb DOM marker.
  */
 class AutomergeRepoElement extends HTMLElement {
-  repo: Repo | null = null;
+  repo: BranchableRepo | null = null;
 }
 
 if (!customElements.get(REPO_TAG)) {
@@ -102,7 +102,7 @@ type LoadedComponent = {
 };
 
 type Deps = {
-  repo: Repo;
+  repo: BranchableRepo;
   automergeImport: AutomergeImport;
 };
 
@@ -128,7 +128,7 @@ type Deps = {
  */
 export class ComponentRegistry {
   readonly #root: HTMLElement;
-  readonly #repo: Repo;
+  readonly #repo: BranchableRepo;
   readonly #automergeImport: AutomergeImport;
 
   // name -> mount fn. Throws on collision.
@@ -344,7 +344,9 @@ export class ComponentRegistry {
       parentParts.length === 0
         ? rootHandle
         : ((await findHandleInFolderHandle<FolderDoc>(
-            this.#repo,
+            // findHandleInFolderHandle expects a raw `Repo`; module
+            // resolution should never see branched docs.
+            this.#repo.repo,
             rootHandle,
             parentParts,
           )) as DocHandle<FolderDoc> | undefined);
@@ -436,7 +438,9 @@ export class ComponentRegistry {
     manifestName: string,
   ): Promise<{ manifest: ComponentManifest; mountFn: MountFn }> {
     const manifestHandle = await findHandleInFolderHandle<UnixFileEntry>(
-      this.#repo,
+      // findHandleInFolderHandle expects a raw `Repo`; module resolution
+      // should never see branched docs.
+      this.#repo.repo,
       parentFolderHandle,
       [manifestName],
     );
@@ -665,7 +669,7 @@ function resolveModuleSpec(manifestSpec: string, relativeUrl: string): string {
  * cache doesn't serve stale content across HMR reloads. Each pinned URL is
  * unique per heads, so each HMR fetch produces a fresh module.
  */
-async function pinSpec(repo: Repo, spec: string): Promise<string> {
+async function pinSpec(repo: BranchableRepo, spec: string): Promise<string> {
   const { rootUrl, path } = parseSpec(spec);
   const { documentId, heads } = parseAutomergeUrl(rootUrl);
   if (heads && heads.length) return spec;

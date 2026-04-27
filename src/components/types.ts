@@ -1,4 +1,6 @@
-import type { DocHandle, Repo } from "@automerge/automerge-repo/slim";
+import type { DocHandle } from "@automerge/automerge-repo/slim";
+
+import type { BranchableRepo } from "../branchable-repo.js";
 
 export type ComponentManifest = {
   name: string;
@@ -36,9 +38,12 @@ export type Schema<T> = {
  *
  * - `handle?` — the `DocHandle` resolved from the `doc=` attribute
  *   (absent when the host element had no `doc=`).
- * - `repo?` — the `Repo` from the closest `<automerge-repo>` ancestor,
- *   stamped at construction time. Absent when the element is mounted
- *   outside any `<automerge-repo>` scope.
+ * - `repo?` — the `BranchableRepo` from the closest `<automerge-repo>`
+ *   ancestor, stamped at construction time. Absent when the element is
+ *   mounted outside any `<automerge-repo>` scope. Off-branch the wrapper
+ *   delegates straight to the underlying `Repo` (`element.repo.find` /
+ *   `element.repo.create` work as before); call `element.repo.fork()` to
+ *   create a branch.
  * - `closestComponent(schema)` — walk self → ancestors; return the first
  *   element whose handle's doc parses under `schema`. Returns `null` if
  *   no ancestor matches.
@@ -65,7 +70,7 @@ export type Schema<T> = {
  */
 export type ComponentRoot<V = unknown> = HTMLElement & {
   handle?: DocHandle<V>;
-  repo?: Repo;
+  repo?: BranchableRepo;
   closestComponent<T>(schema: Schema<T>): SchemaComponentRoot<T> | null;
   ancestorComponent(): ComponentRoot | null;
   ancestorComponent<T>(schema: Schema<T>): SchemaComponentRoot<T> | null;

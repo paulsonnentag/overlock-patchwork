@@ -27,8 +27,14 @@ the repo with:
 const repo = element.closest("automerge-repo")?.repo;
 ```
 
-There is exactly one `Repo` in the page today — the global one set up
-in [`src/main.ts`](../src/main.ts) — so the marker is mostly a
+The repo is a `BranchableRepo` — a thin forkable wrapper around an
+Automerge `Repo`. While unbranched, every method delegates straight
+to the underlying repo, so `repo.find(...)` / `repo.create(...)` work
+exactly as if you had a raw `Repo`. See [Branching](#branching) below
+for how to fork a repo and walk a branch's handles.
+
+There is exactly one repo wrapper in the page today — the global one
+set up in [`src/main.ts`](../src/main.ts) — so the marker is mostly a
 future-proofing boundary. Component mount fns should read the repo via
 `element.repo`, which the registry stamps on every component element
 from the closest `<automerge-repo>` ancestor:
@@ -209,3 +215,66 @@ A change to `doc=` on a `<patchwork-view>` *before* bootstrap completes
 is picked up naturally — bootstrap reads the attribute when it
 resolves the context, and an in-flight resolve is just superseded by
 the rebuild.
+
+## Branching
+
+`element.repo` is a `BranchableRepo`, which adds three things on top
+of a plain Automerge `Repo`:
+
+```ts
+repo.fork(urls?: AutomergeUrl[]): Promise<BranchableRepo>
+repo.checkout(branchDocUrl: AutomergeUrl): Promise<BranchableRepo>
+repo.branchHandle: DocHandle<BranchDoc> | null
+```
+
+A *branch* is just another Automerge document that records a map of
+`{ originalUrl → cloneUrl }`. The clone url has its `?heads=` segment
+set to the heads of the original at the moment the clone was created
+(the *fork point*). `Repo.clone` shares history with the original, so
+those heads are valid heads inside the clone too — which is what makes
+diffing cheap.
+
+`fork()` returns a *new* `BranchableRepo`; the receiver is unchanged.
+The new repo's `find()` returns proxy handles that stay live on the
+original document until you write to them. The first
+`handle.change(...)` triggers a copy-on-write clone of the underlying
+doc, and from that point on the proxy is backed by the clone:
+
+```js
+const branched = await element.repo.fork();
+const handle = await branched.find(originalUrl);
+
+handle.url;                        // still the *original* url
+handle.doc();                      // reads from the original
+handle.change(d => d.title = "x"); // first write — clones, branch doc updated
+handle.diff();                     // patches from forkHeads → current
+```
+
+Pass urls to `fork(urls)` to clone them eagerly at fork time. URLs
+may include a `?heads=` segment to fork at a point in time:
+
+```js
+const branched = await element.repo.fork([
+  "automerge:abc...",                  // current heads
+  "automerge:def...?heads=g1,g2",      // historical heads
+]);
+```
+
+`branched.branchHandle` is a `DocHandle<BranchDoc>` whose url you can
+hand to `BranchableRepo.checkout(repo, branchDocUrl)` later to reopen
+the branch.
+
+`handle.diff()` (no args) returns the patches between the fork point
+and the branch's current heads, or `[]` before the first COW or
+off-branch. The two-arg form delegates to the underlying
+`DocHandle.diff(first, second?)`.
+
+Branch-native documents — those created via `branched.create({...})`
+on a branched repo — live on the underlying repo and are not tracked
+in the branch's `clones` map; they have no original to fork from.
+
+Forking a branched repo (`branched.fork()`) currently throws —
+nested branching will be added later.
+
+See [`src/branchable-repo.ts`](../src/branchable-repo.ts) for the
+implementation.
