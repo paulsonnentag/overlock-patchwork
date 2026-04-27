@@ -69,10 +69,11 @@ Start with the doc closest to the change you want to make.
 | [`src/branchable-repo.ts`](../src/branchable-repo.ts) | `BranchableRepo` / `BranchedDocHandle`: forkable wrapper over `Repo` with copy-on-write per doc |
 | [`src/automerge-import.ts`](../src/automerge-import.ts) | resolve → parse → rewrite → blob URL → `import()` |
 | [`src/resolve.ts`](../src/resolve.ts) | folder walk + `package.json` `exports` lookup |
-| [`src/components/component-registry.ts`](../src/components/component-registry.ts) | `<patchwork-view>` observer, manifest fetch, HMR, `swapTag` |
+| [`src/components/component-registry.ts`](../src/components/component-registry.ts) | DOM observer, manifest fetch, HMR, `swapTag` |
+| [`src/components/patchwork-view-element.ts`](../src/components/patchwork-view-element.ts) | `PatchworkView` autonomous custom element: `src`/`doc` reflection, lazy property upgrade |
+| [`src/components/automerge-repo-element.ts`](../src/components/automerge-repo-element.ts) | `AutomergeRepoElement` scope marker: `.repo` property, `checkout`/`fork`/`reset` mutators |
 | [`src/components/component.ts`](../src/components/component.ts) | `Component` lifecycle, generation guard |
 | [`src/components/component-store.ts`](../src/components/component-store.ts) | `WeakMap<Element, Component>` lookup |
 | [`src/components/ancestor-lookup.ts`](../src/components/ancestor-lookup.ts) | `closestComponent` / `ancestorComponent` / `componentChildren` walkers, element method stamping (also stamps `el.repo`) |
 | [`src/types.ts`](../src/types.ts) | `ComponentManifest`, `MountFn`, `Schema`, `ComponentRoot`, `SchemaComponentRoot` |
 | [`src/components/index.ts`](../src/components/index.ts) | public re-exports |
-| [`src/components/log.ts`](../src/components/log.ts) | scoped console logger |

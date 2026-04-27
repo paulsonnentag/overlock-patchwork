@@ -1,16 +1,12 @@
 import type { BranchableRepo } from "../branchable-repo";
+import { AUTOMERGE_REPO_TAG } from "./automerge-repo-element";
 import * as componentStore from "./component-store";
+import { PATCHWORK_VIEW_TAG } from "./patchwork-view-element";
 import type {
   ComponentRoot,
   Schema,
   SchemaComponentRoot,
 } from "../types";
-
-// Source of truth for these tag names is `component-registry.ts`. Duplicated
-// here as string literals to avoid a registry → component → ancestor-lookup
-// → registry import cycle.
-const BOOTSTRAP_TAG = "patchwork-view";
-const REPO_TAG = "automerge-repo";
 
 /**
  * Walk up the DOM from `start` (inclusive) returning the first element
@@ -86,7 +82,7 @@ function findChildComponents<T>(
 ): ComponentRoot[] | SchemaComponentRoot<T>[] {
   const out: ComponentRoot[] = [];
   function isBoundary(child: Element): boolean {
-    if (child.localName === BOOTSTRAP_TAG) return true;
+    if (child.localName === PATCHWORK_VIEW_TAG) return true;
     return componentStore.lookup(child) != null;
   }
   function visit(parent: Element): void {
@@ -159,7 +155,7 @@ export function stampLookups(el: HTMLElement): void {
   root.ancestorComponent = ancestorComponent;
   root.componentChildren = componentChildren;
 
-  const repoEl = el.closest(REPO_TAG) as
+  const repoEl = el.closest(AUTOMERGE_REPO_TAG) as
     | (HTMLElement & { repo?: BranchableRepo | null })
     | null;
   root.repo = repoEl?.repo ?? undefined;

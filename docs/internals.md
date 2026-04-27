@@ -7,18 +7,23 @@ or [`src/components/component.ts`](../src/components/component.ts).
 
 ## Why `<patchwork-view>` and `<automerge-repo>` are custom elements
 
-Two registrations live in
-[`src/components/component-registry.ts`](../src/components/component-registry.ts):
+Two registrations live in their own files —
+[`src/components/patchwork-view-element.ts`](../src/components/patchwork-view-element.ts)
+and
+[`src/components/automerge-repo-element.ts`](../src/components/automerge-repo-element.ts) —
+and run as side-effect `customElements.define` calls on module load:
 
 ```ts
 class PatchworkView extends HTMLElement {
   get src(): string { return this.getAttribute("src") ?? ""; }
-  set src(v: string) { this.setAttribute("src", String(v ?? "")); }
+  set src(v: string | null | undefined) { reflectAttribute(this, "src", v); }
   get doc(): string { return this.getAttribute("doc") ?? ""; }
-  set doc(v: string) { this.setAttribute("doc", String(v ?? "")); }
+  set doc(v: string | null | undefined) { reflectAttribute(this, "doc", v); }
+  connectedMoveCallback(): void {}
 }
 class AutomergeRepoElement extends HTMLElement {
   repo: BranchableRepo | null = null;
+  connectedMoveCallback(): void {}
 }
 ```
 
@@ -29,6 +34,12 @@ so the registry's `getAttribute(...)` read sees nothing. Reflecting
 `src` and `doc` accessors back through `setAttribute` keeps the
 MutationObserver-based bootstrap working.
 
+`reflectAttribute` short-circuits redundant writes: it skips when the
+attribute already matches the new value, and `removeAttribute`s
+(rather than writing `""`) when the value is null/undefined/empty.
+That keeps reactive frameworks that re-call setters every render from
+flooding the registry's MutationObserver with attribute records.
+
 `PatchworkView`'s constructor also runs the standard "lazy property
 upgrade" dance for `src` and `doc`: when an element is cloned out of
 a `<template>` (Solid does this), dynamic attribute writes happen
@@ -36,10 +47,22 @@ a `<template>` (Solid does this), dynamic attribute writes happen
 land as own data properties. Reading + deleting + re-assigning forces
 the value back through the setter so the attribute shows up.
 
+The empty `connectedMoveCallback() {}` on both classes opts the
+elements into the `Element.moveBefore()` lifecycle: when the platform
+moves a node via `moveBefore`, it fires `connectedMoveCallback`
+*instead of* `disconnectedCallback` + `connectedCallback`. Solid's
+`<For>` reorders use `moveBefore` on browsers that support it; the
+no-op declaration is what tells the platform "this element survives
+moves intact."
+
 `AutomergeRepoElement` doesn't reflect anything — `repo` is a typed
 *property* slot for the registry to write into and for components to
 read out of. Putting it on a registered class instead of a plain
-expando just means TypeScript / DevTools recognize it.
+expando just means TypeScript / DevTools recognize it. The class also
+exposes `checkout` / `fork` / `reset` mutators and a `_rebuildDescendants`
+internal hook the registry installs on first sight; the mutators call
+through to the hook to rebuild every component descendant whose nearest
+`<automerge-repo>` ancestor is this element.
 
 These are the *only* two places in the system that use
 `customElements`. User components stay plain
@@ -80,8 +103,16 @@ which is the same answer either way.
 src/types.ts              ComponentManifest, MountFn, Schema,
                           ComponentRoot, SchemaComponentRoot
 src/components/
-  component-registry.ts   ComponentRegistry, PatchworkView,
-                          AutomergeRepoElement, manifest/spec helpers
+  component-registry.ts   ComponentRegistry: DOM observer, manifest
+                          fetch, HMR, swapTag
+  patchwork-view-element.ts
+                          PatchworkView class +
+                          customElements.define; src/doc reflection,
+                          lazy property upgrade, connectedMoveCallback
+  automerge-repo-element.ts
+                          AutomergeRepoElement class +
+                          customElements.define; .repo property,
+                          checkout/fork/reset mutators
   component.ts            Component lifecycle: async mount, cleanup,
                           generation guard
   component-store.ts      Singleton WeakMap<Element, Component>
@@ -90,7 +121,6 @@ src/components/
                           stamping (also stamps el.repo from closest
                           <automerge-repo>)
   index.ts                public re-exports
-  log.ts                  scoped console logger
 ```
 
 The registry depends on the loader half of overlock for two things:

@@ -11,123 +11,12 @@ import {
   type UnixFileEntry,
 } from "@inkandswitch/patchwork-filesystem";
 
-import { BranchableRepo, type ForkOpts } from "../branchable-repo";
+import { BranchableRepo } from "../branchable-repo";
+import { AutomergeRepoElement, AUTOMERGE_REPO_TAG } from "./automerge-repo-element";
+import { PATCHWORK_VIEW_TAG, DOC_ATTR, SRC_ATTR } from "./patchwork-view-element";
 import { Component } from "./component";
 import * as componentStore from "./component-store";
 import type { ComponentManifest, ComponentRoot, MountFn } from "../types";
-
-const BOOTSTRAP_TAG = "patchwork-view";
-const REPO_TAG = "automerge-repo";
-const SRC_ATTR = "src";
-const DOC_ATTR = "doc";
-
-/**
- * Autonomous custom element for `<patchwork-view>`. The only thing it adds
- * over a plain `HTMLElement` is `src` and `doc` accessors that reflect to
- * the attribute, so frameworks that property-assign on hyphenated tags
- * (Solid's `html` template, Lit, etc.) end up writing through
- * `setAttribute`. The existing MutationObserver-based bootstrap then reads
- * the attributes as usual.
- *
- * The constructor runs the standard "lazy property upgrade" dance for
- * `src` and `doc`: when an element is cloned out of a `<template>` (Solid
- * does this), the dynamic attribute writes happen *before* the prototype
- * has been swapped to `PatchworkView`, so they land as own data
- * properties on the element. After upgrade those own properties shadow
- * the prototype accessors and the setter never reflects to the attribute.
- * Reading + deleting + re-assigning here forces the value back through
- * our setter so the attribute shows up.
- *
- * Defined once at module load. Registry orchestration for actual components
- * (`my-counter`, `wall-clock`, ...) does NOT go through `customElements` —
- * those stay plain `document.createElement(name)` elements so HMR can
- * rebuild them freely without hitting the global one-shot ratchet.
- */
-class PatchworkView extends HTMLElement {
-  constructor() {
-    super();
-    upgradeProperty(this, "src");
-    upgradeProperty(this, "doc");
-  }
-  get src(): string {
-    return this.getAttribute(SRC_ATTR) ?? "";
-  }
-  set src(v: string) {
-    this.setAttribute(SRC_ATTR, String(v ?? ""));
-  }
-  get doc(): string {
-    return this.getAttribute(DOC_ATTR) ?? "";
-  }
-  set doc(v: string) {
-    this.setAttribute(DOC_ATTR, String(v ?? ""));
-  }
-}
-
-function upgradeProperty(el: HTMLElement, prop: string): void {
-  if (!Object.prototype.hasOwnProperty.call(el, prop)) return;
-  const value = (el as unknown as Record<string, unknown>)[prop];
-  delete (el as unknown as Record<string, unknown>)[prop];
-  (el as unknown as Record<string, unknown>)[prop] = value;
-}
-
-if (!customElements.get(BOOTSTRAP_TAG)) {
-  customElements.define(BOOTSTRAP_TAG, PatchworkView);
-}
-
-/**
- * Scope marker for a `Repo` instance. Descendant `<patchwork-view>`s
- * resolve their `doc=` attribute against `closest("automerge-repo").repo`.
- *
- * The element holds a reference to the repo as a property (not an
- * attribute — repos aren't strings). The `ComponentRegistry` injects the
- * initial repo on discovery; it inherits from the closest enclosing
- * `<automerge-repo>` ancestor (if any), or falls back to the registry's
- * root repo.
- *
- * The element also exposes `checkout`/`fork`/`reset` mutators that swap
- * its `.repo` to a different `BranchableRepo` view of the underlying
- * `Repo`. After each swap, every component descendant that resolves
- * against this `<automerge-repo>` is rebuilt so its `doc=` re-resolves
- * through the new repo. The rebuild hook is set by the
- * `ComponentRegistry` (via `_rebuildDescendants`) the first time it sees
- * this element.
- */
-class AutomergeRepoElement extends HTMLElement {
-  repo: BranchableRepo | null = null;
-  /** @internal */
-  _rebuildDescendants: (() => void) | null = null;
-
-  async checkout(branchDocUrl: AutomergeUrl): Promise<BranchableRepo> {
-    if (!this.repo) {
-      throw new Error("automerge-repo: cannot checkout before .repo is set");
-    }
-    this.repo = await this.repo.checkout(branchDocUrl);
-    this._rebuildDescendants?.();
-    return this.repo;
-  }
-
-  async fork(opts: ForkOpts = {}): Promise<BranchableRepo> {
-    if (!this.repo) {
-      throw new Error("automerge-repo: cannot fork before .repo is set");
-    }
-    this.repo = await this.repo.fork(opts);
-    this._rebuildDescendants?.();
-    return this.repo;
-  }
-
-  reset(): BranchableRepo {
-    if (!this.repo) {
-      throw new Error("automerge-repo: cannot reset before .repo is set");
-    }
-    this.repo = BranchableRepo.wrap(this.repo.repo);
-    this._rebuildDescendants?.();
-    return this.repo;
-  }
-}
-
-if (!customElements.get(REPO_TAG)) {
-  customElements.define(REPO_TAG, AutomergeRepoElement);
-}
 
 type AutomergeImport = (spec: string) => Promise<unknown>;
 
@@ -242,7 +131,7 @@ export class ComponentRegistry {
   }
 
   #handleElement(el: Element): void {
-    if (el.localName === REPO_TAG) {
+    if (el.localName === AUTOMERGE_REPO_TAG) {
       // Inject the repo onto the marker element so descendants can do
       // `el.closest("automerge-repo").repo`. Tree order from the initial
       // walk and from MO addedNodes guarantees this runs before any
@@ -255,7 +144,7 @@ export class ComponentRegistry {
       const repoEl = el as AutomergeRepoElement;
       if (!repoEl.repo) {
         const ancestor = el.parentElement?.closest(
-          REPO_TAG,
+          AUTOMERGE_REPO_TAG,
         ) as AutomergeRepoElement | null;
         repoEl.repo = ancestor?.repo ?? this.#repo;
       }
@@ -265,7 +154,7 @@ export class ComponentRegistry {
       }
       return;
     }
-    if (el.localName === BOOTSTRAP_TAG) {
+    if (el.localName === PATCHWORK_VIEW_TAG) {
       const src = el.getAttribute(SRC_ATTR);
       if (!src) return;
       if (this.#bootstrapping.has(el)) return;
@@ -336,10 +225,10 @@ export class ComponentRegistry {
     const docUrl = el.getAttribute(DOC_ATTR);
     if (!docUrl) return;
 
-    const repoEl = el.closest(REPO_TAG) as AutomergeRepoElement | null;
+    const repoEl = el.closest(AUTOMERGE_REPO_TAG) as AutomergeRepoElement | null;
     if (!repoEl?.repo) {
       throw new Error(
-        `[overlock-patchwork] <${el.localName} ${DOC_ATTR}="${docUrl}"> requires an <${REPO_TAG}> ancestor`,
+        `[overlock-patchwork] <${el.localName} ${DOC_ATTR}="${docUrl}"> requires an <${AUTOMERGE_REPO_TAG}> ancestor`,
       );
     }
     if (!isValidAutomergeUrl(docUrl)) {
@@ -560,7 +449,7 @@ export class ComponentRegistry {
     for (const comp of this.#mounted) {
       if (comp.el === repoEl) continue;
       if (!repoEl.contains(comp.el)) continue;
-      if (comp.el.closest(REPO_TAG) !== repoEl) continue;
+      if (comp.el.closest(AUTOMERGE_REPO_TAG) !== repoEl) continue;
       targets.push(comp);
     }
     for (const comp of targets) {
