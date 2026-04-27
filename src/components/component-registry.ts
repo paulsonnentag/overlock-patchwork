@@ -75,6 +75,16 @@ export class ComponentRegistry {
   // a duplicate load.
   readonly #bootstrapping = new WeakSet<Element>();
 
+  // Components whose `doc=` flipped this tick. Drained on a microtask so
+  // multiple synchronous attribute writes (e.g. a context-provider running
+  // through several values in one Solid effect) coalesce into a single
+  // rebuild that reads the *final* attribute value. The set is keyed by
+  // `Component`, not element, so a rebuild followed by another rebuild
+  // resolves to the *new* component and doesn't replay against the
+  // already-torn-down old one.
+  readonly #pendingRebuilds = new Set<Component>();
+  #rebuildScheduled = false;
+
   #observer: MutationObserver | null = null;
 
   constructor(root: HTMLElement, deps: Deps) {
@@ -122,6 +132,7 @@ export class ComponentRegistry {
     if (this.#observer === null) return;
     this.#observer.disconnect();
     this.#observer = null;
+    this.#pendingRebuilds.clear();
     for (const comp of Array.from(this.#mounted)) comp.unmount();
     this.#mounted.clear();
     for (const loaded of this.#loaded.values()) loaded.unsubscribe();
@@ -170,15 +181,37 @@ export class ComponentRegistry {
    *
    * 1. `<patchwork-view>` pre-bootstrap — let the in-flight (or future)
    *    bootstrap pick up the new value when it reads the attribute.
-   * 2. Mounted component — rebuild the instance under the same tag and
-   *    mount fn. The rebuild path runs `#resolveContext` against the new
-   *    element, which re-reads `doc=` and produces the fresh handle.
+   * 2. Mounted component — schedule a rebuild on the next microtask.
+   *    The rebuild path runs `#resolveContext` against the new element,
+   *    which re-reads `doc=` and produces the fresh handle.
    * 3. Anything else — ignore.
+   *
+   * The rebuild is microtask-batched so a series of synchronous `doc=`
+   * writes in the same tick coalesce into one rebuild that reads the
+   * final attribute value. Without batching, a context-provider that
+   * iterates through three intermediate URLs in one effect would
+   * tear down and re-mount the same descendant three times.
    */
   #handleDocAttributeChange(el: HTMLElement): void {
     const comp = componentStore.lookup(el);
     if (!comp || !this.#mounted.has(comp)) return;
-    this.#rebuildInstance(comp, comp.el.localName, comp.mountFn);
+    this.#pendingRebuilds.add(comp);
+    if (this.#rebuildScheduled) return;
+    this.#rebuildScheduled = true;
+    queueMicrotask(() => this.#flushPendingRebuilds());
+  }
+
+  #flushPendingRebuilds(): void {
+    this.#rebuildScheduled = false;
+    if (this.#pendingRebuilds.size === 0) return;
+    const pending = Array.from(this.#pendingRebuilds);
+    this.#pendingRebuilds.clear();
+    for (const comp of pending) {
+      // Skip if the component was unmounted (or rebuilt — which counts
+      // as unmounted) between the attribute change and this flush.
+      if (!this.#mounted.has(comp)) continue;
+      this.#rebuildInstance(comp, comp.el.localName, comp.mountFn);
+    }
   }
 
   /**

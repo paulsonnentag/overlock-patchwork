@@ -205,11 +205,16 @@ settled.
 The `MutationObserver` watches `doc` attribute changes on every
 element in its tree (`{ attributes: true, attributeFilter: ["doc"] }`).
 When the attribute changes on a *mounted* component, the registry
-rebuilds the instance under the same tag name and mount fn — same
-teardown + recreate dance as HMR (see
-[`lifecycle.md`](./lifecycle.md)). The new element's `el.handle`
-reflects the new URL; the component's cleanup runs between the old
-and new mount.
+schedules a rebuild on the next microtask — same teardown + recreate
+dance as HMR (see [`lifecycle.md`](./lifecycle.md)). The new element's
+`el.handle` reflects the new URL; the component's cleanup runs between
+the old and new mount.
+
+Rebuilds are **microtask-batched**, so a context-provider that flips
+`doc=` through several intermediate values in one synchronous block
+(typical for a Solid `effect` that reads off a fine-grained store)
+produces a single rebuild that sees the final URL — not one rebuild
+per intermediate write.
 
 A change to `doc=` on a `<patchwork-view>` *before* bootstrap completes
 is picked up naturally — bootstrap reads the attribute when it

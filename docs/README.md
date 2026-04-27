@@ -18,7 +18,8 @@ Start with the doc closest to the change you want to make.
 - [`documents.md`](./documents.md) — `<automerge-repo>` scope, `doc=`
   attribute, `el.handle`, reactive doc rebuilds.
 - [`lifecycle.md`](./lifecycle.md) — mount/unmount sequence diagram,
-  HMR semantics, generation guard, race handling.
+  HMR semantics, generation guard, race handling, microtask-batched
+  `doc=` rebuilds.
 - [`internals.md`](./internals.md) — registry data structures,
   custom-element rationale, module layout, constraints.
 
@@ -69,7 +70,7 @@ Start with the doc closest to the change you want to make.
 | [`src/branchable-repo.ts`](../src/branchable-repo.ts) | `BranchableRepo` / `BranchedDocHandle`: forkable wrapper over `Repo` with copy-on-write per doc |
 | [`src/automerge-import.ts`](../src/automerge-import.ts) | resolve → parse → rewrite → blob URL → `import()` |
 | [`src/resolve.ts`](../src/resolve.ts) | folder walk + `package.json` `exports` lookup |
-| [`src/components/component-registry.ts`](../src/components/component-registry.ts) | DOM observer, manifest fetch, HMR, `swapTag` |
+| [`src/components/component-registry.ts`](../src/components/component-registry.ts) | DOM observer, manifest fetch, HMR, `swapTag`, microtask-batched `doc=` rebuild |
 | [`src/components/patchwork-view-element.ts`](../src/components/patchwork-view-element.ts) | `PatchworkView` autonomous custom element: `src`/`doc` reflection, lazy property upgrade |
 | [`src/components/automerge-repo-element.ts`](../src/components/automerge-repo-element.ts) | `AutomergeRepoElement` scope marker: `.repo` property, `checkout`/`fork`/`reset` mutators |
 | [`src/components/component.ts`](../src/components/component.ts) | `Component` lifecycle, generation guard |

@@ -84,6 +84,12 @@ sits *before* the user's mount fn. If the element is removed during
 that await, the post-await `isConnected` check short-circuits and
 the user's mount fn is never invoked.
 
+`doc=` rebuilds are **microtask-batched**: a series of synchronous
+writes in the same tick (e.g. a context-provider walking through
+several intermediate URLs in one Solid effect) coalesce into a single
+rebuild that reads the final attribute value. Without batching, the
+descendant would tear down and re-mount once per write.
+
 That preserves the "for every successful mount, exactly one cleanup
 runs" invariant even when the user's mount fn is doing something
 slow.

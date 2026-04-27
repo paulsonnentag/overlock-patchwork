@@ -104,7 +104,8 @@ src/types.ts              ComponentManifest, MountFn, Schema,
                           ComponentRoot, SchemaComponentRoot
 src/components/
   component-registry.ts   ComponentRegistry: DOM observer, manifest
-                          fetch, HMR, swapTag
+                          fetch, HMR, swapTag, microtask-batched
+                          doc= rebuild
   patchwork-view-element.ts
                           PatchworkView class +
                           customElements.define; src/doc reflection,
