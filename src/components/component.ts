@@ -1,6 +1,5 @@
 import { stampLookups } from "./ancestor-lookup.js";
 import * as componentStore from "./component-store.js";
-import { log } from "./log.js";
 import type { ComponentRoot, MountFn } from "./types.js";
 
 let nextId = 0;
@@ -46,8 +45,6 @@ export class Component {
   async mount(): Promise<void> {
     const gen = ++this.#generation;
 
-    log(`mount: <${this.el.localName}> #${this.id} gen=${gen} → user mountFn`);
-
     let result: (() => void) | void;
     try {
       result = await this.mountFn(this.el as ComponentRoot);
@@ -64,15 +61,9 @@ export class Component {
     // generation by HMR) while the async mount fn was in flight. Honor the
     // cleanup contract by running it immediately and discarding.
     if (this.#unmounted || gen !== this.#generation) {
-      log(
-        `mount: <${this.el.localName}> #${this.id} gen=${gen} lost race (unmounted=${this.#unmounted}, gen-now=${this.#generation}); running cleanup eagerly`,
-      );
       runCleanup(cleanup);
       return;
     }
-    log(
-      `mount: <${this.el.localName}> #${this.id} gen=${gen} done (cleanup=${cleanup ? "yes" : "none"})`,
-    );
     this.#cleanup = cleanup;
   }
 
@@ -82,9 +73,6 @@ export class Component {
     this.#generation++;
     const cleanup = this.#cleanup;
     this.#cleanup = null;
-    log(
-      `unmount: <${this.el.localName}> #${this.id} (cleanup=${cleanup ? "yes" : "none"})`,
-    );
     runCleanup(cleanup);
     componentStore.unregister(this.el);
   }

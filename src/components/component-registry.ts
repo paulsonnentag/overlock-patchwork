@@ -14,7 +14,6 @@ import {
 
 import { Component } from "./component.js";
 import * as componentStore from "./component-store.js";
-import { log } from "./log.js";
 import type { ComponentManifest, ComponentRoot, MountFn } from "./types.js";
 
 const BOOTSTRAP_TAG = "patchwork-view";
@@ -47,9 +46,6 @@ const DOC_ATTR = "doc";
 class PatchworkView extends HTMLElement {
   constructor() {
     super();
-    log(
-      `<patchwork-view>: ctor (own-src=${Object.prototype.hasOwnProperty.call(this, "src")}, own-doc=${Object.prototype.hasOwnProperty.call(this, "doc")})`,
-    );
     upgradeProperty(this, "src");
     upgradeProperty(this, "doc");
   }
@@ -57,14 +53,12 @@ class PatchworkView extends HTMLElement {
     return this.getAttribute(SRC_ATTR) ?? "";
   }
   set src(v: string) {
-    log(`<patchwork-view>: setter src=${v}`);
     this.setAttribute(SRC_ATTR, String(v ?? ""));
   }
   get doc(): string {
     return this.getAttribute(DOC_ATTR) ?? "";
   }
   set doc(v: string) {
-    log(`<patchwork-view>: setter doc=${v}`);
     this.setAttribute(DOC_ATTR, String(v ?? ""));
   }
 }
@@ -72,7 +66,6 @@ class PatchworkView extends HTMLElement {
 function upgradeProperty(el: HTMLElement, prop: string): void {
   if (!Object.prototype.hasOwnProperty.call(el, prop)) return;
   const value = (el as unknown as Record<string, unknown>)[prop];
-  log(`<patchwork-view>: upgradeProperty ${prop}=${String(value)}`);
   delete (el as unknown as Record<string, unknown>)[prop];
   (el as unknown as Record<string, unknown>)[prop] = value;
 }
@@ -162,7 +155,6 @@ export class ComponentRegistry {
     this.#repo = deps.repo;
     this.#automergeImport = deps.automergeImport;
 
-    log(`registry: init on <${root.localName}>`);
     this.#forEachElementIn(root, (el) => this.#handleElement(el));
 
     const observer = new MutationObserver((records) => {
@@ -201,7 +193,6 @@ export class ComponentRegistry {
 
   destroy(): void {
     if (this.#observer === null) return;
-    log(`registry: destroy (mounted=${this.#mounted.size})`);
     this.#observer.disconnect();
     this.#observer = null;
     for (const comp of Array.from(this.#mounted)) comp.unmount();
@@ -219,24 +210,13 @@ export class ComponentRegistry {
       // walk and from MO addedNodes guarantees this runs before any
       // descendant <patchwork-view> bootstrap.
       (el as AutomergeRepoElement).repo = this.#repo;
-      log(`<automerge-repo>: repo assigned`);
       return;
     }
     if (el.localName === BOOTSTRAP_TAG) {
       const src = el.getAttribute(SRC_ATTR);
-      const doc = el.getAttribute(DOC_ATTR);
-      if (!src) {
-        log(`<patchwork-view>: skipping (no src=)`);
-        return;
-      }
-      if (this.#bootstrapping.has(el)) {
-        log(`<patchwork-view>: skipping (already bootstrapping) src=${src}`);
-        return;
-      }
+      if (!src) return;
+      if (this.#bootstrapping.has(el)) return;
       this.#bootstrapping.add(el);
-      log(
-        `<patchwork-view>: bootstrap start src=${src} doc=${doc ?? "(none)"}`,
-      );
       void this.#bootstrap(el as HTMLElement, src);
       return;
     }
@@ -255,15 +235,7 @@ export class ComponentRegistry {
    */
   #handleDocAttributeChange(el: HTMLElement): void {
     const comp = componentStore.lookup(el);
-    if (!comp || !this.#mounted.has(comp)) {
-      log(
-        `doc-change: <${el.localName}> doc="${el.getAttribute(DOC_ATTR) ?? ""}" — no mounted component, skipping`,
-      );
-      return;
-    }
-    log(
-      `doc-change: <${el.localName}> #${comp.id} doc="${el.getAttribute(DOC_ATTR) ?? ""}" — rebuilding`,
-    );
+    if (!comp || !this.#mounted.has(comp)) return;
     this.#rebuildInstance(comp, comp.el.localName, comp.mountFn);
   }
 
@@ -290,15 +262,9 @@ export class ComponentRegistry {
       return;
     }
 
-    if (!viewEl.isConnected) {
-      log(`<patchwork-view>: bootstrap aborted — element disconnected during load (${spec})`);
-      return;
-    }
+    if (!viewEl.isConnected) return;
 
     this.#registerComponent(loaded.manifest.name, loaded.mountFn);
-    log(
-      `<patchwork-view>: bootstrap loaded "${loaded.manifest.name}" → swap + mount`,
-    );
 
     const newEl = swapTag(viewEl, loaded.manifest.name);
     this.#mountElement(newEl, loaded.mountFn);
@@ -315,10 +281,7 @@ export class ComponentRegistry {
    */
   async #resolveContext(el: HTMLElement): Promise<void> {
     const docUrl = el.getAttribute(DOC_ATTR);
-    if (!docUrl) {
-      log(`resolveContext: <${el.localName}> no doc= attribute, skipping`);
-      return;
-    }
+    if (!docUrl) return;
 
     const repoEl = el.closest(REPO_TAG) as AutomergeRepoElement | null;
     if (!repoEl?.repo) {
@@ -332,10 +295,8 @@ export class ComponentRegistry {
       );
     }
 
-    log(`resolveContext: <${el.localName}> doc=${docUrl} → repo.find`);
     const handle = await repoEl.repo.find(docUrl);
     (el as ComponentRoot).handle = handle as DocHandle<unknown>;
-    log(`resolveContext: <${el.localName}> doc=${docUrl} → handle ready`);
   }
 
   #registerComponent(name: string, mountFn: MountFn): void {
@@ -345,7 +306,6 @@ export class ComponentRegistry {
         `[overlock-patchwork] component name collision: "${name}" is already registered`,
       );
     }
-    if (!existing) log(`registry: register name="${name}"`);
     this.#registry.set(name, mountFn);
   }
 
@@ -424,8 +384,6 @@ export class ComponentRegistry {
     const old = this.#loaded.get(spec);
     if (!old) return;
 
-    log(`hmr: change detected on ${spec} (was "${old.manifest.name}")`);
-
     const { path } = parseSpec(spec);
     const parts = splitPath(path);
     const manifestName = parts[parts.length - 1];
@@ -443,7 +401,6 @@ export class ComponentRegistry {
       fresh.manifest.name === old.manifest.name &&
       fresh.mountFn === old.mountFn
     ) {
-      log(`hmr: ${spec} no-op (manifest + mountFn unchanged)`);
       return;
     }
 
@@ -468,9 +425,6 @@ export class ComponentRegistry {
     old.manifest = fresh.manifest;
     old.mountFn = fresh.mountFn;
 
-    log(
-      `hmr: ${spec} reload "${previousName}" → "${fresh.manifest.name}" (rebuilding ${instances.length} instance${instances.length === 1 ? "" : "s"})`,
-    );
     for (const comp of instances) {
       this.#rebuildInstance(comp, fresh.manifest.name, fresh.mountFn);
     }
@@ -518,16 +472,10 @@ export class ComponentRegistry {
     const oldEl = comp.el;
     const parent = oldEl.parentNode;
 
-    log(
-      `rebuild: <${oldEl.localName}> #${comp.id} → <${newName}> (teardown + recreate)`,
-    );
     this.#mounted.delete(comp);
     comp.unmount();
 
-    if (!parent) {
-      log(`rebuild: <${oldEl.localName}> #${comp.id} skipped — no parent`);
-      return;
-    }
+    if (!parent) return;
 
     const newEl = oldEl.ownerDocument.createElement(newName);
     for (const attr of Array.from(oldEl.attributes)) {
@@ -540,15 +488,9 @@ export class ComponentRegistry {
   }
 
   #mountIfRegistered(el: Element): void {
-    if (componentStore.lookup(el)) {
-      log(
-        `mountIfRegistered: <${el.localName}> already has a Component, skipping`,
-      );
-      return;
-    }
+    if (componentStore.lookup(el)) return;
     const mountFn = this.#registry.get(el.localName);
     if (!mountFn) return;
-    log(`mountIfRegistered: <${el.localName}> registered, mounting`);
     this.#mountElement(el as HTMLElement, mountFn);
   }
 
@@ -562,9 +504,6 @@ export class ComponentRegistry {
   #mountElement(el: HTMLElement, mountFn: MountFn): void {
     const comp = new Component(el, mountFn);
     this.#mounted.add(comp);
-    log(
-      `mountElement: <${el.localName}> #${comp.id} (mounted set size=${this.#mounted.size})`,
-    );
     void this.#performMount(comp);
   }
 
@@ -582,9 +521,6 @@ export class ComponentRegistry {
       return;
     }
     if (!comp.el.isConnected) {
-      log(
-        `performMount: <${comp.el.localName}> #${comp.id} disconnected during resolve — aborting`,
-      );
       this.#mounted.delete(comp);
       comp.unmount();
       return;
@@ -595,9 +531,6 @@ export class ComponentRegistry {
   #unmountIfMounted(el: Element): void {
     const comp = componentStore.lookup(el);
     if (!comp || !this.#mounted.has(comp)) return;
-    log(
-      `unmountIfMounted: <${el.localName}> #${comp.id} removed from DOM`,
-    );
     this.#mounted.delete(comp);
     comp.unmount();
   }
