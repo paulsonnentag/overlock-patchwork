@@ -75,16 +75,11 @@ A component that doesn't need cleanup just returns nothing.
 `<patchwork-view>` is the only entry point:
 
 ```html
-<script src="./dist/overlock.js"></script>
+<script src="./dist/patchwork.js"></script>
 
 <patchwork-view
   src="automerge:3F8HWx9Hm8JDDrSA1GZP9fRGSXi9/component.json"
 ></patchwork-view>
-
-<script type="module">
-  await window.isPatchworkReady;
-  window.createComponentRegistry(document.body);
-</script>
 ```
 
 `createComponentRegistry(root)` is the factory exposed by

@@ -34,7 +34,7 @@ export default defineConfig({
       entry: resolve(import.meta.dirname, "src/main.ts"),
       name: "OverlockBootstrap",
       formats: ["iife"],
-      fileName: () => "overlock.js",
+      fileName: () => "patchwork.js",
     },
   },
 });

@@ -6,19 +6,10 @@
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🧶</text></svg>">
   </head>
   <body>
-    <script src="./dist/overlock.js"></script>
+    <script src="./dist/patchwork.js"></script>
 
     <automerge-repo>
       <patchwork-view src="automerge:36YizWjLr5TWC2deWD8n6uU7g3er/component.json"/>
     </automerge-repo>
-
-    <script type="module">
-      try {
-        await window.isPatchworkReady;
-        window.createComponentRegistry(document.body);
-      } catch (error) {
-        console.error(error);
-      }
-    </script>
   </body>
 </html>

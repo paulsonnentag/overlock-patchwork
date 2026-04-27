@@ -65,7 +65,7 @@ Start with the doc closest to the change you want to make.
 
 | Path | Role |
 | --- | --- |
-| [`src/main.ts`](../src/main.ts) | bootstrap: base64-inline wasm init, Repo, `BranchableRepo` wrap, `window.automergeImport`, `window.createComponentRegistry` |
+| [`src/main.ts`](../src/main.ts) | bootstrap: base64-inline wasm init, Repo, `BranchableRepo` wrap, `ComponentRegistry` mount on `document.body` |
 | [`src/branchable-repo.ts`](../src/branchable-repo.ts) | `BranchableRepo` / `BranchedDocHandle`: forkable wrapper over `Repo` with copy-on-write per doc |
 | [`src/automerge-import.ts`](../src/automerge-import.ts) | resolve → parse → rewrite → blob URL → `import()` |
 | [`src/resolve.ts`](../src/resolve.ts) | folder walk + `package.json` `exports` lookup |
