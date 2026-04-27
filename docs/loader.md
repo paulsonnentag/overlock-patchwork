@@ -12,23 +12,14 @@ intercepting `fetch` and returning real HTTP responses, the loader
 stays inside the page so the bundle works under `file://`.
 
 Implementation lives in
-[`src/automerge-import.ts`](../src/automerge-import.ts), with
-package-exports lookup in [`src/resolve.ts`](../src/resolve.ts) and
-the wasm bootstrap inlined at the top of
-[`src/main.ts`](../src/main.ts).
+[`src/automerge-import.ts`](../src/automerge-import.ts), with the wasm
+bootstrap inlined at the top of [`src/main.ts`](../src/main.ts).
 
 ## API
 
-`automergeImport(spec) -> Promise<Module>` is exposed on
-`window.automergeImport` after `await window.isPatchworkReady`:
-
-```js
-await window.isPatchworkReady;
-const mod = await window.automergeImport(
-  "automerge:3F8HWx9Hm8JDDrSA1GZP9fRGSXi9/index.js",
-);
-console.log(mod.message);
-```
+`automergeImport(spec) -> Promise<Module>` is the internal loader used
+by `ComponentRegistry` to resolve and execute component modules. It is
+not exposed on `window`.
 
 A `spec` is `automerge:<documentId>[?heads=...][/<path>]`. The loader
 splits at the first `/` after the `automerge:` prefix:
@@ -40,7 +31,7 @@ splits at the first `/` after the `automerge:` prefix:
 same way patchwork's service worker does
 (`core/bootloader/src/service-worker.ts` lines 249–315). The fallback
 is implemented in `resolveFileHandle` in
-[`src/resolve.ts`](../src/resolve.ts).
+[`src/automerge-import.ts`](../src/automerge-import.ts).
 
 ## Specifier rewriting
 

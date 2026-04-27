@@ -13,13 +13,14 @@ import {
   type DocHandle,
   type Repo,
 } from "@automerge/automerge-repo/slim";
-import type {
-  FolderDoc,
-  UnixFileEntry,
+import {
+  defaultImportConditions,
+  findHandleInFolderHandle,
+  resolvePackageExport,
+  type FolderDoc,
+  type UnixFileEntry,
 } from "@inkandswitch/patchwork-filesystem";
 import { init as lexerInit, parse as lexerParse } from "es-module-lexer";
-
-import { resolveFileHandle } from "./resolve";
 
 type CacheKey = string;
 const blobUrlCache = new Map<CacheKey, Promise<string>>();
@@ -271,4 +272,62 @@ function toBlobPart(content: UnixFileEntry["content"]): BlobPart {
 function toUint8Array(content: UnixFileEntry["content"]): Uint8Array {
   if (content instanceof Uint8Array) return content;
   return new TextEncoder().encode(String(content));
+}
+
+async function resolveFileHandle(
+  repo: Repo,
+  folderHandle: DocHandle<FolderDoc>,
+  path: string,
+): Promise<DocHandle<UnixFileEntry> | undefined> {
+  const parts = splitPath(path);
+
+  if (parts.length) {
+    const direct = await findHandleInFolderHandle<UnixFileEntry>(
+      repo,
+      folderHandle,
+      parts,
+    );
+    if (direct) return direct as DocHandle<UnixFileEntry>;
+  }
+
+  const pkgHandle = await findHandleInFolderHandle<UnixFileEntry>(
+    repo,
+    folderHandle,
+    ["package.json"],
+  );
+  if (!pkgHandle) return undefined;
+
+  const pkgDoc = (pkgHandle as DocHandle<UnixFileEntry>).doc();
+  if (!pkgDoc?.content) return undefined;
+
+  let pkgJson: Record<string, unknown>;
+  try {
+    pkgJson = JSON.parse(String(pkgDoc.content));
+  } catch {
+    return undefined;
+  }
+
+  const subpath = parts.length ? "./" + parts.join("/") : ".";
+  let resolved: string | undefined;
+  try {
+    resolved = resolvePackageExport(pkgJson, subpath, defaultImportConditions);
+  } catch {
+    return undefined;
+  }
+  if (!resolved) return undefined;
+
+  const resolvedParts = splitPath(resolved.replace(/^\.\//, ""));
+  const target = await findHandleInFolderHandle<UnixFileEntry>(
+    repo,
+    folderHandle,
+    resolvedParts,
+  );
+  return target as DocHandle<UnixFileEntry> | undefined;
+}
+
+function splitPath(p: string): string[] {
+  return p
+    .replace(/^\.\//, "")
+    .split("/")
+    .filter(Boolean);
 }
