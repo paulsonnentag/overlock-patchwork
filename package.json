@@ -4,6 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
+    "typecheck": "tsc --noEmit",
     "build": "vite build",
     "push": "node scripts/push.js packages"
   },
