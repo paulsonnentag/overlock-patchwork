@@ -83,8 +83,12 @@ src/components/
   component.ts            Component lifecycle: async mount, cleanup,
                           generation guard
   component-store.ts      Singleton WeakMap<Element, Component>
-  ancestor-lookup.ts      closestComponent / ancestorComponent walker,
-                          element method stamping
+  ancestor-lookup.ts      closestComponent / ancestorComponent /
+                          componentChildren walkers, element method
+                          stamping (also stamps el.repo from closest
+                          <automerge-repo>)
+  events.ts               OpenDocumentEvent, "patchwork:open-document"
+                          declaration
   types.ts                ComponentManifest, MountFn, Schema,
                           ComponentRoot, SchemaComponentRoot
   index.ts                public re-exports
@@ -124,6 +128,23 @@ through `window.createComponentRegistry(root)`.
   can briefly miss a parent that is still resolving. Documented in
   [`documents.md`](./documents.md#race-against-doc-resolution); call
   the lookup from a reactive scope when the result must be live.
+- **Child-component lookups race bootstrap.** `componentChildren()`
+  reports both already-swapped components and still-bootstrapping
+  `<patchwork-view>` elements as boundaries, so providers can write
+  `doc=` on each immediately and let the registry's bootstrap or
+  rebuild path pick the value up. Children that are added to the DOM
+  *after* the provider runs are not picked up automatically; consumers
+  that need to react to dynamic structural changes must run their own
+  `MutationObserver` or call `componentChildren()` from a reactive
+  scope re-run by their own state updates.
+- **`el.repo` stamping.** Every component element has `el.repo` set
+  at construction time from `el.closest("automerge-repo")`. Outside
+  any `<automerge-repo>` ancestor, `el.repo` is `undefined` and the
+  component is responsible for handling that gracefully. The
+  `<automerge-repo>` marker's `repo` property is stamped by the
+  registry's tree-order initial walk before any descendant
+  `<patchwork-view>` bootstraps, so the lookup is always populated by
+  the time a component reads `el.repo`.
 - **Structural-only schema matching.** Components don't register their
   schemas with the framework. `closestComponent(schema)` walks ancestors
   and returns the first whose `handle.doc()` parses under the schema —

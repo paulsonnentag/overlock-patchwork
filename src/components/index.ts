@@ -6,3 +6,7 @@ export type {
   Schema,
   SchemaComponentRoot,
 } from "./types.js";
+export {
+  OpenDocumentEvent,
+  type OpenDocumentEventDetail,
+} from "./events.js";

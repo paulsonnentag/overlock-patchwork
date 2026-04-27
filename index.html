@@ -2,14 +2,23 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>overlock</title>
+    <title>overlock patchwork</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🧶</text></svg>">
   </head>
   <body>
     <script src="./dist/overlock.js"></script>
 
     <automerge-repo>
+      <!--
+        Replace this placeholder URL with the rootDirectoryUrl of
+        packages/app-frame after running `pnpm push packages`. The same
+        push will also produce snapshots for app-frame's sibling
+        packages, whose URLs need to be wired into
+        packages/app-frame/component.js (see comments at the top of that
+        file).
+      -->
       <patchwork-view
-        src="automerge:3F8HWx9Hm8JDDrSA1GZP9fRGSXi9/component.json"
+        src="automerge:36YizWjLr5TWC2deWD8n6uU7g3er/component.json"
       ></patchwork-view>
     </automerge-repo>
 

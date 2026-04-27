@@ -123,3 +123,95 @@ Each `<patchwork-view>` carries exactly one `src`, plus an optional
 Sibling URLs are stable across re-pushes because each subpackage's
 `.pushwork/` snapshot pins its own `rootDirectoryUrl`. Copy them out
 of `packages/<name>/.pushwork/snapshot.json`.
+
+## Design goals
+
+Components are reusable in any context. A component must drop into any
+subtree and behave sensibly without bespoke wiring. That means:
+
+- **No required ad-hoc attributes.** `<patchwork-view>` carries only
+  `src` and `doc`. Anything more — config, role, key, params — belongs
+  in the doc the component is bound to, or in an enclosing
+  context-provider component (see
+  [`documents.md`](./documents.md#looking-up-ancestor-and-child-components)).
+  Resist the urge to grow `<patchwork-view>`'s attribute surface; that's
+  an escape hatch out of the composition model, not a feature.
+- **Optional context, gracefully handled.** Components that *use*
+  ancestor context (`closestComponent`, `ancestorComponent`, `el.handle`,
+  `el.repo`) must tolerate it being absent. Render a neutral
+  placeholder, throw a clear error with a useful message, or no-op — but
+  don't crash the page. A `markdown-editor` dropped outside any
+  `selected-doc-context` should render a disabled empty textarea, not
+  blow up.
+- **No globals as inputs.** A component reaches state through its
+  element (`el.handle`, `el.repo`, ancestor walks, child walks,
+  attributes, children) — never through `window.*` or module-level
+  singletons. That's what makes "stick this in any context" actually
+  work; otherwise two parents on the same page can't host the same
+  component independently.
+
+The payoff is composability: any component can be a child, a sibling,
+a root, or a leaf, with no wrapping ceremony. The framework's job is
+to make context discoverable; the component's job is to deal with what
+it finds.
+
+## Context-provider components
+
+A common composition pattern: a *provider* component looks up some
+state — usually an Automerge URL on an ancestor's doc — and pushes it
+into its descendants by setting `doc=` on each one. The descendant
+components then consume the new doc through `el.handle` like any other
+doc-bound component.
+
+The provider walks its child components with `componentChildren()`:
+
+```js
+import { effect } from "https://esm.sh/solid-js@1.9.5";
+import { makeDocumentProjection } from
+  "https://esm.sh/@automerge/automerge-repo-solid-primitives@2.5.5?deps=solid-js@1.9.5";
+
+const accountSchema = {
+  init: () => ({}),
+  parse: (v) => {
+    if (!v || typeof v !== "object") throw new Error("not an account");
+    return v;
+  },
+};
+
+export default async function (element) {
+  const account = element.closestComponent(accountSchema);
+  if (!account) {
+    // Outside an account context — render nothing rather than crash.
+    return;
+  }
+  const doc = makeDocumentProjection(account.handle);
+  effect(() => {
+    const url = doc.rootFolderUrl;
+    if (!url) return;
+    for (const child of element.componentChildren()) {
+      if (child.getAttribute("doc") !== url) {
+        child.setAttribute("doc", url);
+      }
+    }
+  });
+}
+```
+
+The `componentChildren()` walk descends through wrapping non-component
+elements (`<div>`, `<header>`) and stops at every component boundary,
+so a layout like
+
+```html
+<selected-doc-context>
+  <header><doc-title /></header>
+  <markdown-editor />
+</selected-doc-context>
+```
+
+results in `selected-doc-context` writing `doc=` on `<doc-title>` and
+`<markdown-editor>` (both reachable, both component boundaries) and
+nothing else.
+
+Reactive `doc=` rebuilds (see [`documents.md`](./documents.md#reactive-doc=))
+do the rest: each child is rebuilt with a fresh `el.handle` whenever its
+attribute flips.

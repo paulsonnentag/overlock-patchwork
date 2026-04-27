@@ -29,8 +29,9 @@ sequenceDiagram
   Reg->>Repo: repo.find(Y) (only if doc= set)
   Repo-->>Reg: DocHandle
   Reg->>DOM: stamp newEl.handle = DocHandle
-  Reg->>Reg: new Component(el, mountFn).mount()
-  Mod->>DOM: build content (reads element.handle if needed)
+  Reg->>Reg: new Component(el, mountFn) (stamps newEl.repo + ancestor walks)
+  Reg->>Reg: comp.mount()
+  Mod->>DOM: build content (reads element.handle / element.repo if needed)
   Mod-->>Reg: cleanup fn
 ```
 

@@ -1,4 +1,4 @@
-import type { DocHandle } from "@automerge/automerge-repo/slim";
+import type { DocHandle, Repo } from "@automerge/automerge-repo/slim";
 
 export type ComponentManifest = {
   name: string;
@@ -36,12 +36,24 @@ export type Schema<T> = {
  *
  * - `handle?` — the `DocHandle` resolved from the `doc=` attribute
  *   (absent when the host element had no `doc=`).
+ * - `repo?` — the `Repo` from the closest `<automerge-repo>` ancestor,
+ *   stamped at construction time. Absent when the element is mounted
+ *   outside any `<automerge-repo>` scope.
  * - `closestComponent(schema)` — walk self → ancestors; return the first
  *   element whose handle's doc parses under `schema`. Returns `null` if
  *   no ancestor matches.
  * - `ancestorComponent()` — walk parent → ancestors; return the first
  *   registered component, regardless of handle. Returns `null` if none.
  * - `ancestorComponent(schema)` — same walk, but apply the parse filter.
+ * - `componentChildren()` — walk descendants, stopping at component
+ *   boundaries. Returns the nearest component descendants — both
+ *   already-swapped components and still-bootstrapping `<patchwork-view>`s.
+ *   Used by context-provider components to enumerate their direct child
+ *   components without caring whether the registry has finished its
+ *   per-element bootstrap.
+ * - `componentChildren(schema)` — same walk, with the schema-parse filter
+ *   applied to candidates' `handle.doc()`. Pre-swap `<patchwork-view>`s
+ *   have no handle yet and are skipped under schema filtering.
  *
  * Lookups run synchronously against the current state of `componentStore`.
  * Note that `el.handle` is set asynchronously by the registry's
@@ -53,9 +65,12 @@ export type Schema<T> = {
  */
 export type ComponentRoot<V = unknown> = HTMLElement & {
   handle?: DocHandle<V>;
+  repo?: Repo;
   closestComponent<T>(schema: Schema<T>): SchemaComponentRoot<T> | null;
   ancestorComponent(): ComponentRoot | null;
   ancestorComponent<T>(schema: Schema<T>): SchemaComponentRoot<T> | null;
+  componentChildren(): ComponentRoot[];
+  componentChildren<T>(schema: Schema<T>): SchemaComponentRoot<T>[];
 };
 
 /**

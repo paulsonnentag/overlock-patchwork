@@ -29,9 +29,21 @@ const repo = element.closest("automerge-repo")?.repo;
 
 There is exactly one `Repo` in the page today — the global one set up
 in [`src/main.ts`](../src/main.ts) — so the marker is mostly a
-future-proofing boundary. Resolving `closest("automerge-repo")` is
-the single API; whether that maps to a global, per-tree, or
-per-component repo is the registry's business.
+future-proofing boundary. Component mount fns should read the repo via
+`element.repo`, which the registry stamps on every component element
+from the closest `<automerge-repo>` ancestor:
+
+```js
+const repo = element.repo;
+if (!repo) {
+  // Outside any <automerge-repo> ancestor — handle gracefully.
+}
+```
+
+`element.repo` is set synchronously when the component element is
+constructed, so it's available the moment the mount fn runs. Whether
+that maps to a global, per-tree, or per-component repo is the registry's
+business; mount fns just read the property.
 
 ## `doc=` attribute on `<patchwork-view>`
 
@@ -82,12 +94,12 @@ mount is aborted with an error. Absent, `el.handle` stays `undefined`
 and the component runs as before — `clock` does this and just renders
 local state.
 
-## Looking up ancestor components
+## Looking up ancestor and child components
 
-Every mounted component element exposes two ancestor-walking helpers,
-stamped onto the element by `Component`'s constructor. They let a child
-read context out of an enclosing component without any framework-level
-prop drilling:
+Every mounted component element exposes ancestor- and descendant-walking
+helpers, stamped onto the element by `Component`'s constructor. They let a
+child read context out of an enclosing component, and let a parent
+enumerate its child components, without any framework-level prop drilling:
 
 ```ts
 type Schema<T> = {
@@ -98,6 +110,8 @@ type Schema<T> = {
 el.closestComponent<T>(schema: Schema<T>):    SchemaComponentRoot<T> | null;
 el.ancestorComponent():                       ComponentRoot | null;
 el.ancestorComponent<T>(schema: Schema<T>):   SchemaComponentRoot<T> | null;
+el.componentChildren():                       ComponentRoot[];
+el.componentChildren<T>(schema: Schema<T>):   SchemaComponentRoot<T>[];
 ```
 
 - `closestComponent(schema)` — walks **self → parent → …**. For each
@@ -110,6 +124,22 @@ el.ancestorComponent<T>(schema: Schema<T>):   SchemaComponentRoot<T> | null;
   no-schema form is for "give me my enclosing component, whatever it is".
 - `ancestorComponent(schema)` — same walk but applied with the parse
   filter. Skip-self version of `closestComponent`.
+- `componentChildren()` — walks descendants, **stops at every component
+  boundary**, and returns the nearest-component descendants. A child
+  counts as a boundary if it has a registered `Component` (already
+  swapped) or its tag is `<patchwork-view>` (still bootstrapping). Both
+  shapes are reported, so consumers can act on the full set immediately
+  without waiting for in-flight bootstraps. Wrapping non-component
+  elements (a `<div>`, a `<header>`, …) are descended into transparently.
+- `componentChildren(schema)` — same walk with the parse filter.
+  Pre-swap `<patchwork-view>`s have no `handle` yet and are skipped under
+  schema filtering.
+
+`componentChildren` is the building block for **context-provider
+components**: a parent walks its component children once at mount, plus
+again from inside a reactive scope when the value to propagate changes,
+and writes `setAttribute("doc", url)` on each. The registry then handles
+the rest via the `doc=` rebuild path (see "Reactive `doc=`" below).
 
 Matching is **purely structural**: components don't register their schema
 with the framework, so any ancestor whose doc parses under the consumer's

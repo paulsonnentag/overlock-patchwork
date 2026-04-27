@@ -23,8 +23,6 @@ const isPatchworkReady = (async () => {
   const repo = new Repo({
     storage: new IndexedDBStorageAdapter("overlock"),
     signer,
-    peerId: ("overlock-" +
-      Math.random().toString(36).slice(2, 10)) as PeerId,
     sharePolicy: async (peerId) => peerId.includes("storage-server"),
     enableRemoteHeadsGossiping: true,
     subductionWebsocketEndpoints: [SUBDUCTION_ENDPOINT],

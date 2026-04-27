@@ -4,7 +4,6 @@
 // but uses the base64 variant and runs in the page.
 
 import { initializeBase64Wasm } from "@automerge/automerge/slim";
-// @ts-expect-error: ".automerge.wasm.base64" doesn't ship .d.ts in the export map
 import { automergeWasmBase64 } from "@automerge/automerge/automerge.wasm.base64";
 import { initSync as initSubductionSync } from "@automerge/automerge-subduction/slim";
 // @ts-expect-error: "/wasm-base64" doesn't ship .d.ts
