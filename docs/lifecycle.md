@@ -72,12 +72,24 @@ before the new mount fn touches anything.
 2. The component is hot-reloaded before the mount fn resolves.
 3. The `doc=` attribute changes before the mount fn resolves.
 
-Cases 2 and 3 both go through `#rebuildInstance`, so the same
-generation counter on the `Component` handles them. `unmount()` (and
-`#rebuildInstance`'s teardown) bumps the generation; when the
-in-flight `mount()` finally resolves, it checks the generation it
-captured at call time and — if it lost — runs the returned cleanup
-immediately and discards it instead of installing it.
+Cases 2 and 3 both go through `#rebuildInstance`, which calls
+`unmount()` on the old `Component` and constructs a fresh one. Each
+`Component` carries a four-state lifecycle:
+
+```
+idle → mounting → mounted → unmounted
+```
+
+`mount()` transitions `idle → mounting`, awaits the user's mount fn,
+then either installs the returned cleanup and transitions to `mounted`
+or — if `unmount()` ran while the await was in flight, transitioning
+the state to `unmounted` — runs the returned cleanup immediately and
+discards it instead of installing it. That's the race guarantee for
+in-flight mounts.
+
+Cleanups are kept in a `Set<() => void>` on the `Component` so the
+framework can register internal teardowns alongside the user's
+returned cleanup. They run in insertion order on `unmount()`.
 
 The async `#resolveContext(el)` step (the `repo.find(docUrl)` await)
 sits *before* the user's mount fn. If the element is removed during

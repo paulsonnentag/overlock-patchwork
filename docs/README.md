@@ -18,7 +18,7 @@ Start with the doc closest to the change you want to make.
 - [`documents.md`](./documents.md) — `<automerge-repo>` scope, `doc=`
   attribute, `el.handle`, reactive doc rebuilds.
 - [`lifecycle.md`](./lifecycle.md) — mount/unmount sequence diagram,
-  HMR semantics, generation guard, race handling, microtask-batched
+  HMR semantics, state-machine race handling, microtask-batched
   `doc=` rebuilds.
 - [`internals.md`](./internals.md) — registry data structures,
   custom-element rationale, module layout, constraints.
@@ -58,9 +58,11 @@ Start with the doc closest to the change you want to make.
 - **Component registry.** A per-root orchestrator owning a
   `MutationObserver`, the bootstrap-load cache, the name table, and
   the set of mounted instances. See [`internals.md`](./internals.md).
-- **Generation guard.** Counter on `Component` that lets `unmount()`
-  invalidate an in-flight `mount()` so its eventual cleanup runs and
-  is discarded rather than installed. See [`lifecycle.md`](./lifecycle.md).
+- **Component state.** A four-value lifecycle on `Component`:
+  `idle → mounting → mounted → unmounted`. `unmount()` while the
+  state is `mounting` makes the eventual mount-fn cleanup run
+  immediately on resolve rather than be installed — that's the race
+  guarantee for in-flight mounts. See [`lifecycle.md`](./lifecycle.md).
 
 ## File map
 
@@ -73,7 +75,7 @@ Start with the doc closest to the change you want to make.
 | [`src/components/component-registry.ts`](../src/components/component-registry.ts) | DOM observer, manifest fetch, HMR, `swapTag`, microtask-batched `doc=` rebuild |
 | [`src/components/patchwork-view-element.ts`](../src/components/patchwork-view-element.ts) | `PatchworkView` autonomous custom element: `src`/`doc` reflection, lazy property upgrade |
 | [`src/components/automerge-repo-element.ts`](../src/components/automerge-repo-element.ts) | `AutomergeRepoElement` scope marker: `.repo` property, `checkout`/`fork`/`reset` mutators |
-| [`src/components/component.ts`](../src/components/component.ts) | `Component` lifecycle, generation guard |
+| [`src/components/component.ts`](../src/components/component.ts) | `Component` lifecycle: state enum, teardown set, in-flight race guard |
 | [`src/components/component-store.ts`](../src/components/component-store.ts) | `WeakMap<Element, Component>` lookup |
 | [`src/components/ancestor-lookup.ts`](../src/components/ancestor-lookup.ts) | `closestComponent` / `ancestorComponent` / `componentChildren` walkers, element method stamping (also stamps `el.repo`) |
 | [`src/types.ts`](../src/types.ts) | `ComponentManifest`, `MountFn`, `Schema`, `ComponentRoot`, `SchemaComponentRoot` |

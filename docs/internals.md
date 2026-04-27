@@ -114,8 +114,9 @@ src/components/
                           AutomergeRepoElement class +
                           customElements.define; .repo property,
                           checkout/fork/reset mutators
-  component.ts            Component lifecycle: async mount, cleanup,
-                          generation guard
+  component.ts            Component lifecycle: state enum
+                          (idle → mounting → mounted → unmounted),
+                          teardown set, race guard
   component-store.ts      Singleton WeakMap<Element, Component>
   ancestor-lookup.ts      closestComponent / ancestorComponent /
                           componentChildren walkers, element method
