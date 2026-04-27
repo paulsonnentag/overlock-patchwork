@@ -1,4 +1,4 @@
-import type { Component } from "./component.js";
+import type { Component } from "./component";
 
 /**
  * Singleton element to component lookup. The registry writes to it on mount

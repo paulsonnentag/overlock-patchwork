@@ -11,10 +11,10 @@ import {
   type UnixFileEntry,
 } from "@inkandswitch/patchwork-filesystem";
 
-import { BranchableRepo, type ForkOpts } from "../branchable-repo.js";
-import { Component } from "./component.js";
-import * as componentStore from "./component-store.js";
-import type { ComponentManifest, ComponentRoot, MountFn } from "./types.js";
+import { BranchableRepo, type ForkOpts } from "../branchable-repo";
+import { Component } from "./component";
+import * as componentStore from "./component-store";
+import type { ComponentManifest, ComponentRoot, MountFn } from "./types";
 
 const BOOTSTRAP_TAG = "patchwork-view";
 const REPO_TAG = "automerge-repo";

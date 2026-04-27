@@ -1,6 +1,6 @@
-import { stampLookups } from "./ancestor-lookup.js";
-import * as componentStore from "./component-store.js";
-import type { ComponentRoot, MountFn } from "./types.js";
+import { stampLookups } from "./ancestor-lookup";
+import * as componentStore from "./component-store";
+import type { ComponentRoot, MountFn } from "./types";
 
 let nextId = 0;
 

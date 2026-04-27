@@ -1,6 +1,6 @@
 import type { DocHandle } from "@automerge/automerge-repo/slim";
 
-import type { BranchableRepo } from "../branchable-repo.js";
+import type { BranchableRepo } from "../branchable-repo";
 
 export type ComponentManifest = {
   name: string;

@@ -1,10 +1,10 @@
-import type { BranchableRepo } from "../branchable-repo.js";
-import * as componentStore from "./component-store.js";
+import type { BranchableRepo } from "../branchable-repo";
+import * as componentStore from "./component-store";
 import type {
   ComponentRoot,
   Schema,
   SchemaComponentRoot,
-} from "./types.js";
+} from "./types";
 
 // Source of truth for these tag names is `component-registry.ts`. Duplicated
 // here as string literals to avoid a registry → component → ancestor-lookup
