@@ -20,6 +20,8 @@ const BRANCH_PICKER_SRC = "automerge:bhg3NCu9QB47N2UGLLMpghY1Dc8/component.json"
 const MARKDOWN_EDITOR_SRC = "automerge:ktem5LsqihaRgoZbz9SXQ9uJ5J4/component.json";
 const URL_SYNC_SRC = "automerge:quU9eE2Wqih6SLVzS7fAeZJc13c/component.json";
 
+const VERSION = "0.0.1";
+
 const accountSchema = {
   init: () => ({ "@patchwork": { type: "account" } }),
   parse: (value) => {
@@ -49,6 +51,15 @@ function Layout({ accountDoc }) {
         border-right: 1px solid #e3e3e3;
         background: #f3f3f3;
         overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+      }
+      app-root > .sidebar > .version {
+        margin-top: auto;
+        padding: 0.5rem 0.75rem;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 10px;
+        color: #9ca3af;
       }
       app-root > .content {
         flex: 1 1 auto;
@@ -95,6 +106,7 @@ function Layout({ accountDoc }) {
         <patchwork-view src=${NEW_MARKDOWN_BUTTON_SRC}></patchwork-view>
         <patchwork-view src=${FOLDER_LIST_SRC}></patchwork-view>
       </patchwork-view>
+      <div class="version">v${VERSION}</div>
     </aside>
     <section class="content">
       <${Show}
