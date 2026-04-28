@@ -14,9 +14,12 @@ import {
 import { BranchableRepo } from "../branchable-repo";
 import { AutomergeRepoElement, AUTOMERGE_REPO_TAG } from "./automerge-repo-element";
 import { PATCHWORK_VIEW_TAG } from "./patchwork-view-element";
-import { Component } from "./component";
-import * as componentStore from "./component-store";
-import type { ComponentManifest, ComponentRoot, MountFn } from "../types";
+import {
+  isComponent,
+  mountComponent,
+  unmountElement,
+} from "./component";
+import type { ComponentManifest, MountFn } from "../types";
 
 type AutomergeImport = (spec: string) => Promise<unknown>;
 
@@ -34,16 +37,18 @@ type Deps = {
 };
 
 /**
- * One mount root. Owns its component name registry, an iterable set of
- * mounted components for HMR teardown, and a `MutationObserver` over the
- * root element. Tears them all down on `destroy()`.
+ * One mount root. Owns the component-name table, the manifest-load cache,
+ * and a `MutationObserver` over the root element. Per-element instance
+ * state lives in `component.ts`'s module-private `cleanups` map; the
+ * registry doesn't track Component instances itself — the element is the
+ * identity carrier. Tears everything down on `destroy()`.
  *
  * `<patchwork-view src="automerge:.../component.json">` is the bootstrap tag:
  * the registry recognizes it, fetches the referenced manifest + JS module
  * from the automerge graph, registers the manifest's `name` as a component,
  * replaces the `<patchwork-view>` element with `<name>` (carrying over
- * non-`src` attributes and children), and mounts the component's async
- * default export against the new element.
+ * non-`src` attributes and children), and calls `mountComponent` against
+ * the new element.
  *
  * The registry also subscribes to the manifest's parent folder document.
  * Pushwork propagates child updates upward, so any edit under the folder
@@ -66,23 +71,19 @@ export class ComponentRegistry {
   readonly #loaded = new Map<string, LoadedComponent>();
   readonly #loading = new Map<string, Promise<LoadedComponent>>();
 
-  // Iterable set of mounted Components. Used by HMR teardown to find every
-  // element currently mounted under a given tag, and by `destroy`.
-  readonly #mounted = new Set<Component>();
-
   // Tracks which <patchwork-view> elements have already been claimed by a
   // bootstrap, so a remove + re-add cycle on the same node doesn't kick off
   // a duplicate load.
   readonly #bootstrapping = new WeakSet<Element>();
 
-  // Components whose `doc=` flipped this tick. Drained on a microtask so
+  // Elements whose `doc=` flipped this tick. Drained on a microtask so
   // multiple synchronous attribute writes (e.g. a context-provider running
   // through several values in one Solid effect) coalesce into a single
-  // rebuild that reads the *final* attribute value. The set is keyed by
-  // `Component`, not element, so a rebuild followed by another rebuild
-  // resolves to the *new* component and doesn't replay against the
-  // already-torn-down old one.
-  readonly #pendingRebuilds = new Set<Component>();
+  // rebuild that reads the *final* attribute value. Keyed by element so
+  // a rebuild that swaps the element identity (HMR or doc-rebuild) leaves
+  // the stale old element in the set; the flush filters it out via
+  // `isComponent` and operates only on the current live element.
+  readonly #pendingRebuilds = new Set<HTMLElement>();
   #rebuildScheduled = false;
 
   #observer: MutationObserver | null = null;
@@ -114,7 +115,7 @@ export class ComponentRegistry {
           if (node.isConnected) continue;
           this.#forEachElement(node, (el) => {
             if (el.isConnected) return;
-            this.#unmountIfMounted(el);
+            unmountElement(el);
           });
         }
       }
@@ -133,8 +134,10 @@ export class ComponentRegistry {
     this.#observer.disconnect();
     this.#observer = null;
     this.#pendingRebuilds.clear();
-    for (const comp of Array.from(this.#mounted)) comp.unmount();
-    this.#mounted.clear();
+    // Walk the root subtree and tear down every claimed element. The
+    // element-keyed `cleanups` map is the source of truth; `unmountElement`
+    // is a no-op on anything we walk that isn't a component.
+    this.#forEachElementIn(this.#root, (el) => unmountElement(el));
     for (const loaded of this.#loaded.values()) loaded.unsubscribe();
     this.#loaded.clear();
     this.#loading.clear();
@@ -182,8 +185,8 @@ export class ComponentRegistry {
    * 1. `<patchwork-view>` pre-bootstrap — let the in-flight (or future)
    *    bootstrap pick up the new value when it reads the attribute.
    * 2. Mounted component — schedule a rebuild on the next microtask.
-   *    The rebuild path runs `#resolveContext` against the new element,
-   *    which re-reads `doc=` and produces the fresh handle.
+   *    The rebuild path swaps the element so `mountComponent` reads
+   *    the fresh `doc=` from scratch and resolves the new handle.
    * 3. Anything else — ignore.
    *
    * The rebuild is microtask-batched so a series of synchronous `doc=`
@@ -193,9 +196,8 @@ export class ComponentRegistry {
    * tear down and re-mount the same descendant three times.
    */
   #handleDocAttributeChange(el: HTMLElement): void {
-    const comp = componentStore.lookup(el);
-    if (!comp || !this.#mounted.has(comp)) return;
-    this.#pendingRebuilds.add(comp);
+    if (!isComponent(el)) return;
+    this.#pendingRebuilds.add(el);
     if (this.#rebuildScheduled) return;
     this.#rebuildScheduled = true;
     queueMicrotask(() => this.#flushPendingRebuilds());
@@ -206,11 +208,13 @@ export class ComponentRegistry {
     if (this.#pendingRebuilds.size === 0) return;
     const pending = Array.from(this.#pendingRebuilds);
     this.#pendingRebuilds.clear();
-    for (const comp of pending) {
-      // Skip if the component was unmounted (or rebuilt — which counts
+    for (const el of pending) {
+      // Skip if the element was unmounted (or rebuilt — which counts
       // as unmounted) between the attribute change and this flush.
-      if (!this.#mounted.has(comp)) continue;
-      this.#rebuildInstance(comp, comp.el.localName, comp.mountFn);
+      if (!isComponent(el)) continue;
+      const mountFn = this.#registry.get(el.localName);
+      if (!mountFn) continue;
+      this.#rebuildInstance(el, el.localName, mountFn);
     }
   }
 
@@ -219,14 +223,12 @@ export class ComponentRegistry {
    *   1. fetch component.json via the repo
    *   2. register manifest.name → mountFn (throw on collision)
    *   3. replace <patchwork-view> with <manifest.name> (keep non-src attrs + children)
-   *   4. construct Component, run async mountFn against the new element
+   *   4. call `mountComponent` against the new element
    *
-   * If the element carries a `doc=` attribute, step 4 also resolves a
-   * `DocHandle` against the closest `<automerge-repo>` ancestor and stamps
-   * it onto the new element as `el.handle` before the user's mount fn
-   * runs.
-   *
-   * The folder subscription that drives HMR is set up inside `#load`.
+   * The mount fn's per-element doc context (read `doc=`, await
+   * `repo.find(url)`, stamp `el.handle`) is resolved inside
+   * `mountComponent` itself before the user's mount fn runs. The folder
+   * subscription that drives HMR is set up inside `#load`.
    */
   async #bootstrap(viewEl: HTMLElement, spec: string): Promise<void> {
     let loaded: LoadedComponent;
@@ -242,36 +244,7 @@ export class ComponentRegistry {
     this.#registerComponent(loaded.manifest.name, loaded.mountFn);
 
     const newEl = swapTag(viewEl, loaded.manifest.name);
-    this.#mountElement(newEl, loaded.mountFn);
-  }
-
-  /**
-   * Resolve the per-element doc context: read the `doc=` attribute, find
-   * the closest `<automerge-repo>` ancestor, await `repo.find(docUrl)`,
-   * and stamp the resulting `DocHandle` onto the element as `el.handle`.
-   *
-   * Strict: a `doc=` attribute without an `<automerge-repo>` ancestor is
-   * an error. No `doc=` attribute is fine and leaves `el.handle`
-   * untouched.
-   */
-  async #resolveContext(el: HTMLElement): Promise<void> {
-    const docUrl = el.getAttribute("doc");
-    if (!docUrl) return;
-
-    const repoEl = el.closest(AUTOMERGE_REPO_TAG) as AutomergeRepoElement | null;
-    if (!repoEl?.repo) {
-      throw new Error(
-        `[overlock-patchwork] <${el.localName} doc="${docUrl}"> requires an <${AUTOMERGE_REPO_TAG}> ancestor`,
-      );
-    }
-    if (!isValidAutomergeUrl(docUrl)) {
-      throw new Error(
-        `[overlock-patchwork] doc attribute is not a valid automerge URL: "${docUrl}"`,
-      );
-    }
-
-    const handle = await repoEl.repo.find(docUrl);
-    (el as ComponentRoot).handle = handle as DocHandle<unknown>;
+    mountComponent(newEl, loaded.mountFn);
   }
 
   #registerComponent(name: string, mountFn: MountFn): void {
@@ -350,12 +323,12 @@ export class ComponentRegistry {
 
   /**
    * HMR: the manifest's parent folder doc changed. Re-fetch manifest +
-   * module, then for every Component currently mounted under the previous
-   * tag name: tear it down (run cleanup), recreate a fresh element with the
-   * new tag name, and mount the new mount fn against it.
+   * module, then for every element currently mounted under the previous
+   * tag name: tear it down (run cleanup), recreate a fresh element with
+   * the new tag name, and mount the new mount fn against it.
    *
    * If the manifest's `name` changed, drop the old name from the registry
-   * and check the new one for collision (point 8b).
+   * and check the new one for collision.
    */
   async #hmrReload(spec: string): Promise<void> {
     const old = this.#loaded.get(spec);
@@ -391,9 +364,7 @@ export class ComponentRegistry {
     }
 
     const previousName = old.manifest.name;
-    const instances = Array.from(this.#mounted).filter(
-      (comp) => comp.el.localName === previousName,
-    );
+    const instances = this.#findMountedElements(this.#root, previousName);
 
     if (fresh.manifest.name !== previousName) {
       this.#registry.delete(previousName);
@@ -402,8 +373,8 @@ export class ComponentRegistry {
     old.manifest = fresh.manifest;
     old.mountFn = fresh.mountFn;
 
-    for (const comp of instances) {
-      this.#rebuildInstance(comp, fresh.manifest.name, fresh.mountFn);
+    for (const el of instances) {
+      this.#rebuildInstance(el, fresh.manifest.name, fresh.mountFn);
     }
   }
 
@@ -442,18 +413,21 @@ export class ComponentRegistry {
    * purpose — that's the chosen HMR semantics; it's also reused for
    * `doc=` attribute changes so the rebuild path always re-resolves the
    * handle from scratch.
+   *
+   * Order of operations matters: `unmountElement(oldEl)` runs the old
+   * cleanup *before* `mountComponent(newEl)` claims the new element and
+   * starts the next lifecycle, so cleanup-before-new-mount ordering is
+   * preserved. The MO will later see `removedNodes: [oldEl]` and call
+   * `unmountElement(oldEl)` again — that's a no-op because the entry is
+   * already gone from the cleanups map.
    */
   #rebuildInstance(
-    comp: Component,
+    oldEl: HTMLElement,
     newName: string,
     mountFn: MountFn,
   ): void {
-    const oldEl = comp.el;
     const parent = oldEl.parentNode;
-
-    this.#mounted.delete(comp);
-    comp.unmount();
-
+    unmountElement(oldEl);
     if (!parent) return;
 
     const newEl = oldEl.ownerDocument.createElement(newName);
@@ -463,79 +437,55 @@ export class ComponentRegistry {
     while (oldEl.firstChild) newEl.appendChild(oldEl.firstChild);
     parent.replaceChild(newEl, oldEl);
 
-    this.#mountElement(newEl, mountFn);
+    mountComponent(newEl, mountFn);
   }
 
   /**
    * Called when an `<automerge-repo>` element's `.repo` was swapped (via
-   * its `checkout` / `fork` / `reset` methods). Rebuilds every Component
+   * its `checkout` / `fork` / `reset` methods). Rebuilds every component
    * descendant whose nearest enclosing `<automerge-repo>` is `repoEl`,
    * so each descendant's `doc=` is re-resolved against the new repo and
-   * any cached `el.handle` / `el.repo` references are refreshed by
-   * `stampLookups`.
+   * `el.repo` is re-stamped on the fresh element.
    *
    * Components inside a *nested* `<automerge-repo>` are skipped — their
    * scope hasn't changed.
    */
   #rebuildDescendantsOfRepoEl(repoEl: HTMLElement): void {
-    const targets: Component[] = [];
-    for (const comp of this.#mounted) {
-      if (comp.el === repoEl) continue;
-      if (!repoEl.contains(comp.el)) continue;
-      if (comp.el.closest(AUTOMERGE_REPO_TAG) !== repoEl) continue;
-      targets.push(comp);
-    }
-    for (const comp of targets) {
-      this.#rebuildInstance(comp, comp.el.localName, comp.mountFn);
+    const targets: HTMLElement[] = [];
+    this.#forEachElementIn(repoEl, (el) => {
+      if (!(el instanceof HTMLElement)) return;
+      if (!isComponent(el)) return;
+      if (el.closest(AUTOMERGE_REPO_TAG) !== repoEl) return;
+      targets.push(el);
+    });
+    for (const el of targets) {
+      const mountFn = this.#registry.get(el.localName);
+      if (!mountFn) continue;
+      this.#rebuildInstance(el, el.localName, mountFn);
     }
   }
 
   #mountIfRegistered(el: Element): void {
-    if (componentStore.lookup(el)) return;
+    if (isComponent(el)) return;
     const mountFn = this.#registry.get(el.localName);
     if (!mountFn) return;
-    this.#mountElement(el as HTMLElement, mountFn);
+    mountComponent(el as HTMLElement, mountFn);
   }
 
   /**
-   * Construct a Component, await any doc-context resolution against the
-   * new element, then run the user's mount fn. The component is added to
-   * the mounted set up-front so a removal mid-resolve still invokes the
-   * removal path; the post-await `isConnected` guard then short-circuits
-   * without calling the user's mount fn.
+   * Snapshot of every element under `root` that currently has tag `tag`
+   * and is a claimed component. Snapshotted up-front because the HMR
+   * rebuild loop mutates the DOM as it goes.
    */
-  #mountElement(el: HTMLElement, mountFn: MountFn): void {
-    const comp = new Component(el, mountFn);
-    this.#mounted.add(comp);
-    void this.#performMount(comp);
-  }
-
-  async #performMount(comp: Component): Promise<void> {
-    try {
-      await this.#resolveContext(comp.el);
-    } catch (err) {
-      console.error("[overlock-patchwork] doc context resolution failed:", err);
-      this.#mounted.delete(comp);
-      // `comp.unmount()` here just unregisters from componentStore; no
-      // user cleanup has been installed yet. Without this the WeakMap
-      // entry would survive a re-add of the same element and prevent a
-      // future mount.
-      comp.unmount();
-      return;
-    }
-    if (!comp.el.isConnected) {
-      this.#mounted.delete(comp);
-      comp.unmount();
-      return;
-    }
-    await comp.mount();
-  }
-
-  #unmountIfMounted(el: Element): void {
-    const comp = componentStore.lookup(el);
-    if (!comp || !this.#mounted.has(comp)) return;
-    this.#mounted.delete(comp);
-    comp.unmount();
+  #findMountedElements(root: HTMLElement, tag: string): HTMLElement[] {
+    const out: HTMLElement[] = [];
+    this.#forEachElementIn(root, (el) => {
+      if (!(el instanceof HTMLElement)) return;
+      if (el.localName !== tag) return;
+      if (!isComponent(el)) return;
+      out.push(el);
+    });
+    return out;
   }
 
   #forEachElement(el: Element, fn: (el: Element) => void): void {

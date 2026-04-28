@@ -6,8 +6,8 @@ overlock-patchwork is two layers stacked:
    rewrite every import in the source, and `import()` the rewritten
    module as a blob URL. Lives in `src/`.
 2. **Component runtime.** A `<patchwork-view>` bootstrap tag, a
-   registry that watches the DOM, and a `Component` lifecycle with
-   HMR. Lives in `src/components/`.
+   registry that watches the DOM, and a per-element mount/unmount
+   lifecycle with HMR. Lives in `src/components/`.
 
 Start with the doc closest to the change you want to make.
 
@@ -43,13 +43,8 @@ considering and may not ship.
   function that gets the host element and returns an optional
   cleanup — equivalent to
   `(element: ComponentRoot) => Promise<(() => void) | void>`.
-  `ComponentRoot` is `HTMLElement` plus an optional `handle` and the
-  ancestor-walk methods `closestComponent` / `ancestorComponent`. See
-  [`documents.md`](./documents.md#looking-up-ancestor-components).
-- **Schema.** Duck-typed `{ init(): T; parse(value): T }` interface.
-  Consumers pass one to `closestComponent` / `ancestorComponent` to
-  filter ancestors by structural match against their `handle.doc()`.
-  `init` is for consumer bootstrap logic; the framework never calls it.
+  `ComponentRoot` is `HTMLElement` plus an optional `handle` and
+  `repo`. See [`documents.md`](./documents.md).
 - **Bootstrap tag.** `<patchwork-view src="automerge:.../component.json">`.
   The registry's only hard-coded mount tag. See
   [`components.md`](./components.md).
@@ -61,13 +56,16 @@ considering and may not ship.
   [`documents.md`](./documents.md#branching) and
   [`src/branchable-repo.ts`](../src/branchable-repo.ts)).
 - **Component registry.** A per-root orchestrator owning a
-  `MutationObserver`, the bootstrap-load cache, the name table, and
-  the set of mounted instances. See [`internals.md`](./internals.md).
-- **Component state.** A four-value lifecycle on `Component`:
-  `idle → mounting → mounted → unmounted`. `unmount()` while the
-  state is `mounting` makes the eventual mount-fn cleanup run
-  immediately on resolve rather than be installed — that's the race
-  guarantee for in-flight mounts. See [`lifecycle.md`](./lifecycle.md).
+  `MutationObserver`, the bootstrap-load cache, and the name table.
+  Per-element instance state lives in `component.ts`'s
+  module-private `cleanups` map, not on the registry. See
+  [`internals.md`](./internals.md).
+- **Race guarantee for in-flight mounts.** `mountComponent` reads
+  `el.isConnected` after each `await`. If the element disconnected
+  while the mount fn was in flight, the returned cleanup runs
+  immediately and is discarded rather than installed. The element is
+  the identity carrier — there is no separate Component instance to
+  signal. See [`lifecycle.md`](./lifecycle.md).
 
 ## File map
 
@@ -80,9 +78,7 @@ considering and may not ship.
 | [`src/components/component-registry.ts`](../src/components/component-registry.ts) | DOM observer, manifest fetch, HMR, `swapTag`, microtask-batched `doc=` rebuild |
 | [`src/components/patchwork-view-element.ts`](../src/components/patchwork-view-element.ts) | `PatchworkView` autonomous custom element: `src`/`doc` reflection, lazy property upgrade |
 | [`src/components/automerge-repo-element.ts`](../src/components/automerge-repo-element.ts) | `AutomergeRepoElement` scope marker: `.repo` property, `checkout`/`fork`/`reset` mutators |
-| [`src/components/component.ts`](../src/components/component.ts) | `Component` lifecycle: state enum, teardown set, in-flight race guard |
-| [`src/components/component-store.ts`](../src/components/component-store.ts) | `WeakMap<Element, Component>` lookup |
-| [`src/components/ancestor-lookup.ts`](../src/components/ancestor-lookup.ts) | `closestComponent` / `ancestorComponent` / `componentChildren` walkers, element method stamping (returns `Subscribable<...>`; also stamps `el.repo`) |
+| [`src/components/component.ts`](../src/components/component.ts) | `mountComponent` / `unmountElement` / `isComponent`: per-element lifecycle, doc-context resolution, race guard via `isConnected`, `el.repo` stamping. Owns the `WeakMap<Element, cleanup \| null>`. |
 | [`src/subscribable.ts`](../src/subscribable.ts) | `Subscribable<T>` interface + `BasicSubscribable<T>` default impl: framework reactive primitive |
-| [`src/types.ts`](../src/types.ts) | `ComponentManifest`, `MountFn`, `Schema`, `ComponentRoot`, `SchemaComponentRoot` |
+| [`src/types.ts`](../src/types.ts) | `ComponentManifest`, `MountFn`, `ComponentRoot` |
 | [`src/components/index.ts`](../src/components/index.ts) | public re-exports |

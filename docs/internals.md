@@ -68,40 +68,46 @@ These are the *only* two places in the system that use
 `customElements`. User components stay plain
 `document.createElement(name)` elements and are never registered
 globally — `customElements.define` is a one-shot ratchet that would
-block HMR. Component identity instead lives in the registry's data
-structures (see below).
+block HMR. Component identity is the element itself, with mount
+state tracked in `component.ts`'s `cleanups` map (see below).
 
 ## Registry data structures
 
-The registry's identity tracking is split across a process-wide store
-and three per-`ComponentRegistry` collections:
+The registry doesn't track `Component` instances — there *are* no
+`Component` instances. The element is the identity carrier for a
+mounted component; per-element state lives in `component.ts`'s
+module-private `cleanups` map. The registry's own state is just:
 
-- **`componentStore`** — a process-wide `WeakMap<Element, Component>`
-  for element-to-instance lookup. Lives in
-  [`component-store.ts`](../src/components/component-store.ts).
-  `WeakMap` so the store never keeps DOM nodes alive on its own.
-  Components unregister themselves on `unmount()`; entries for
-  GC'd elements vanish with them.
 - **`#registry`** — `Map<string, MountFn>` for name-to-mount-fn.
   Throws on collision both on initial load and on HMR rename.
-- **`#mounted`** — `Set<Component>` for iteration on HMR teardown
-  and `destroy()`.
 - **`#loaded` / `#loading`** — manifest spec → `LoadedComponent` (and
   in-flight promise dedup). Each unique manifest spec has exactly one
   HMR subscription.
 - **`#bootstrapping`** — `WeakSet<Element>` tracking which
   `<patchwork-view>` elements have already been claimed, so a remove
   + re-add cycle on the same node doesn't kick off a duplicate load.
+- **`#pendingRebuilds`** — `Set<HTMLElement>` of elements whose `doc=`
+  flipped this tick. Drained on a microtask so coalesced writes
+  produce a single rebuild. Stale entries (an element that was already
+  rebuilt and is no longer claimed) are filtered out at flush via
+  `isComponent`.
 
-Two `ComponentRegistry` instances over disjoint subtrees never see
-each other's elements. On overlapping subtrees they would conflict —
-which is the same answer either way.
+Per-element state — the cleanups map keyed by element — sits in
+[`component.ts`](../src/components/component.ts) as
+`WeakMap<Element, cleanup | null>`. `WeakMap` so the map never keeps
+DOM nodes alive on its own. `mountComponent` claims an entry
+synchronously; `unmountElement` drains it; `isComponent(el)` answers
+"is this element currently a component?" for the registry's own dedup.
+
+The cleanups map is process-wide on purpose: two `ComponentRegistry`
+instances over disjoint subtrees never see each other's elements. On
+overlapping subtrees they would conflict — which is the same answer
+either way.
 
 ## Module layout
 
 ```
-src/types.ts              ComponentManifest, MountFn, Schema,
-                          ComponentRoot, SchemaComponentRoot
+src/types.ts              ComponentManifest, MountFn, ComponentRoot
 src/subscribable.ts       Subscribable<T> interface +
                           BasicSubscribable<T> default impl;
                           framework reactive primitive
@@ -117,14 +123,11 @@ src/components/
                           AutomergeRepoElement class +
                           customElements.define; .repo property,
                           checkout/fork/reset mutators
-  component.ts            Component lifecycle: state enum
-                          (idle → mounting → mounted → unmounted),
-                          teardown set, race guard
-  component-store.ts      Singleton WeakMap<Element, Component>
-  ancestor-lookup.ts      closestComponent / ancestorComponent /
-                          componentChildren walkers, element method
-                          stamping (also stamps el.repo from closest
-                          <automerge-repo>)
+  component.ts            mountComponent / unmountElement /
+                          isComponent: per-element lifecycle, doc-
+                          context resolution, el.repo stamping,
+                          in-flight race guard via el.isConnected.
+                          Owns the WeakMap<Element, cleanup | null>.
   index.ts                public re-exports
 ```
 
@@ -158,39 +161,11 @@ through `window.createComponentRegistry(root)`.
   `<patchwork-view>` outside any `<automerge-repo>` ancestor is an
   error; the mount is aborted with a logged exception. Components
   that don't need a doc (e.g. `clock`) work fine with no scope.
-- **Lookups return `Subscribable`s.** `closestComponent`,
-  `ancestorComponent`, and `componentChildren` each return a
-  `Subscribable<...>` (`{ value(): T; subscribe(fn): () => void }`).
-  Currently the `Subscribable` is initialised with the walker's
-  stamp-time snapshot and never re-fires; structural and context
-  triggers will be wired up later (see
-  [`design/reactivity.md`](./design/reactivity.md)). Tree-order
-  construction guarantees a parent's `Component` is registered before
-  its children construct, but `el.handle` is set asynchronously, so a
-  schema-filtered walk taken at mount time can miss a parent that is
-  still resolving — until re-fire wiring lands, consumers that depend
-  on a still-resolving ancestor should schedule their read after the
-  relevant async work has settled.
-- **Child-component lookups race bootstrap.** `componentChildren()`
-  reports both already-swapped components and still-bootstrapping
-  `<patchwork-view>` elements as boundaries, so providers can write
-  `doc=` on each immediately and let the registry's bootstrap or
-  rebuild path pick the value up. Children added to the DOM *after*
-  the provider runs aren't reflected until structural triggers are
-  wired up; for now consumers that need to react to dynamic structural
-  changes must run their own `MutationObserver` or re-read
-  `componentChildren().value()` from their own state updates.
 - **`el.repo` stamping.** Every component element has `el.repo` set
-  at construction time from `el.closest("automerge-repo")`. Outside
-  any `<automerge-repo>` ancestor, `el.repo` is `undefined` and the
-  component is responsible for handling that gracefully. The
-  `<automerge-repo>` marker's `repo` property is stamped by the
-  registry's tree-order initial walk before any descendant
-  `<patchwork-view>` bootstraps, so the lookup is always populated by
-  the time a component reads `el.repo`.
-- **Structural-only schema matching.** Components don't register their
-  schemas with the framework. `closestComponent(schema)` walks ancestors
-  and returns the first whose `handle.doc()` parses under the schema —
-  any duck-equivalent doc is a hit. The framework never calls
-  `schema.init()`; that's reserved for the consumer's own bootstrap
-  logic.
+  synchronously inside `mountComponent` from
+  `el.closest("automerge-repo")`. Outside any `<automerge-repo>`
+  ancestor, `el.repo` is `undefined` and the component is responsible
+  for handling that gracefully. The `<automerge-repo>` marker's `repo`
+  property is stamped by the registry's tree-order initial walk before
+  any descendant `<patchwork-view>` bootstraps, so the lookup is
+  always populated by the time a component reads `el.repo`.

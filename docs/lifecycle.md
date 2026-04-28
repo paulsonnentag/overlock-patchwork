@@ -12,6 +12,7 @@ sequenceDiagram
   participant DOM
   participant MO as MutationObserver
   participant Reg as ComponentRegistry
+  participant MC as mountComponent
   participant Repo as Automerge Repo
   participant Mod as component.js
 
@@ -25,19 +26,22 @@ sequenceDiagram
   Mod-->>Reg: mountFn
   Reg->>Reg: #registerComponent(name, mountFn) (collision -> throw)
   Reg->>DOM: swapTag <patchwork-view> -> <name>
-  Reg->>Reg: #resolveContext(newEl) — read doc=, find <automerge-repo>
-  Reg->>Repo: repo.find(Y) (only if doc= set)
-  Repo-->>Reg: DocHandle
-  Reg->>DOM: stamp newEl.handle = DocHandle
-  Reg->>Reg: new Component(el, mountFn) (stamps newEl.repo + ancestor walks)
-  Reg->>Reg: comp.mount()
+  Reg->>MC: mountComponent(newEl, mountFn)
+  MC->>MC: claim newEl in cleanups map (sync)
+  MC->>MC: stamp newEl.repo from closest <automerge-repo> (sync)
+  MC->>MC: resolveContext(newEl) — read doc=, find <automerge-repo>
+  MC->>Repo: repo.find(Y) (only if doc= set)
+  Repo-->>MC: DocHandle
+  MC->>DOM: stamp newEl.handle = DocHandle
+  MC->>Mod: mountFn(newEl)
   Mod->>DOM: build content (reads element.handle / element.repo if needed)
-  Mod-->>Reg: cleanup fn
+  Mod-->>MC: cleanup fn
+  MC->>MC: install cleanup in cleanups map
 ```
 
 When `<name>` is later removed from the DOM, the observer fires for
-the removal, the registry calls `Component.unmount()`, and the
-cleanup runs.
+the removal and the registry calls `unmountElement(el)`, which runs
+the installed cleanup and forgets the element.
 
 ## Hot module reload
 
@@ -54,10 +58,12 @@ On change, the registry:
    unchanged (defends against spurious change events).
 3. If `manifest.name` changed, drops the old name from the registry
    and throws if the new name collides with an existing entry.
-4. For every `Component` currently mounted under the previous tag
-   name: tears it down (runs cleanup), creates a fresh element under
-   the new tag name (carrying the current attrs and children),
-   inserts it in place, and mounts the new mount fn.
+4. For every element currently mounted under the previous tag name
+   (found by walking the registry's root looking for the tag, filtered
+   by `isComponent`): tears it down via `unmountElement` (runs the
+   installed cleanup), creates a fresh element under the new tag name
+   (carrying the current attrs and children), inserts it in place, and
+   calls `mountComponent` against the new element.
 
 Element identity is intentionally lost on reload — the chosen
 semantics is "teardown + remount", not "patch in place". That keeps
@@ -66,35 +72,41 @@ before the new mount fn touches anything.
 
 ## Race handling
 
-`mount()` is async. Three things can race it:
+`mountComponent` is async. Three things can race it:
 
 1. The element is removed from the DOM before the mount fn resolves.
 2. The component is hot-reloaded before the mount fn resolves.
 3. The `doc=` attribute changes before the mount fn resolves.
 
-Cases 2 and 3 both go through `#rebuildInstance`, which calls
-`unmount()` on the old `Component` and constructs a fresh one. Each
-`Component` carries a four-state lifecycle:
+Cases 2 and 3 both go through `#rebuildInstance`, which detaches the
+old element (running `unmountElement` on it first) and creates a fresh
+one. The element is the identity carrier for a mounted component;
+there is no separate `Component` instance to signal. The race
+guarantee falls out of two facts:
+
+- `mountComponent` reads `el.isConnected` after every `await`. A
+  detached element short-circuits the post-await branch.
+- The user's returned cleanup is run-and-discarded (rather than
+  installed) when the post-`await mountFn` `isConnected` check is
+  false.
+
+Concretely, `mountComponent` looks like:
 
 ```
-idle → mounting → mounted → unmounted
+claim el in cleanups map         (sync)
+stamp el.repo                    (sync)
+await resolveContext(el)
+  if el disconnected → drop claim, return
+await mountFn(el)
+  if el disconnected → run-and-discard cleanup, drop claim, return
+install cleanup in cleanups map
 ```
 
-`mount()` transitions `idle → mounting`, awaits the user's mount fn,
-then either installs the returned cleanup and transitions to `mounted`
-or — if `unmount()` ran while the await was in flight, transitioning
-the state to `unmounted` — runs the returned cleanup immediately and
-discards it instead of installing it. That's the race guarantee for
-in-flight mounts.
-
-Cleanups are kept in a `Set<() => void>` on the `Component` so the
-framework can register internal teardowns alongside the user's
-returned cleanup. They run in insertion order on `unmount()`.
-
-The async `#resolveContext(el)` step (the `repo.find(docUrl)` await)
-sits *before* the user's mount fn. If the element is removed during
-that await, the post-await `isConnected` check short-circuits and
-the user's mount fn is never invoked.
+The `cleanups` map (in `component.ts`) is the only persistent
+per-component state in the system. There is no four-state enum, no
+teardown set, no `Component.unmount()` method — just an element
+that has or hasn't been claimed, and (after a successful mount) an
+optional cleanup keyed by that element.
 
 `doc=` rebuilds are **microtask-batched**: a series of synchronous
 writes in the same tick (e.g. a context-provider walking through

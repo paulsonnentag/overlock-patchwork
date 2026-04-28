@@ -19,9 +19,7 @@ When a design lands, the implementing PR should:
 
 ## Index
 
-- [`reactivity.md`](./reactivity.md) — the per-element context APIs
-  (`el.handle`, `el.repo`, `closestComponent`, `componentChildren`,
-  …) are currently snapshots stamped at mount time. This note
-  characterizes where that staleness shows up, why "mount/unmount
-  events" don't fix most of it, and sketches a `Subscribable<T>`-based
+- [`reactivity.md`](./reactivity.md) — `el.handle` and `el.repo` are
+  currently snapshots stamped at mount time. This note characterizes
+  where that staleness shows up and sketches a `Subscribable<T>`-based
   API plus a Solid integration layer.

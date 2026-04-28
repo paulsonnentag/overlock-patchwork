@@ -11,8 +11,15 @@
   <body>
     <script src="./dist/patchwork.js"></script>
 
+    <!--
+      After running `pnpm push packages`, copy `rootDirectoryUrl` from
+      `packages/root/.pushwork/snapshot.json` into the `src` below and
+      re-run `pnpm push packages`. The URL stays stable across
+      subsequent pushes because pushwork preserves the package's
+      `rootDirectoryUrl`.
+    -->
     <automerge-repo>
-      <patchwork-view src="automerge:36YizWjLr5TWC2deWD8n6uU7g3er/component.json"/>
+      <patchwork-view src="automerge:25pQ4qbenrosxkz3dbzfZdTKDXWf/component.json"/>
     </automerge-repo>
   </body>
 </html>
