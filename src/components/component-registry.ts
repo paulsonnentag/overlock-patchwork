@@ -13,7 +13,7 @@ import {
 
 import { BranchableRepo } from "../branchable-repo";
 import { AutomergeRepoElement, AUTOMERGE_REPO_TAG } from "./automerge-repo-element";
-import { PATCHWORK_VIEW_TAG, DOC_ATTR, SRC_ATTR } from "./patchwork-view-element";
+import { PATCHWORK_VIEW_TAG } from "./patchwork-view-element";
 import { Component } from "./component";
 import * as componentStore from "./component-store";
 import type { ComponentManifest, ComponentRoot, MountFn } from "../types";
@@ -97,7 +97,7 @@ export class ComponentRegistry {
     const observer = new MutationObserver((records) => {
       for (const record of records) {
         if (record.type === "attributes") {
-          if (record.attributeName !== DOC_ATTR) continue;
+          if (record.attributeName !== "doc") continue;
           const target = record.target;
           if (!(target instanceof HTMLElement)) continue;
           this.#handleDocAttributeChange(target);
@@ -123,7 +123,7 @@ export class ComponentRegistry {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: [DOC_ATTR],
+      attributeFilter: ["doc"],
     });
     this.#observer = observer;
   }
@@ -166,7 +166,7 @@ export class ComponentRegistry {
       return;
     }
     if (el.localName === PATCHWORK_VIEW_TAG) {
-      const src = el.getAttribute(SRC_ATTR);
+      const src = el.getAttribute("src");
       if (!src) return;
       if (this.#bootstrapping.has(el)) return;
       this.#bootstrapping.add(el);
@@ -255,18 +255,18 @@ export class ComponentRegistry {
    * untouched.
    */
   async #resolveContext(el: HTMLElement): Promise<void> {
-    const docUrl = el.getAttribute(DOC_ATTR);
+    const docUrl = el.getAttribute("doc");
     if (!docUrl) return;
 
     const repoEl = el.closest(AUTOMERGE_REPO_TAG) as AutomergeRepoElement | null;
     if (!repoEl?.repo) {
       throw new Error(
-        `[overlock-patchwork] <${el.localName} ${DOC_ATTR}="${docUrl}"> requires an <${AUTOMERGE_REPO_TAG}> ancestor`,
+        `[overlock-patchwork] <${el.localName} doc="${docUrl}"> requires an <${AUTOMERGE_REPO_TAG}> ancestor`,
       );
     }
     if (!isValidAutomergeUrl(docUrl)) {
       throw new Error(
-        `[overlock-patchwork] ${DOC_ATTR} attribute is not a valid automerge URL: "${docUrl}"`,
+        `[overlock-patchwork] doc attribute is not a valid automerge URL: "${docUrl}"`,
       );
     }
 
@@ -557,7 +557,7 @@ function swapTag(oldEl: HTMLElement, newTag: string): HTMLElement {
   const parent = oldEl.parentNode;
   const newEl = oldEl.ownerDocument.createElement(newTag);
   for (const attr of Array.from(oldEl.attributes)) {
-    if (attr.name === SRC_ATTR) continue;
+    if (attr.name === "src") continue;
     newEl.setAttribute(attr.name, attr.value);
   }
   while (oldEl.firstChild) newEl.appendChild(oldEl.firstChild);

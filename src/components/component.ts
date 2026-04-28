@@ -2,7 +2,6 @@ import { stampLookups } from "./ancestor-lookup";
 import * as componentStore from "./component-store";
 import type { ComponentRoot, MountFn } from "../types";
 
-let nextId = 0;
 
 /**
  * Lifecycle of a `Component`:
@@ -39,7 +38,6 @@ export type ComponentState = "idle" | "mounting" | "mounted" | "unmounted";
  * plain DOM. Cleanup is the author's responsibility.
  */
 export class Component {
-  readonly id: number = ++nextId;
   el: HTMLElement;
   mountFn: MountFn;
   #state: ComponentState = "idle";
