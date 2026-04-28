@@ -10,13 +10,24 @@ import { automergeWasmBase64 } from "@automerge/automerge/automerge.wasm.base64"
 import * as Subduction from "@automerge/automerge-subduction/slim";
 // @ts-expect-error: "/wasm-base64" doesn't ship .d.ts
 import { wasmBase64 as subductionWasmBase64 } from "@automerge/automerge-subduction/wasm-base64";
-import { Repo } from "@automerge/automerge-repo/slim";
+import {
+  Repo,
+  isValidAutomergeUrl,
+  parseAutomergeUrl,
+  stringifyAutomergeUrl,
+} from "@automerge/automerge-repo/slim";
 import { IndexedDBStorageAdapter } from "@automerge/automerge-repo-storage-indexeddb";
 
 import { importFromAutomerge } from "./loader";
 import { BranchableRepo } from "./branchable-repo";
 import { PluginRegistry } from "./plugin-registry";
 import { ViewRegistry } from "./view-registry";
+
+window.AutomergeRepo = {
+  isValidAutomergeUrl,
+  parseAutomergeUrl,
+  stringifyAutomergeUrl,
+};
 
 const SUBDUCTION_ENDPOINT = "wss://subduction.sync.inkandswitch.com";
 

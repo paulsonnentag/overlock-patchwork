@@ -8,12 +8,6 @@
 // URL persisted on the account doc would lock every future session to a
 // snapshot.
 
-import {
-  isValidAutomergeUrl,
-  parseAutomergeUrl,
-  stringifyAutomergeUrl,
-} from "https://esm.sh/@automerge/automerge-repo@2/slim";
-
 const accountSchema = {
   init: () => ({ "@patchwork": { type: "account" } }),
   parse: (value) => {
@@ -29,11 +23,11 @@ const accountSchema = {
 
 function hashToDocUrl() {
   const seg = location.hash.slice(1);
-  if (!isValidAutomergeUrl(seg)) return null;
+  if (!window.AutomergeRepo.isValidAutomergeUrl(seg)) return null;
   // Round-trip through the native helpers so any heads in the hash get
   // dropped before they can land in `selectedDocUrl`.
-  const { documentId } = parseAutomergeUrl(seg);
-  return stringifyAutomergeUrl({ documentId });
+  const { documentId } = window.AutomergeRepo.parseAutomergeUrl(seg);
+  return window.AutomergeRepo.stringifyAutomergeUrl({ documentId });
 }
 
 export default function (element) {

@@ -9,16 +9,12 @@ import {
 import { render } from "https://esm.sh/solid-js@1.9.5/web";
 import html from "https://esm.sh/solid-js@1.9.5/html";
 import { makeDocumentProjection } from "https://esm.sh/@automerge/automerge-repo-solid-primitives@2.5.5?deps=solid-js@1.9.5";
-import {
-  parseAutomergeUrl,
-  stringifyAutomergeUrl,
-} from "https://esm.sh/@automerge/automerge-repo@2/slim";
 
 // Drop any heads from a clone url so the result identifies the
 // *document*, which is what `repo.find` resolves against.
 function canonicalUrl(url) {
-  const { documentId } = parseAutomergeUrl(url);
-  return stringifyAutomergeUrl({ documentId });
+  const { documentId } = window.AutomergeRepo.parseAutomergeUrl(url);
+  return window.AutomergeRepo.stringifyAutomergeUrl({ documentId });
 }
 
 export default function (element) {
