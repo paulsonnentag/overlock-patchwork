@@ -52,8 +52,8 @@ stay valid.
 
 ## Heads pinning
 
-If a spec has no `?heads=...`, the loader pins the root URL to its
-current heads on first sight (`pinHeads` in
+If the spec's root URL carries no heads, the loader pins it to the
+document's current heads on first sight (`pinHeads` in
 [`src/automerge-import.ts`](../src/automerge-import.ts)). The pinned
 URL is cached in `pinnedRootCache`, and the resulting blob URL is
 cached in `blobUrlCache` keyed by `(rootUrl, path)`.

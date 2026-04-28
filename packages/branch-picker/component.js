@@ -9,12 +9,16 @@ import {
 import { render } from "https://esm.sh/solid-js@1.9.5/web";
 import html from "https://esm.sh/solid-js@1.9.5/html";
 import { makeDocumentProjection } from "https://esm.sh/@automerge/automerge-repo-solid-primitives@2.5.5?deps=solid-js@1.9.5";
+import {
+  parseAutomergeUrl,
+  stringifyAutomergeUrl,
+} from "https://esm.sh/@automerge/automerge-repo@2/slim";
 
-// Strip a `?heads=…` query so a clone url (which carries the fork-point
-// heads) becomes a plain document url that `repo.find` can resolve.
+// Drop any heads from a clone url so the result identifies the
+// *document*, which is what `repo.find` resolves against.
 function canonicalUrl(url) {
-  const q = url.indexOf("?");
-  return q === -1 ? url : url.slice(0, q);
+  const { documentId } = parseAutomergeUrl(url);
+  return stringifyAutomergeUrl({ documentId });
 }
 
 export default function (element) {

@@ -14,7 +14,7 @@
 // branch can be reopened later with `repo.checkout(branchDocUrl)`.
 //
 // `repo.fork(urls)` snapshots the listed documents eagerly at fork
-// time. URLs may include a `?heads=` segment to fork at a point in time.
+// time. URLs may carry heads to fork at a specific point in time.
 //
 // Wrapped handles always report the *original* url so the rest of the
 // app sees a stable document identity. Reads, events, and writes are
@@ -45,18 +45,18 @@ export type BranchDoc = {
   name?: string;
   // Wall-clock millis at fork time. Optional; populated by `fork()`.
   createdAt?: number;
-  // Map of *original* AutomergeUrl → cloned AutomergeUrl. The clone url
-  // has `?heads=` set to the heads of the original at the moment the
-  // clone was created — i.e. the fork point. Because `Repo.clone` shares
-  // history with the original, those heads are also valid heads inside
-  // the clone, which is what makes `handle.diff()` cheap.
+  // Map of *original* AutomergeUrl → cloned AutomergeUrl. The clone
+  // url carries the heads of the original at the moment the clone was
+  // created — i.e. the fork point. Because `Repo.clone` shares history
+  // with the original, those heads are also valid heads inside the
+  // clone, which is what makes `handle.diff()` cheap.
   clones: Record<AutomergeUrl, AutomergeUrl>;
 };
 
 export type ForkOpts = {
-  // Documents to clone eagerly at fork time. URLs may include a
-  // `?heads=` segment to fork at a specific point in time. Without this
-  // list, documents are cloned lazily on first write (copy-on-write).
+  // Documents to clone eagerly at fork time. URLs may carry heads to
+  // fork at a specific point in time. Without this list, documents are
+  // cloned lazily on first write (copy-on-write).
   urls?: AutomergeUrl[];
   // Human-readable branch name stored on the new branch document.
   name?: string;
@@ -73,7 +73,8 @@ function isBranchDoc(value: unknown): value is BranchDoc {
   );
 }
 
-// Strip any `?heads=…` segment so the url identifies the *document*.
+// Drop any heads so the url identifies the *document*, not a snapshot
+// of it.
 function canonicalUrl(url: AutomergeUrl): AutomergeUrl {
   const { documentId } = parseAutomergeUrl(url);
   return stringifyAutomergeUrl({ documentId });

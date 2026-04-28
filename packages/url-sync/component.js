@@ -3,7 +3,16 @@
 // page works under file:// — sites opened off the local filesystem can't
 // intercept navigations.
 //
-// URL shape: `…/index.html#automerge:<documentId>[?heads=…]`.
+// URL shape: `…/index.html#<AutomergeUrl>`. We strip any heads on the
+// way in: this view always tracks the live document, and a heads-bearing
+// URL persisted on the account doc would lock every future session to a
+// snapshot.
+
+import {
+  isValidAutomergeUrl,
+  parseAutomergeUrl,
+  stringifyAutomergeUrl,
+} from "https://esm.sh/@automerge/automerge-repo@2/slim";
 
 const accountSchema = {
   init: () => ({ "@patchwork": { type: "account" } }),
@@ -20,10 +29,11 @@ const accountSchema = {
 
 function hashToDocUrl() {
   const seg = location.hash.slice(1);
-  if (!seg.startsWith("automerge:")) return null;
-  // Don't try to be clever about heads here — pass through whatever the
-  // hash claims. The repo will reject malformed URLs at find time.
-  return seg;
+  if (!isValidAutomergeUrl(seg)) return null;
+  // Round-trip through the native helpers so any heads in the hash get
+  // dropped before they can land in `selectedDocUrl`.
+  const { documentId } = parseAutomergeUrl(seg);
+  return stringifyAutomergeUrl({ documentId });
 }
 
 export default function (element) {
@@ -37,6 +47,13 @@ export default function (element) {
   const writeDocFromHash = () => {
     const url = hashToDocUrl();
     if (!url) return;
+    // Canonicalize the bar even when the doc already matches — the user
+    // may have pasted a `?heads=…` URL whose canonical form is what's
+    // already selected.
+    const target = `#${url}`;
+    if (location.hash !== target) {
+      history.replaceState(null, "", target);
+    }
     if (handle.doc()?.selectedDocUrl === url) return;
     handle.change((d) => {
       d.selectedDocUrl = url;

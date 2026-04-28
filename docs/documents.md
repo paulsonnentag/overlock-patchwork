@@ -249,11 +249,10 @@ repo.branchHandle: DocHandle<BranchDoc> | null   // read-only
 ```
 
 A *branch* is just another Automerge document that records a map of
-`{ originalUrl → cloneUrl }`. The clone url has its `?heads=` segment
-set to the heads of the original at the moment the clone was created
-(the *fork point*). `Repo.clone` shares history with the original, so
-those heads are valid heads inside the clone too — which is what makes
-diffing cheap.
+`{ originalUrl → cloneUrl }`. The clone url carries the heads of the
+original at the moment the clone was created (the *fork point*).
+`Repo.clone` shares history with the original, so those heads are
+valid heads inside the clone too — which is what makes diffing cheap.
 
 `fork`, `checkout`, and `reset` mutate the repo **in place**: the same
 `BranchableRepo` instance is navigated to a new branch (or back
@@ -279,13 +278,14 @@ handle.diff();                     // patches from forkHeads → current
 ```
 
 Pass `urls` to `fork({ urls })` to clone them eagerly at fork time.
-URLs may include a `?heads=` segment to fork at a point in time:
+URLs may carry heads to fork at a specific point in time — build
+them with `stringifyAutomergeUrl({ documentId, heads })`:
 
 ```js
 await element.repo.fork({
   urls: [
-    "automerge:abc...",                // current heads
-    "automerge:def...?heads=g1,g2",    // historical heads
+    "automerge:abc...",                                    // live url — current heads
+    stringifyAutomergeUrl({ documentId: "def...", heads }), // pinned to historical heads
   ],
   name: "experiment",
 });

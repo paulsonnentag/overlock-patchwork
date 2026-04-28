@@ -20,7 +20,7 @@ sequenceDiagram
   Reg->>Reg: #ensureLoaded(X) (dedupes parallel calls)
   Reg->>Repo: find folder + manifest doc
   Repo-->>Reg: { name, url }
-  Reg->>Repo: pinSpec(url) -> automerge:doc?heads=...
+  Reg->>Repo: pinSpec(url) -> AutomergeUrl with current heads
   Reg->>Mod: automergeImport(pinned) -> default export
   Mod-->>Reg: mountFn
   Reg->>Reg: #registerComponent(name, mountFn) (collision -> throw)

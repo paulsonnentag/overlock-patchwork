@@ -20,7 +20,7 @@ const BRANCH_PICKER_SRC = "automerge:bhg3NCu9QB47N2UGLLMpghY1Dc8/component.json"
 const MARKDOWN_EDITOR_SRC = "automerge:ktem5LsqihaRgoZbz9SXQ9uJ5J4/component.json";
 const URL_SYNC_SRC = "automerge:quU9eE2Wqih6SLVzS7fAeZJc13c/component.json";
 
-const VERSION = "0.1.2";
+const VERSION = "0.1.3";
 
 const accountSchema = {
   init: () => ({ "@patchwork": { type: "account" } }),
