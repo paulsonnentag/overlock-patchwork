@@ -81,11 +81,12 @@ module-private `cleanups` map. The registry's own state is just:
 
 - **`#registry`** — `Map<string, MountFn>` for name-to-mount-fn.
   Throws on collision both on initial load and on HMR rename.
-- **`#unsubUpdated`** — single unsubscribe handle for the
-  `pluginRegistry.on("updated", ...)` listener installed in the
-  constructor. Torn down by `destroy()`. The HMR rebuild fans out
-  *one* event source to every spec the component registry cares
-  about, so a per-spec listener map isn't needed.
+- **`#onPluginUpdated`** — listener reference for the single
+  `pluginRegistry.on("updated", ...)` subscription installed in the
+  constructor. Detached via `pluginRegistry.off(...)` in `destroy()`.
+  The HMR rebuild fans out *one* event source to every plugin URL
+  the component registry cares about, so a per-URL listener map
+  isn't needed.
 - **`#bootstrapping`** — `WeakSet<Element>` tracking which
   `<patchwork-view>` elements have already been claimed, so a remove
   + re-add cycle on the same node doesn't kick off a duplicate load.
@@ -97,21 +98,22 @@ module-private `cleanups` map. The registry's own state is just:
 
 ## Plugin registry
 
-The plugin spec → `LoadedPlugin` cache and the folder subscription
+The plugin URL → `LoadedPlugin` cache and the folder subscription
 that drives HMR live in `PluginRegistry`
 ([`src/components/plugin-registry.ts`](../src/components/plugin-registry.ts)),
 not in `ComponentRegistry`. The plugin registry knows nothing about
 the DOM or about component-specific shape — every plugin kind layers
 its own validation on top of the generic `LoadedPlugin` shape.
 
-`PluginRegistry` extends `EventEmitter` from `eventemitter3` and
-mirrors the shape of patchwork-next's plugin registry where the
-lifecycle aligns. Required `LoadedPlugin` fields are minimal:
+`PluginRegistry` extends `EventEmitter` from `eventemitter3` and uses
+the standard `on(event, fn)` / `off(event, fn)` pair (matching
+`automerge-repo`'s `Repo` and `DocHandle`). Required `LoadedPlugin`
+fields are minimal:
 
 ```ts
 type LoadedPlugin = {
   name: string;       // tag name (component plugins; opaque to others)
-  importUrl: string;  // resolved absolute automerge: spec
+  importUrl: string;  // resolved absolute automerge: URL
   module: unknown;    // raw imported JS module
   [key: string]: unknown;  // arbitrary manifest fields preserved
 };
@@ -121,25 +123,26 @@ The manifest JSON only has to declare `name` and `importUrl`; any
 other fields are passed through opaquely so plugin kinds can add
 their own required fields (`type`, `icon`, etc.) without touching
 the registry. `importUrl` on the manifest is a `./`-relative
-sibling reference; the registry resolves it to an absolute spec
+sibling reference; the registry resolves it to an absolute URL
 when fetching, so the `importUrl` on the emitted `LoadedPlugin` is
 always absolute (and not heads-pinned — pinning is a load-time
 detail).
 
+A "plugin URL" is an `automerge:<docId>/<path/to/manifest.json>`
+pair: the root document URL of a folder doc plus a path to the
+manifest file inside it. The registry uses the full string as the
+cache key.
+
 The public surface:
 
-- **`load(spec)`** — `Promise<LoadedPlugin>`. Idempotent; concurrent
+- **`load(url)`** — `Promise<LoadedPlugin>`. Idempotent; concurrent
   calls share the in-flight promise; subsequent calls hit the cache.
   The manifest's parent folder subscription is set up on first
   load. Fires `loaded` (and `changed`) on first successful
   resolution; cache hits do not re-fire.
-- **`remove(spec)`** — drops the cached entry and its folder
+- **`remove(url)`** — drops the cached entry and its folder
   subscription. Fires `removed` and `changed`. Returns `true` if the
-  spec was cached.
-- **`on(event, fn)`** — overrides the inherited `EventEmitter.on`
-  to return an unsubscribe handle (matching patchwork-next's
-  contract). Native `addListener`/`removeListener` are still
-  inherited from eventemitter3 if needed.
+  URL was cached.
 - **`destroy()`** — drops every folder subscription, clears the
   cache, and removes all listeners. After destroy, `load` rejects.
 
@@ -147,13 +150,13 @@ Events:
 
 | event     | args                                               | when |
 | --------- | -------------------------------------------------- | ---- |
-| `loaded`  | `(spec, plugin)`                                   | first successful load |
-| `updated` | `(spec, previous, next)`                           | HMR re-fetch produced a new manifest or module |
-| `removed` | `(spec)`                                           | `remove(spec)` evicted a cached entry |
+| `loaded`  | `(pluginUrl, plugin)`                              | first successful load |
+| `updated` | `(pluginUrl, previous, next)`                      | HMR re-fetch produced a new manifest or module |
+| `removed` | `(pluginUrl)`                                      | `remove(pluginUrl)` evicted a cached entry |
 | `changed` | `()`                                               | fires alongside every other event |
 
 Patchwork-next has a `registered` event for description-only state.
-We don't have an analog because `load(spec)` is the entry point;
+We don't have an analog because `load(url)` is the entry point;
 there's no two-step register-then-load lifecycle.
 
 The plugin registry has no opinion on what counts as an observable
@@ -183,8 +186,8 @@ src/subscribable.ts       Subscribable<T> interface +
                           BasicSubscribable<T> default impl;
                           framework reactive primitive
 src/components/
-  plugin-registry.ts      PluginRegistry: spec -> LoadedPlugin load
-                          cache, per-spec folder subscription,
+  plugin-registry.ts      PluginRegistry: pluginUrl -> LoadedPlugin
+                          load cache, per-URL folder subscription,
                           eventemitter3 events (loaded/updated/
                           removed/changed). No DOM dependency.
   component-registry.ts   ComponentRegistry: DOM observer, name

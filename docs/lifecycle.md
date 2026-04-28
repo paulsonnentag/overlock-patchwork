@@ -23,8 +23,8 @@ sequenceDiagram
   Reg->>Plug: load(X) (dedupes parallel calls)
   Plug->>Repo: find folder + manifest doc
   Repo-->>Plug: { name, importUrl, ... }
-  Plug->>Plug: resolve importUrl to absolute spec
-  Plug->>Repo: pinSpec(absolute) -> AutomergeUrl with current heads
+  Plug->>Plug: resolve importUrl to absolute URL
+  Plug->>Repo: pinPluginUrl(absolute) -> AutomergeUrl with current heads
   Plug->>Mod: automergeImport(pinned) -> module
   Mod-->>Plug: module
   Plug->>Plug: subscribe parent folder for HMR (first load only)
@@ -48,9 +48,10 @@ sequenceDiagram
 
 The component registry installs a single `pluginRegistry.on("updated", ...)`
 listener in its constructor so subsequent folder changes flow back
-to `#onPluginUpdate` (see below). The unsubscribe handle is held in
-`#unsubUpdated` and called by `destroy()`. One global listener
-fans out updates for every spec — there's no per-spec subscription.
+to `#onPluginUpdate` (see below). The listener reference is held in
+`#onPluginUpdated` and detached via `pluginRegistry.off(...)` in
+`destroy()`. One global listener fans out updates for every plugin
+URL — there's no per-URL subscription.
 
 When `<name>` is later removed from the DOM, the observer fires for
 the removal and the registry calls `unmountElement(el)`, which runs
@@ -66,9 +67,9 @@ fires a `change` event on the parent folder handle.
 On change, the **plugin registry**:
 
 1. Re-fetches the manifest and re-imports the JS (with a heads-pinned
-   spec so `automergeImport`'s blob cache produces a fresh module).
+   URL so `automergeImport`'s blob cache produces a fresh module).
 2. Splices the fresh `LoadedPlugin` into its cached record.
-3. Emits `updated(spec, previous, next)` and `changed()`.
+3. Emits `updated(pluginUrl, previous, next)` and `changed()`.
 
 The **component registry**'s `#onPluginUpdate` handler then:
 

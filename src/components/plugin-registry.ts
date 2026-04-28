@@ -14,11 +14,11 @@ import {
 
 import { BranchableRepo } from "../branchable-repo";
 
-type AutomergeImport = (spec: string) => Promise<unknown>;
+type AutomergeImport = (url: string) => Promise<unknown>;
 
 /**
  * A loaded plugin: every field declared on the source manifest, with
- * `importUrl` resolved to an absolute spec, plus the imported JS
+ * `importUrl` resolved to an absolute URL, plus the imported JS
  * `module`.
  *
  * `PluginRegistry` only requires `name` and `importUrl`; everything
@@ -38,28 +38,28 @@ export type LoadedPlugin = {
  * Events emitted by `PluginRegistry`. Mirrors patchwork-next's
  * `PluginRegistryEvents` where the lifecycle aligns:
  *
- * - `loaded`   — first successful resolution of a spec; the cached
- *                entry is now available.
+ * - `loaded`   — first successful resolution of a plugin URL; the
+ *                cached entry is now available.
  * - `updated`  — HMR re-fetch produced a new manifest or module.
  *                Carries `previous` and `next` snapshots so consumers
  *                can diff without keeping their own copy.
- * - `removed`  — `remove(spec)` evicted a cached entry.
+ * - `removed`  — `remove(pluginUrl)` evicted a cached entry.
  * - `changed`  — fires alongside every other event. Convenience for
  *                consumers (UI mirrors, dev tools) that only care
  *                that something moved.
  *
  * Patchwork-next's `registered` event has no analog — there's no
- * description-only state in our model. `load(spec)` does both
+ * description-only state in our model. `load(pluginUrl)` does both
  * registration and loading in one step.
  */
 export type PluginRegistryEvents = {
-  loaded: (spec: string, plugin: LoadedPlugin) => void;
+  loaded: (pluginUrl: string, plugin: LoadedPlugin) => void;
   updated: (
-    spec: string,
+    pluginUrl: string,
     previous: LoadedPlugin,
     next: LoadedPlugin,
   ) => void;
-  removed: (spec: string) => void;
+  removed: (pluginUrl: string) => void;
   changed: () => void;
 };
 
@@ -75,14 +75,14 @@ type PluginRecord = {
 };
 
 /**
- * Owns the plugin spec → `LoadedPlugin` load pipeline and the HMR
+ * Owns the plugin URL → `LoadedPlugin` load pipeline and the HMR
  * subscription that drives reloads. Extends `EventEmitter` from
- * `eventemitter3`; consumers subscribe via `on(event, fn)` (overridden
- * to return an unsubscribe handle, matching patchwork-next).
+ * `eventemitter3`; consumers subscribe via the standard
+ * `on(event, fn)` / `off(event, fn)` pair.
  *
- * One folder subscription per unique spec: the manifest's parent folder
- * document is watched, and any change there triggers a re-fetch + a
- * fan-out to every listener via `updated` (and `changed`). Pushwork
+ * One folder subscription per unique plugin URL: the manifest's parent
+ * folder document is watched, and any change there triggers a re-fetch
+ * + a fan-out to every listener via `updated` (and `changed`). Pushwork
  * propagates child updates upward, so this catches edits to the
  * manifest, the JS module, or anything else inside the package's
  * folder.
@@ -97,7 +97,7 @@ export class PluginRegistry extends EventEmitter<PluginRegistryEvents> {
   readonly #repo: BranchableRepo;
   readonly #automergeImport: AutomergeImport;
 
-  // Cached records, keyed by spec. One entry per unique spec.
+  // Cached records, keyed by plugin URL. One entry per unique URL.
   readonly #loaded = new Map<string, PluginRecord>();
   readonly #loading = new Map<string, Promise<PluginRecord>>();
 
@@ -110,71 +110,53 @@ export class PluginRegistry extends EventEmitter<PluginRegistryEvents> {
   }
 
   /**
-   * Resolve `spec` to its current `LoadedPlugin` snapshot. Idempotent;
+   * Resolve `url` to its current `LoadedPlugin` snapshot. Idempotent;
    * concurrent calls share the in-flight promise; subsequent calls hit
    * the cache. The folder subscription that drives HMR is set up on
    * first load; subsequent calls do not re-subscribe.
    *
    * Fires `loaded` (and `changed`) on the first successful resolution
-   * of a spec. Cache hits do *not* re-fire `loaded`.
+   * of a plugin URL. Cache hits do *not* re-fire `loaded`.
    */
-  async load(spec: string): Promise<LoadedPlugin> {
+  async load(url: string): Promise<LoadedPlugin> {
     if (this.#destroyed) {
       throw new Error("[overlock-patchwork] PluginRegistry has been destroyed");
     }
-    const cached = this.#loaded.get(spec);
+    const cached = this.#loaded.get(url);
     if (cached) return cached.plugin;
-    const inFlight = this.#loading.get(spec);
+    const inFlight = this.#loading.get(url);
     if (inFlight) return inFlight.then((record) => record.plugin);
-    const promise = this.#loadFresh(spec)
+    const promise = this.#loadFresh(url)
       .then((record) => {
-        this.#loaded.set(spec, record);
-        this.#loading.delete(spec);
-        this.emit("loaded", spec, record.plugin);
+        this.#loaded.set(url, record);
+        this.#loading.delete(url);
+        this.emit("loaded", url, record.plugin);
         this.emit("changed");
         return record;
       })
       .catch((err) => {
-        this.#loading.delete(spec);
+        this.#loading.delete(url);
         throw err;
       });
-    this.#loading.set(spec, promise);
+    this.#loading.set(url, promise);
     return promise.then((record) => record.plugin);
   }
 
   /**
-   * Evict the cached entry for `spec`. Drops the folder subscription,
-   * fires `removed` and `changed`. No-op (returns false) if the spec
-   * was not cached. In-flight loads for the spec are abandoned — when
+   * Evict the cached entry for `url`. Drops the folder subscription,
+   * fires `removed` and `changed`. No-op (returns false) if the URL
+   * was not cached. In-flight loads for the URL are abandoned — when
    * they resolve they find no matching record and bail.
    */
-  remove(spec: string): boolean {
-    const record = this.#loaded.get(spec);
+  remove(url: string): boolean {
+    const record = this.#loaded.get(url);
     if (!record) return false;
     record.unsubscribe();
-    this.#loaded.delete(spec);
-    this.#loading.delete(spec);
-    this.emit("removed", spec);
+    this.#loaded.delete(url);
+    this.#loading.delete(url);
+    this.emit("removed", url);
     this.emit("changed");
     return true;
-  }
-
-  /**
-   * Subscribe to a registry event. Returns an unsubscribe function.
-   * Overrides the inherited `EventEmitter.on` (which returns `this`).
-   * Matches the contract patchwork-next exposes on its registry.
-   */
-  // @ts-expect-error: deliberate override — the inherited `on` returns
-  // `this`, we return the unsubscribe handle. Matches patchwork-next's
-  // `registry.on(...)` API.
-  on<E extends keyof PluginRegistryEvents>(
-    event: E,
-    listener: PluginRegistryEvents[E],
-  ): () => void {
-    super.on(event, listener as never);
-    return () => {
-      super.off(event, listener as never);
-    };
   }
 
   /**
@@ -191,12 +173,12 @@ export class PluginRegistry extends EventEmitter<PluginRegistryEvents> {
     this.removeAllListeners();
   }
 
-  async #loadFresh(spec: string): Promise<PluginRecord> {
-    const { rootUrl, path } = parseSpec(spec);
+  async #loadFresh(url: string): Promise<PluginRecord> {
+    const { rootUrl, path } = parsePluginUrl(url);
     const parts = splitPath(path);
     if (parts.length === 0) {
       throw new Error(
-        `[overlock-patchwork] manifest spec must reference a file: ${spec}`,
+        `[overlock-patchwork] manifest URL must reference a file: ${url}`,
       );
     }
 
@@ -215,14 +197,14 @@ export class PluginRegistry extends EventEmitter<PluginRegistryEvents> {
           )) as DocHandle<FolderDoc> | undefined);
     if (!parentFolderHandle) {
       throw new Error(
-        `[overlock-patchwork] could not resolve parent folder for ${spec}`,
+        `[overlock-patchwork] could not resolve parent folder for ${url}`,
       );
     }
 
-    const plugin = await this.#fetchPlugin(spec, parentFolderHandle, manifestName);
+    const plugin = await this.#fetchPlugin(url, parentFolderHandle, manifestName);
 
     const onChange = (): void => {
-      void this.#hmrReload(spec);
+      void this.#reload(url);
     };
     parentFolderHandle.on("change", onChange);
     const unsubscribe = (): void => {
@@ -237,45 +219,45 @@ export class PluginRegistry extends EventEmitter<PluginRegistryEvents> {
    * splice the new value into the cached record, and fire `updated`
    * (with `previous` and `next` snapshots) followed by `changed`.
    */
-  async #hmrReload(spec: string): Promise<void> {
+  async #reload(url: string): Promise<void> {
     if (this.#destroyed) return;
-    const old = this.#loaded.get(spec);
+    const old = this.#loaded.get(url);
     if (!old) return;
 
-    const { path } = parseSpec(spec);
+    const { path } = parsePluginUrl(url);
     const parts = splitPath(path);
     const manifestName = parts[parts.length - 1];
 
     let next: LoadedPlugin;
     try {
-      next = await this.#fetchPlugin(spec, old.parentFolderHandle, manifestName);
+      next = await this.#fetchPlugin(url, old.parentFolderHandle, manifestName);
     } catch (err) {
       console.error(
-        `[overlock-patchwork] HMR reload failed for ${spec}:`,
+        `[overlock-patchwork] HMR reload failed for ${url}:`,
         err,
       );
       return;
     }
 
     if (this.#destroyed) return;
-    if (this.#loaded.get(spec) !== old) return;
+    if (this.#loaded.get(url) !== old) return;
 
     const previous = old.plugin;
     old.plugin = next;
 
-    this.emit("updated", spec, previous, next);
+    this.emit("updated", url, previous, next);
     this.emit("changed");
   }
 
   /**
    * Fetch the manifest doc, parse it (only `name` and `importUrl` are
    * required; other fields are preserved opaquely), resolve `importUrl`
-   * against the manifest's spec to an absolute automerge URL, pin the
+   * against the manifest's URL to an absolute automerge URL, pin the
    * absolute URL to current heads for `automergeImport`'s blob cache,
    * and fetch the module.
    */
   async #fetchPlugin(
-    spec: string,
+    url: string,
     parentFolderHandle: DocHandle<FolderDoc>,
     manifestName: string,
   ): Promise<LoadedPlugin> {
@@ -287,15 +269,15 @@ export class PluginRegistry extends EventEmitter<PluginRegistryEvents> {
       [manifestName],
     );
     if (!manifestHandle) {
-      throw new Error(`[overlock-patchwork] manifest not found: ${spec}`);
+      throw new Error(`[overlock-patchwork] manifest not found: ${url}`);
     }
     const manifest = readManifest(
       manifestHandle as DocHandle<UnixFileEntry>,
-      spec,
+      url,
     );
 
-    const absoluteImportUrl = resolveImportUrl(spec, manifest.importUrl);
-    const pinnedImportUrl = await pinSpec(this.#repo, absoluteImportUrl);
+    const absoluteImportUrl = resolveImportUrl(url, manifest.importUrl);
+    const pinnedImportUrl = await pinPluginUrl(this.#repo, absoluteImportUrl);
     const module = await this.#automergeImport(pinnedImportUrl);
 
     return {
@@ -314,12 +296,12 @@ type RawManifest = {
 
 function readManifest(
   handle: DocHandle<UnixFileEntry>,
-  spec: string,
+  pluginUrl: string,
 ): RawManifest {
   const doc = handle.doc();
   const content = doc?.content;
   if (content == null) {
-    throw new Error(`[overlock-patchwork] manifest has no content: ${spec}`);
+    throw new Error(`[overlock-patchwork] manifest has no content: ${pluginUrl}`);
   }
   const text =
     typeof content === "string"
@@ -330,7 +312,7 @@ function readManifest(
     parsed = JSON.parse(text);
   } catch (err) {
     throw new Error(
-      `[overlock-patchwork] invalid JSON in manifest ${spec}: ${(err as Error).message}`,
+      `[overlock-patchwork] invalid JSON in manifest ${pluginUrl}: ${(err as Error).message}`,
     );
   }
   if (
@@ -340,21 +322,25 @@ function readManifest(
     typeof (parsed as { importUrl?: unknown }).importUrl !== "string"
   ) {
     throw new Error(
-      `[overlock-patchwork] manifest missing "name" or "importUrl": ${spec}`,
+      `[overlock-patchwork] manifest missing "name" or "importUrl": ${pluginUrl}`,
     );
   }
   return parsed as RawManifest;
 }
 
-function parseSpec(spec: string): { rootUrl: AutomergeUrl; path: string } {
-  if (!spec.startsWith("automerge:")) {
+function parsePluginUrl(
+  pluginUrl: string,
+): { rootUrl: AutomergeUrl; path: string } {
+  if (!pluginUrl.startsWith("automerge:")) {
     throw new Error(
-      `[overlock-patchwork] expected an automerge: spec, got "${spec}"`,
+      `[overlock-patchwork] expected an automerge: URL, got "${pluginUrl}"`,
     );
   }
-  const slash = spec.indexOf("/", "automerge:".length);
-  const urlPart = (slash === -1 ? spec : spec.slice(0, slash)) as AutomergeUrl;
-  const path = slash === -1 ? "" : spec.slice(slash + 1);
+  const slash = pluginUrl.indexOf("/", "automerge:".length);
+  const urlPart = (
+    slash === -1 ? pluginUrl : pluginUrl.slice(0, slash)
+  ) as AutomergeUrl;
+  const path = slash === -1 ? "" : pluginUrl.slice(slash + 1);
   if (!isValidAutomergeUrl(urlPart)) {
     throw new Error(
       `[overlock-patchwork] not a valid automerge URL: "${urlPart}"`,
@@ -372,7 +358,7 @@ function splitPath(p: string): string[] {
 
 /**
  * Resolve a manifest's `importUrl` (currently restricted to a `./`
- * sibling reference) against the manifest's own spec. Only `./` is
+ * sibling reference) against the manifest's own URL. Only `./` is
  * supported for now — `../` and bare specifiers are rejected so HMR's
  * pinning semantics stay obvious.
  *
@@ -380,31 +366,34 @@ function splitPath(p: string): string[] {
  * separately at import time so the resolved `importUrl` stays stable
  * across HMR reloads.
  */
-function resolveImportUrl(manifestSpec: string, importUrl: string): string {
+function resolveImportUrl(manifestUrl: string, importUrl: string): string {
   if (!importUrl.startsWith("./")) {
     throw new Error(
       `[overlock-patchwork] manifest "importUrl" must start with "./" (got "${importUrl}")`,
     );
   }
-  const lastSlash = manifestSpec.lastIndexOf("/");
+  const lastSlash = manifestUrl.lastIndexOf("/");
   if (lastSlash === -1 || lastSlash <= "automerge:".length) {
     throw new Error(
-      `[overlock-patchwork] cannot resolve "${importUrl}" against root spec`,
+      `[overlock-patchwork] cannot resolve "${importUrl}" against root URL`,
     );
   }
-  const dir = manifestSpec.slice(0, lastSlash);
+  const dir = manifestUrl.slice(0, lastSlash);
   return `${dir}/${importUrl.slice(2)}`;
 }
 
 /**
- * Pre-pin the spec's root url to current heads so `automergeImport`'s blob
+ * Pre-pin the URL's root to current heads so `automergeImport`'s blob
  * cache doesn't serve stale content across HMR reloads. Each pinned URL is
  * unique per heads, so each HMR fetch produces a fresh module.
  */
-async function pinSpec(repo: BranchableRepo, spec: string): Promise<string> {
-  const { rootUrl, path } = parseSpec(spec);
+async function pinPluginUrl(
+  repo: BranchableRepo,
+  pluginUrl: string,
+): Promise<string> {
+  const { rootUrl, path } = parsePluginUrl(pluginUrl);
   const { documentId, heads } = parseAutomergeUrl(rootUrl);
-  if (heads && heads.length) return spec;
+  if (heads && heads.length) return pluginUrl;
   const handle = await repo.find(rootUrl);
   const pinned = stringifyAutomergeUrl({ documentId, heads: handle.heads() });
   return path ? `${pinned}/${path}` : pinned;

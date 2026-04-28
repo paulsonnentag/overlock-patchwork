@@ -40,7 +40,7 @@ considering and may not ship.
   through opaquely. `name` is the custom tag name the component
   will mount under (must contain a hyphen, per HTML custom-element
   rules). `importUrl` is a `./`-relative path to the JS module;
-  the registry resolves it to an absolute automerge spec at load
+  the registry resolves it to an absolute automerge URL at load
   time.
 - **Mount fn.** The default export of `component.js`. An async
   function that gets the host element and returns an optional
@@ -58,10 +58,10 @@ considering and may not ship.
   forkable wrapper around the underlying Automerge `Repo` (see
   [`documents.md`](./documents.md#branching) and
   [`src/branchable-repo.ts`](../src/branchable-repo.ts)).
-- **Plugin registry.** A spec → `LoadedPlugin` cache with one folder
-  subscription per spec driving HMR. Extends `EventEmitter`
+- **Plugin registry.** A pluginUrl → `LoadedPlugin` cache with one
+  folder subscription per URL driving HMR. Extends `EventEmitter`
   (`eventemitter3`) and emits `loaded` / `updated` / `removed` /
-  `changed` events. The component registry consumes `load(spec)`
+  `changed` events. The component registry consumes `load(url)`
   and `on("updated", ...)`; the plugin registry knows nothing about
   the DOM or about the component-specific shape. See
   [`internals.md`](./internals.md).
@@ -85,8 +85,8 @@ considering and may not ship.
 | [`src/branchable-repo.ts`](../src/branchable-repo.ts) | `BranchableRepo` / `BranchedDocHandle`: forkable wrapper over `Repo` with copy-on-write per doc |
 | [`src/automerge-import.ts`](../src/automerge-import.ts) | resolve → parse → rewrite → blob URL → `import()` |
 | [`src/resolve.ts`](../src/resolve.ts) | folder walk + `package.json` `exports` lookup |
-| [`src/components/plugin-registry.ts`](../src/components/plugin-registry.ts) | `PluginRegistry`: spec → manifest + module load cache, per-spec folder subscription for HMR, `onUpdate` listeners |
-| [`src/components/component-registry.ts`](../src/components/component-registry.ts) | DOM observer, name table, `<patchwork-view>` bootstrap, `swapTag`, microtask-batched `doc=` rebuild, HMR rebuild on `pluginRegistry.onUpdate` |
+| [`src/components/plugin-registry.ts`](../src/components/plugin-registry.ts) | `PluginRegistry`: pluginUrl → manifest + module load cache, per-URL folder subscription for HMR, `loaded`/`updated`/`removed`/`changed` events |
+| [`src/components/component-registry.ts`](../src/components/component-registry.ts) | DOM observer, name table, `<patchwork-view>` bootstrap, `swapTag`, microtask-batched `doc=` rebuild, HMR rebuild via `pluginRegistry.on("updated", ...)` |
 | [`src/components/patchwork-view-element.ts`](../src/components/patchwork-view-element.ts) | `PatchworkView` autonomous custom element: `src`/`doc` reflection, lazy property upgrade |
 | [`src/components/automerge-repo-element.ts`](../src/components/automerge-repo-element.ts) | `AutomergeRepoElement` scope marker: `.repo` property, `checkout`/`fork`/`reset` mutators |
 | [`src/components/component.ts`](../src/components/component.ts) | `mountComponent` / `unmountElement` / `isComponent`: per-element lifecycle, doc-context resolution, race guard via `isConnected`, `el.repo` stamping. Owns the `WeakMap<Element, cleanup \| null>`. |

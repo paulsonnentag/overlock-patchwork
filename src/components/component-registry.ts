@@ -6,7 +6,11 @@ import {
   mountComponent,
   unmountElement,
 } from "./component";
-import type { LoadedPlugin, PluginRegistry } from "./plugin-registry";
+import type {
+  LoadedPlugin,
+  PluginRegistry,
+  PluginRegistryEvents,
+} from "./plugin-registry";
 import type { MountFn } from "../types";
 
 type Deps = {
@@ -21,7 +25,7 @@ type Deps = {
  * track Component instances itself — the element is the identity carrier.
  *
  * Plugin loading and HMR live in `PluginRegistry`. This class consumes
- * its `load(spec)` API for bootstrap and subscribes to the `updated`
+ * its `load(url)` API for bootstrap and subscribes to the `updated`
  * event for HMR. It validates that loaded plugins are component-shaped
  * (`module.default` is the mount fn) — that's the kind-specific layer
  * on top of the generic plugin runtime.
@@ -48,9 +52,9 @@ export class ComponentRegistry {
   // name -> mount fn. Throws on collision.
   readonly #registry = new Map<string, MountFn>();
 
-  // Single subscription to the plugin registry's `updated` event,
-  // installed in the constructor and torn down by `destroy()`.
-  readonly #unsubUpdated: () => void;
+  // Listener installed on the plugin registry's `updated` event in the
+  // constructor; removed by `destroy()` via `pluginRegistry.off(...)`.
+  readonly #onPluginUpdated: PluginRegistryEvents["updated"];
 
   // Tracks which <patchwork-view> elements have already been claimed by a
   // bootstrap, so a remove + re-add cycle on the same node doesn't kick off
@@ -74,10 +78,9 @@ export class ComponentRegistry {
     this.#repo = deps.repo;
     this.#pluginRegistry = deps.pluginRegistry;
 
-    this.#unsubUpdated = this.#pluginRegistry.on(
-      "updated",
-      (_spec, previous, next) => this.#onPluginUpdate(previous, next),
-    );
+    this.#onPluginUpdated = (_pluginUrl, previous, next) =>
+      this.#onPluginUpdate(previous, next);
+    this.#pluginRegistry.on("updated", this.#onPluginUpdated);
 
     this.#forEachElementIn(root, (el) => this.#handleElement(el));
 
@@ -124,7 +127,7 @@ export class ComponentRegistry {
     // element-keyed `cleanups` map is the source of truth; `unmountElement`
     // is a no-op on anything we walk that isn't a component.
     this.#forEachElementIn(this.#root, (el) => unmountElement(el));
-    this.#unsubUpdated();
+    this.#pluginRegistry.off("updated", this.#onPluginUpdated);
     this.#registry.clear();
   }
 
@@ -204,7 +207,7 @@ export class ComponentRegistry {
 
   /**
    * The 4-step `<patchwork-view>` handoff:
-   *   1. ask the plugin registry to load the spec
+   *   1. ask the plugin registry to load the URL
    *   2. extract the mount fn from the loaded module
    *   3. register `plugin.name` → mountFn (throw on collision)
    *   4. replace `<patchwork-view>` with `<plugin.name>` (keep non-src
@@ -215,12 +218,12 @@ export class ComponentRegistry {
    * `repo.find(url)`, stamp `el.handle`) is resolved inside
    * `mountComponent` itself before the user's mount fn runs.
    */
-  async #bootstrap(viewEl: HTMLElement, spec: string): Promise<void> {
+  async #bootstrap(viewEl: HTMLElement, pluginUrl: string): Promise<void> {
     let loaded: LoadedPlugin;
     try {
-      loaded = await this.#pluginRegistry.load(spec);
+      loaded = await this.#pluginRegistry.load(pluginUrl);
     } catch (err) {
-      console.error(`[overlock-patchwork] failed to load ${spec}:`, err);
+      console.error(`[overlock-patchwork] failed to load ${pluginUrl}:`, err);
       return;
     }
 
@@ -230,7 +233,7 @@ export class ComponentRegistry {
     try {
       mountFn = extractMountFn(loaded);
     } catch (err) {
-      console.error(`[overlock-patchwork] ${spec}:`, err);
+      console.error(`[overlock-patchwork] ${pluginUrl}:`, err);
       return;
     }
 
