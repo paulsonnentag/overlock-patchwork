@@ -5,7 +5,13 @@
 // dist/overlock.js by Vite. No service worker, no asset side-loads — wasm is
 // inlined as base64 in wasm-loader.ts so the page works under file://.
 
-import { Repo, type PeerId } from "@automerge/automerge-repo/slim";
+import {
+  Repo,
+  isValidAutomergeUrl,
+  parseAutomergeUrl,
+  stringifyAutomergeUrl,
+  type PeerId,
+} from "@automerge/automerge-repo/slim";
 import { IndexedDBStorageAdapter } from "@automerge/automerge-repo-storage-indexeddb";
 import { WebCryptoSigner } from "@automerge/automerge-subduction/slim";
 
@@ -13,6 +19,12 @@ import { ensureWasm } from "./wasm-loader";
 import { automergeImport } from "./automerge-import";
 import { BranchableRepo } from "./branchable-repo";
 import { ComponentRegistry } from "./components";
+
+window.AutomergeRepo = {
+  isValidAutomergeUrl,
+  parseAutomergeUrl,
+  stringifyAutomergeUrl,
+};
 
 const SUBDUCTION_ENDPOINT = "wss://subduction.sync.inkandswitch.com";
 
