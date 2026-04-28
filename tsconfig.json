@@ -14,5 +14,5 @@
     "verbatimModuleSyntax": false,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src", "vite-plugins", "vite.config.ts"]
+  "include": ["src", "experiment", "vite-plugins", "vite.config.ts"]
 }
