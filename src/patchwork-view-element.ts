@@ -56,8 +56,22 @@ export class PatchworkView extends HTMLElement {
   }
 
   connectedCallback() {
-    this.src = this.getAttribute("src");
-    this.doc = this.getAttribute("doc") as AutomergeUrl | null;
+    // Solid's `html` template clones from a <template> whose contents
+    // live in an inert document; nested custom elements there don't get
+    // upgraded until they're moved into the live tree. lit-dom-expressions
+    // applies attribute bindings as property writes (`el.src = X`) on those
+    // not-yet-upgraded clones, which lands as a plain own-property on the
+    // HTMLElement. Once the element is connected and the upgrade fires,
+    // that own-property shadows our prototype `set src` forever — every
+    // later assignment (including `this.src = ...` below) silently bypasses
+    // the setter and the reflected attribute never appears, so the
+    // ViewRegistry's MutationObserver never sees a `<patchwork-view src=…>`
+    // worth bootstrapping. The "upgrade property" dance from the web
+    // components spec recovers the pre-upgrade value: read it off, delete
+    // the own slot (un-shadowing the prototype accessor), then re-assign
+    // so the setter runs and reflects to the attribute.
+    this.#upgradeProperty("src");
+    this.#upgradeProperty("doc");
   }
 
   attributeChangedCallback(
@@ -72,6 +86,13 @@ export class PatchworkView extends HTMLElement {
     if (name === "doc") {
       this.#doc = value as AutomergeUrl | null;
     }
+  }
+
+  #upgradeProperty(name: "src" | "doc"): void {
+    if (!Object.prototype.hasOwnProperty.call(this, name)) return;
+    const value = (this as unknown as Record<string, unknown>)[name];
+    delete (this as unknown as Record<string, unknown>)[name];
+    (this as unknown as Record<string, unknown>)[name] = value;
   }
 }
 
