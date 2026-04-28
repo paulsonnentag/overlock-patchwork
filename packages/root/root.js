@@ -1,7 +1,14 @@
-import { Show } from "https://esm.sh/solid-js@1.9.5";
+import { Show, createMemo } from "https://esm.sh/solid-js@1.9.5";
 import { render } from "https://esm.sh/solid-js@1.9.5/web";
 import html from "https://esm.sh/solid-js@1.9.5/html";
 import { makeDocumentProjection } from "https://esm.sh/@automerge/automerge-repo-solid-primitives@2.5.5?deps=solid-js@1.9.5";
+// ─── Sibling library URL ────────────────────────────────────────────────
+//
+// After `pnpm push packages` runs, copy `rootDirectoryUrl` from
+// `packages/solid-helpers/.pushwork/snapshot.json` and paste it in
+// place of the placeholder below, then re-run `pnpm push packages`.
+// The URL stays stable across subsequent pushes.
+import { fromHandle } from "automerge:2aqfwfd7XjcbAHBGFB27WqGnoWB7/solid-helpers.js";
 
 // ─── Sibling package URLs ───────────────────────────────────────────────
 //
@@ -113,7 +120,7 @@ function Layout({ accountDoc }) {
     </aside>
     <section class="content">
       <${Show}
-        when=${() => accountDoc.selectedDocUrl}
+        when=${() => accountDoc()?.selectedDocUrl}
         fallback=${html`<div class="empty">No document selected</div>`}
       >
         <patchwork-view src=${SELECTED_DOC_CONTEXT_SRC}>
@@ -131,10 +138,18 @@ function Layout({ accountDoc }) {
 }
 
 export default function (element) {
-  const account = element.closestView(accountSchema).value();
-  if (!account) {
-    throw new Error("app-root requires an account ancestor (typically <app-frame>)");
-  }
-  const accountDoc = makeDocumentProjection(account.handle);
-  return render(() => Layout({ accountDoc }), element);
+  const account$ = element.closestView(accountSchema);
+  return render(() => {
+    const account = fromHandle(account$);
+    // Memoize so the projection is built once per resolved ancestor;
+    // accessors throughout `Layout` then read off the same store. Reads
+    // are reactive — when the account ancestor flips (e.g. a parent
+    // mounts late or swaps account doc) every consumer rebuilds against
+    // the new handle.
+    const accountDoc = createMemo(() => {
+      const a = account();
+      return a ? makeDocumentProjection(a.handle) : null;
+    });
+    return Layout({ accountDoc });
+  }, element);
 }
