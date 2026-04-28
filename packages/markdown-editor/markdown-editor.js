@@ -12,6 +12,8 @@ export default function (element) {
         markdown-editor textarea {
           flex: 1 1 auto;
           width: 100%;
+          height: 100%;
+          box-sizing: border-box;
           padding: 1rem 1.25rem;
           margin: 0;
           font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;

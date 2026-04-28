@@ -87,7 +87,8 @@ function Layout({ accountDoc }) {
         display: flex;
         min-height: 0;
       }
-      app-root checked-out-branch-context {
+      app-root checked-out-branch-context,
+      app-root checked-out-branch-context > automerge-repo {
         flex: 1 1 auto;
         display: flex;
         flex-direction: column;
