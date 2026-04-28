@@ -95,6 +95,14 @@ incoming patch. Component authors can also drop down to plain
 `handle.doc()` and `handle.on("change", ...)` if they don't want a
 framework primitive.
 
+A view that wants to read context from an *ancestor* view's doc — say,
+an `account` ancestor — uses `closestView(schema)` rather than
+re-resolving the URL itself. The lookup walks the scope tree (not the
+DOM) and returns a `Handle<SchemaViewElement<T> | null>`; the matched
+element's `.handle` is a typed `DocHandle<T>` ready to project. See
+[`components.md`](./components.md#contextual-lookups) for the full
+contextual API.
+
 `doc=` is strict: present without an `<automerge-repo>` ancestor, the
 mount is aborted with an error. Absent, `el.handle` stays `undefined`
 and the view runs as before — `clock` does this and just renders

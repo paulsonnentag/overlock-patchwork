@@ -25,13 +25,12 @@ export default function (element) {
   while (element.firstChild) repoEl.appendChild(element.firstChild);
   element.appendChild(repoEl);
 
-  // Propagate `doc=` to component descendants. `componentChildren()`
-  // descends through non-component boundaries (the new
-  // <automerge-repo>, plus any wrapping `<header>`/`<div>`/etc.) to
-  // find the nearest <patchwork-view>s and component instances. The
-  // `.value()` is a stamp-time snapshot — fine here because this
-  // provider only ever pushes `doc=` once per mount.
-  for (const child of element.componentChildren().value()) {
+  // Propagate `doc=` to view descendants. `childViews()` descends
+  // through non-view boundaries (the new `<automerge-repo>`, any
+  // wrapping `<header>`/`<div>`/etc.) and reports the direct view
+  // children. The `.value()` is a stamp-time snapshot — fine here
+  // because this provider only ever pushes `doc=` once per mount.
+  for (const child of element.childViews().value()) {
     if (child.getAttribute("doc") !== docUrl) {
       child.setAttribute("doc", docUrl);
     }

@@ -23,11 +23,6 @@ Start with the doc closest to the change you want to make.
 - [`internals.md`](./internals.md) — registry data structures,
   custom-element rationale, module layout, constraints.
 
-For *planned* (not-yet-implemented) work, see
-[`design/`](./design/README.md). Architecture docs above describe
-behavior the code actually has; design notes describe shapes we're
-considering and may not ship.
-
 ## Glossary
 
 - **Component package.** A folder document containing `component.json`
@@ -45,9 +40,10 @@ considering and may not ship.
 - **Mount fn.** The default export of `component.js`. An async
   function that gets the host element and returns an optional
   cleanup — equivalent to
-  `(element: ViewRoot) => Promise<(() => void) | void>`.
-  `ViewRoot` is `HTMLElement` plus an optional `handle` and `repo`.
-  See [`documents.md`](./documents.md).
+  `(element: ViewElement) => Promise<(() => void) | void>`.
+  `ViewElement` is `HTMLElement` plus an optional `handle` and `repo`,
+  and the contextual `closestView` / `ancestorView` / `childViews`
+  lookups. See [`documents.md`](./documents.md).
 - **Bootstrap tag.** `<patchwork-view src="automerge:.../component.json">`.
   The registry's only hard-coded mount tag. See
   [`components.md`](./components.md).
@@ -88,5 +84,6 @@ considering and may not ship.
 | [`src/view-registry.ts`](../src/view-registry.ts) | `ViewRegistry`: DOM observer, tag-name table, `<patchwork-view>` bootstrap, `swapTag`, microtask-batched `doc=` rebuild, HMR rebuild via `pluginRegistry.on("updated", ...)` |
 | [`src/patchwork-view-element.ts`](../src/patchwork-view-element.ts) | `PatchworkView` autonomous custom element: `src`/`doc` reflection, lazy property upgrade |
 | [`src/automerge-repo-element.ts`](../src/automerge-repo-element.ts) | `AutomergeRepoElement` scope marker: `.repo` property, `checkout`/`fork`/`reset` mutators |
-| [`src/view.ts`](../src/view.ts) | `mountView` / `unmountView` / `isView`: per-element lifecycle, doc-context resolution, race guard via `isConnected`, `el.repo` stamping. Owns the `WeakMap<Element, cleanup \| null>`. Exports the `ViewRoot` and `MountFn` types. |
-| [`src/subscribable.ts`](../src/subscribable.ts) | `Subscribable<T>` interface + `BasicSubscribable<T>` default impl: framework reactive primitive |
+| [`src/view.ts`](../src/view.ts) | `mountView` / `unmountView` / `isView`: per-element lifecycle, doc-context resolution, race guard via `isConnected`, `el.repo` + scope stamping, `closestView`/`ancestorView`/`childViews` install. Owns the `WeakMap<Element, cleanup \| null>`. Exports the `ViewElement`, `SchemaViewElement`, and `MountFn` types. |
+| [`src/scope.ts`](../src/scope.ts) | `Scope`: per-view node in the schema-indexed lookup tree backing `closestView` / `ancestorView` / `childViews`. Owns the engine state, registered-schema set, and per-scope `closest`/`findChildren` `Handle`s. |
+| [`src/handle.ts`](../src/handle.ts) | `Handle<T>`: framework reactive primitive — extends `EventEmitter`, `value()` reader, `change(next)` writer, fires `change` events. Plus `shallowArrayEquals` for list-shaped views. |

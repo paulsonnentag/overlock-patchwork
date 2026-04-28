@@ -27,7 +27,7 @@ function newMarkdown() {
 
 export default function (element) {
   const repo = element.repo;
-  const folder = element.closestComponent(folderSchema).value();
+  const folder = element.closestView(folderSchema).value();
   const disabled = !repo || !folder;
 
   function Button() {

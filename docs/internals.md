@@ -182,15 +182,67 @@ instances over disjoint subtrees never see each other's elements. On
 overlapping subtrees they would conflict — which is the same answer
 either way.
 
+## Scope tree
+
+Alongside `cleanups`, [`view.ts`](../src/view.ts) maintains a second
+`WeakMap<Element, ViewScope>` (`scopes`) and a reverse
+`WeakMap<Scope, HTMLElement>` (`scopeToElement`). Together they back
+the `closestView` / `ancestorView` / `childViews` lookups exposed on
+every `ViewElement`.
+
+Lifecycle:
+
+- **Stamp.** `mountView` calls `stampScope(el)` *synchronously*, before
+  any `await`. It walks `el.parentElement` looking for an ancestor
+  view's scope; with one, calls `parentScope.create()` to allocate a
+  child of the same engine; without one (the topmost view in this
+  tree), `new Scope()` becomes its own engine root. The `scopes`
+  WeakMap and the reverse `scopeToElement` are populated together.
+- **Attach handle.** Once `resolveContext` resolves a `DocHandle`,
+  `attachHandleToScope` wraps it in a `Handle<unknown>` adapter
+  (forwarding `change` events) and assigns it to `scope.handle`. The
+  setter fires the initial schema parse manually since `Handle.on`
+  doesn't auto-fire (mirroring `DocHandle`). Doc-less views skip this
+  step and keep `scope.handle = null` — they exist as transparent
+  pass-throughs but never match any schema.
+- **Install lookups.** `stampLookups(el)` writes `closestView` /
+  `ancestorView` / `childViews` onto the element. Each method bottoms
+  out in the scope's `closest` / `findChildren` view (a `Handle`) and
+  maps the scope-typed result back to a view element via
+  `scopeToElement` so consumers see element-shaped results.
+- **Tear down.** `unmountView` calls `releaseScope(el)`, which removes
+  the doc-handle adapter listener (`disposeHandle`), clears the scope's
+  handle, and detaches the scope from its parent (`scope.remove()`).
+  Detachment fans out structural invalidations to surviving ancestors'
+  `findChildren` views and to descendants' `closest` views.
+
+Two top-level views with no shared ancestor view become separate
+trees with separate engines — so schema registration and `findChildren`
+visibility are scoped to whichever subtree the topmost view roots. In
+practice every page roots at one top-level component, so this is a
+non-issue.
+
+Move semantics today: a DOM move that the registry observes as
+`removedNodes` + `addedNodes` runs `unmountView` then `mountView`,
+which destroys and recreates the scope. That's "destroy + insert"
+semantics — fine for now, and consistent with the `_rebuildDescendants`
+path on `<automerge-repo>` swaps. The structural information is
+preserved because the new mount finds the right parent scope through
+its `parentElement` walk.
+
 ## Module layout
 
 ```
 src/loader.ts             importFromAutomerge entry point, URL helpers
                           (parseAutomergeUrlWithPath, pinUrl, splitPath),
                           page-global blob cache. No DOM dependency.
-src/subscribable.ts       Subscribable<T> interface +
-                          BasicSubscribable<T> default impl;
-                          framework reactive primitive
+src/handle.ts             Handle<T>: framework reactive primitive —
+                          extends EventEmitter, value()/change(next),
+                          fires "change". Plus shallowArrayEquals.
+src/scope.ts              Scope: per-view node in the schema-indexed
+                          lookup tree. Owns engine state, registered
+                          schemas, per-scope closest/findChildren
+                          Handles. No DOM dependency.
 src/plugin-registry.ts    PluginRegistry: pluginUrl -> LoadedPlugin
                           load cache, per-URL folder subscription,
                           eventemitter3 events (loaded/updated/
@@ -209,10 +261,12 @@ src/automerge-repo-element.ts
                           checkout/fork/reset mutators
 src/view.ts               mountView / unmountView / isView:
                           per-element lifecycle, doc-context
-                          resolution, el.repo stamping, in-flight
-                          race guard via el.isConnected. Owns the
-                          WeakMap<Element, cleanup | null>. Exports
-                          ViewRoot and MountFn types.
+                          resolution, el.repo + scope stamping,
+                          closestView/ancestorView/childViews install,
+                          in-flight race guard via el.isConnected.
+                          Owns the WeakMap<Element, cleanup | null>
+                          and the WeakMap<Element, ViewScope>. Exports
+                          ViewElement, SchemaViewElement, MountFn.
 ```
 
 `PluginRegistry` depends on the loader half of overlock for two things:

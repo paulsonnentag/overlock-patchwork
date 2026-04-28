@@ -128,7 +128,7 @@ function Layout({ accountDoc }) {
 }
 
 export default function (element) {
-  const account = element.closestComponent(accountSchema).value();
+  const account = element.closestView(accountSchema).value();
   if (!account) {
     throw new Error("app-root requires an account ancestor (typically <app-frame>)");
   }

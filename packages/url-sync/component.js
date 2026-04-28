@@ -37,7 +37,7 @@ function hashToDocUrl() {
 }
 
 export default function (element) {
-  const account = element.closestComponent(accountSchema).value();
+  const account = element.closestView(accountSchema).value();
   if (!account) {
     console.warn("url-sync: no account ancestor; not syncing");
     return;

@@ -18,7 +18,7 @@ const accountSchema = {
 };
 
 export default function (element) {
-  const account = element.closestComponent(accountSchema).value();
+  const account = element.closestView(accountSchema).value();
   if (!account) {
     // No account ancestor — render-as-passthrough is the right default;
     // children remain in the DOM but receive no doc context.
@@ -28,11 +28,11 @@ export default function (element) {
     return;
   }
 
-  // Snapshot of current child components. The `Subscribable` will start
-  // re-firing once the framework wires structural triggers; until then
-  // it carries the mount-time list, which matches the pre-existing
-  // "providers don't see children added after mount" semantics.
-  const children$ = element.componentChildren();
+  // Live `Handle` of the direct view-children. Re-fires as descendants
+  // mount, unmount, or flip schema match status — the effect below
+  // reads `.value()` each tick so it's fine to capture the handle once
+  // and read on demand.
+  const children$ = element.childViews();
 
   return createRoot((dispose) => {
     const accountDoc = makeDocumentProjection(account.handle);
