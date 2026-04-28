@@ -25,26 +25,35 @@ Start with the doc closest to the change you want to make.
 
 ## Glossary
 
-- **Component package.** A folder document containing `component.json`
-  (the manifest) and the file the manifest points at — typically
-  `component.js`. Pushed independently with `pushwork`, so each package
-  has a stable `rootDirectoryUrl` that can be referenced from other
+- **Component package.** A folder document containing a JSON manifest
+  and the file the manifest's `importUrl` points at. Both files are
+  named after the package by convention (`folder-list.json` +
+  `folder-list.js`, not `component.json` + `component.js`) so that
+  cross-package URLs of the form `automerge:<rootDirectoryUrl>/<file>`
+  self-describe their target — the names are not required by the
+  loader. Pushed independently with `pushwork`, so each package has
+  a stable `rootDirectoryUrl` that can be referenced from other
   packages or pages. The on-disk artifact is called a *component
   package* even though the runtime mounts it as a *view*.
+- **Library package.** A package without a manifest — just a folder of
+  JS files imported by other packages via
+  `import … from "automerge:<rootDirectoryUrl>/<file>"`. Manifests are
+  only needed for views that get bootstrapped through
+  `<patchwork-view src=>`. `packages/solid-helpers` is the example.
 - **Manifest.** A JSON document. The plugin registry only requires
   `{ name, importUrl }`; arbitrary additional fields are passed
   through opaquely. `name` is the custom tag name the view will mount
   under (must contain a hyphen, per HTML custom-element rules).
   `importUrl` is a `./`-relative path to the JS module; the registry
   resolves it to an absolute automerge URL at load time.
-- **Mount fn.** The default export of `component.js`. An async
+- **Mount fn.** The default export of the package's JS module. An async
   function that gets the host element and returns an optional
   cleanup — equivalent to
   `(element: ViewElement) => Promise<(() => void) | void>`.
   `ViewElement` is `HTMLElement` plus an optional `handle` and `repo`,
   and the contextual `closestView` / `ancestorView` / `childViews`
   lookups. See [`documents.md`](./documents.md).
-- **Bootstrap tag.** `<patchwork-view src="automerge:.../component.json">`.
+- **Bootstrap tag.** `<patchwork-view src="automerge:.../<name>.json">`.
   The registry's only hard-coded mount tag. See
   [`components.md`](./components.md).
 - **Repo scope.** `<automerge-repo>` is a marker tag. The registry

@@ -21,10 +21,13 @@ Open `index.html` in a browser — no static host required.
 
 ## Quick demo
 
-`packages/root/` is a tiny doc-backed counter. Its mount fn finds or
-creates a counter document via `element.repo`, stores the URL in
-`localStorage`, and renders a button that bumps `count` via
-`handle.change`.
+`packages/` ships a small markdown-notes app composed of a dozen
+single-file views: `app-frame` find-or-creates an account doc and
+renders `root-2` inside it; `root-2` composes the rest
+(`folder-list`, `doc-title`, `markdown-editor`, `branch-picker`, …)
+and uses `root-folder-context` / `selected-doc-context` to push
+`doc=` down through the tree. `solid-helpers` is a tiny library
+package shared by the Solid-flavored views.
 
 Push the packages to the configured Subduction backend with:
 
@@ -37,13 +40,20 @@ This calls [`pushwork`](../pushwork) for each subfolder and writes
 `rootDirectoryUrl`. To run the demo end-to-end:
 
 1. Run `pnpm push packages` once.
-2. Copy `packages/root/.pushwork/snapshot.json`'s `rootDirectoryUrl`
-   into the `<patchwork-view src="...">` placeholder in
-   [`index.html`](./index.html).
-3. Open `index.html` in a browser.
+2. Copy `packages/app-frame/.pushwork/snapshot.json`'s
+   `rootDirectoryUrl` into the `<patchwork-view src="...">`
+   placeholder in [`index.html`](./index.html), keeping the
+   `/app-frame.json` path component (the manifest filename).
+3. Copy `packages/solid-helpers/.pushwork/snapshot.json`'s
+   `rootDirectoryUrl` into the `automerge:REPLACE_WITH_SOLID_HELPERS_URL`
+   placeholder in every view that imports `fromHandle` (grep for the
+   placeholder). Re-run `pnpm push packages`.
+4. Open `index.html` in a browser.
 
-Editing `packages/root/component.js` + re-running `pnpm push packages`
-hot-reloads the live page.
+Cross-package URLs and the `solid-helpers` URL stay stable across
+subsequent pushes — pushwork preserves each package's
+`rootDirectoryUrl`. Editing any `packages/<name>/<name>.js` and
+re-running `pnpm push packages` hot-reloads the live page.
 
 ## Architecture
 

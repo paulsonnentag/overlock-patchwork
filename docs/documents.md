@@ -14,7 +14,7 @@ Wrap any subtree that should resolve doc handles in `<automerge-repo>`:
 
 ```html
 <automerge-repo>
-  <patchwork-view src="automerge:.../my-app/component.json"></patchwork-view>
+  <patchwork-view src="automerge:.../my-app.json"></patchwork-view>
 </automerge-repo>
 ```
 
@@ -60,7 +60,7 @@ Set `doc=` to an `automerge:...` URL to ask the registry for a
 <automerge-repo>
   <patchwork-view
     doc="automerge:..."
-    src="automerge:.../counter/component.json"
+    src="automerge:.../counter.json"
   ></patchwork-view>
 </automerge-repo>
 ```

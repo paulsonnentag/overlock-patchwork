@@ -1,5 +1,12 @@
 import { createEffect, createRoot } from "https://esm.sh/solid-js@1.9.5";
 import { makeDocumentProjection } from "https://esm.sh/@automerge/automerge-repo-solid-primitives@2.5.5?deps=solid-js@1.9.5";
+// ─── Sibling library URL ────────────────────────────────────────────────
+//
+// After `pnpm push packages` runs, copy `rootDirectoryUrl` from
+// `packages/solid-helpers/.pushwork/snapshot.json` and paste it in
+// place of the placeholder below, then re-run `pnpm push packages`.
+// The URL stays stable across subsequent pushes.
+import { fromHandle } from "automerge:2aqfwfd7XjcbAHBGFB27WqGnoWB7/solid-helpers.js";
 
 // Account schema kept inline so the package is self-contained — see the
 // reusability design goal in docs/components.md. Only the fields this
@@ -28,19 +35,18 @@ export default function (element) {
     return;
   }
 
-  // Live `Handle` of the direct view-children. Re-fires as descendants
-  // mount, unmount, or flip schema match status — the effect below
-  // reads `.value()` each tick so it's fine to capture the handle once
-  // and read on demand.
-  const children$ = element.childViews();
-
   return createRoot((dispose) => {
     const accountDoc = makeDocumentProjection(account.handle);
+
+    // Bridge `childViews()` into a Solid signal so the effect re-fires
+    // on both inputs: the account doc's `rootFolderUrl` *and* late-
+    // mounting child views.
+    const children = fromHandle(element.childViews());
 
     createEffect(() => {
       const url = accountDoc.rootFolderUrl;
       if (!url) return;
-      for (const child of children$.value()) {
+      for (const child of children()) {
         if (child.getAttribute("doc") !== url) {
           child.setAttribute("doc", url);
         }

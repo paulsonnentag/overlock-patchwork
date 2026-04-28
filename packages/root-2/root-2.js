@@ -9,16 +9,18 @@ import { makeDocumentProjection } from "https://esm.sh/@automerge/automerge-repo
 // `packages/<name>/.pushwork/snapshot.json` into the matching constant
 // below and re-run `pnpm push packages`. The URLs stay stable across
 // subsequent pushes because pushwork preserves each package's
-// `rootDirectoryUrl`.
-const ROOT_FOLDER_CONTEXT_SRC = "automerge:3fhi2BowJ5TCC1BDq3RF97B7uthB/component.json";
-const SELECTED_DOC_CONTEXT_SRC = "automerge:3dh4SQH6EBf5ToXiVtAMnu62My5t/component.json";
-const CHECKED_OUT_BRANCH_CONTEXT_SRC = "automerge:3r7viUjGF5TLFAMewKBNtg4Yvx4R/component.json";
-const NEW_MARKDOWN_BUTTON_SRC = "automerge:CM2VRcrcFReYz65Q7xcBV5z84uS/component.json";
-const FOLDER_LIST_SRC = "automerge:2WgECNBYQ7ScAysUcQVDeQu6JbLR/component.json";
-const DOC_TITLE_SRC = "automerge:3E9kcXgLXrbQgideScbAzDFqcHXt/component.json";
-const BRANCH_PICKER_SRC = "automerge:bhg3NCu9QB47N2UGLLMpghY1Dc8/component.json";
-const MARKDOWN_EDITOR_SRC = "automerge:ktem5LsqihaRgoZbz9SXQ9uJ5J4/component.json";
-const URL_SYNC_SRC = "automerge:quU9eE2Wqih6SLVzS7fAeZJc13c/component.json";
+// `rootDirectoryUrl`. The path component of each URL points at the
+// package's manifest — by convention `<name>.json`, not `component.json`,
+// so the URL self-describes what it loads.
+const ROOT_FOLDER_CONTEXT_SRC = "automerge:3fhi2BowJ5TCC1BDq3RF97B7uthB/root-folder-context.json";
+const SELECTED_DOC_CONTEXT_SRC = "automerge:3dh4SQH6EBf5ToXiVtAMnu62My5t/selected-doc-context.json";
+const CHECKED_OUT_BRANCH_CONTEXT_SRC = "automerge:3r7viUjGF5TLFAMewKBNtg4Yvx4R/checked-out-branch-context.json";
+const NEW_MARKDOWN_BUTTON_SRC = "automerge:CM2VRcrcFReYz65Q7xcBV5z84uS/new-markdown-button.json";
+const FOLDER_LIST_SRC = "automerge:2WgECNBYQ7ScAysUcQVDeQu6JbLR/folder-list.json";
+const DOC_TITLE_SRC = "automerge:3E9kcXgLXrbQgideScbAzDFqcHXt/doc-title.json";
+const BRANCH_PICKER_SRC = "automerge:bhg3NCu9QB47N2UGLLMpghY1Dc8/branch-picker.json";
+const MARKDOWN_EDITOR_SRC = "automerge:ktem5LsqihaRgoZbz9SXQ9uJ5J4/markdown-editor.json";
+const URL_SYNC_SRC = "automerge:quU9eE2Wqih6SLVzS7fAeZJc13c/url-sync.json";
 
 const VERSION = "0.1.4";
 

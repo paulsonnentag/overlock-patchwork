@@ -2,6 +2,13 @@ import { For } from "https://esm.sh/solid-js@1.9.5";
 import { render } from "https://esm.sh/solid-js@1.9.5/web";
 import html from "https://esm.sh/solid-js@1.9.5/html";
 import { makeDocumentProjection } from "https://esm.sh/@automerge/automerge-repo-solid-primitives@2.5.5?deps=solid-js@1.9.5";
+// ─── Sibling library URL ────────────────────────────────────────────────
+//
+// After `pnpm push packages` runs, copy `rootDirectoryUrl` from
+// `packages/solid-helpers/.pushwork/snapshot.json` and paste it in
+// place of the placeholder below, then re-run `pnpm push packages`.
+// The URL stays stable across subsequent pushes.
+import { fromHandle } from "automerge:2aqfwfd7XjcbAHBGFB27WqGnoWB7/solid-helpers.js";
 
 const accountSchema = {
   init: () => ({ "@patchwork": { type: "account" } }),
@@ -18,7 +25,7 @@ const accountSchema = {
 
 export default function (element) {
   const handle = element.handle;
-  const account = element.closestView(accountSchema).value();
+  const account$ = element.closestView(accountSchema);
 
   function Empty() {
     return html`
@@ -31,8 +38,12 @@ export default function (element) {
 
   function List() {
     const doc = makeDocumentProjection(handle);
-    const accountDoc = account ? makeDocumentProjection(account.handle) : null;
-    const isSelected = (url) => accountDoc?.selectedDocUrl === url;
+    const account = fromHandle(account$);
+    const accountDoc = () => {
+      const a = account();
+      return a ? makeDocumentProjection(a.handle) : null;
+    };
+    const isSelected = (url) => accountDoc()?.selectedDocUrl === url;
     const onOpen = (url) => {
       element.dispatchEvent(
         new CustomEvent("patchwork:open-document", {

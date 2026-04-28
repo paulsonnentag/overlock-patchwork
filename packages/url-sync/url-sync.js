@@ -37,13 +37,31 @@ function hashToDocUrl() {
 }
 
 export default function (element) {
-  const account = element.closestView(accountSchema).value();
-  if (!account) {
-    console.warn("url-sync: no account ancestor; not syncing");
-    return;
-  }
-  const handle = account.handle;
+  const account$ = element.closestView(accountSchema);
 
+  // The account ancestor is stable in the current page layout, but
+  // re-binding via `change` keeps the view safe if a future host loads
+  // its account asynchronously or swaps the account doc at runtime.
+  let attached = null;
+  const apply = (account) => {
+    attached?.dispose();
+    attached = null;
+    if (!account) {
+      console.warn("url-sync: no account ancestor; not syncing");
+      return;
+    }
+    attached = bind(account.handle);
+  };
+  apply(account$.value());
+  account$.on("change", apply);
+
+  return () => {
+    account$.off("change", apply);
+    attached?.dispose();
+  };
+}
+
+function bind(handle) {
   const writeDocFromHash = () => {
     const url = hashToDocUrl();
     if (!url) return;
@@ -81,8 +99,10 @@ export default function (element) {
     writeHashFromDoc();
   }
 
-  return () => {
-    window.removeEventListener("hashchange", writeDocFromHash);
-    handle.off("change", writeHashFromDoc);
+  return {
+    dispose() {
+      window.removeEventListener("hashchange", writeDocFromHash);
+      handle.off("change", writeHashFromDoc);
+    },
   };
 }

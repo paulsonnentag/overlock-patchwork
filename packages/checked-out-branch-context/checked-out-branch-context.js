@@ -25,14 +25,20 @@ export default function (element) {
   while (element.firstChild) repoEl.appendChild(element.firstChild);
   element.appendChild(repoEl);
 
-  // Propagate `doc=` to view descendants. `childViews()` descends
-  // through non-view boundaries (the new `<automerge-repo>`, any
-  // wrapping `<header>`/`<div>`/etc.) and reports the direct view
-  // children. The `.value()` is a stamp-time snapshot — fine here
-  // because this provider only ever pushes `doc=` once per mount.
-  for (const child of element.childViews().value()) {
-    if (child.getAttribute("doc") !== docUrl) {
-      child.setAttribute("doc", docUrl);
+  // Subscribe to childViews(): the wrapped <automerge-repo> registers
+  // its descendants on a later microtask, and any future child mounts
+  // (Solid `For` over a reactive list, an HMR-driven re-mount, etc.)
+  // need the same `doc=` propagation. `propagate` is idempotent, so
+  // re-runs on the steady-state list are no-ops.
+  const children$ = element.childViews();
+  const propagate = (children) => {
+    for (const child of children) {
+      if (child.getAttribute("doc") !== docUrl) {
+        child.setAttribute("doc", docUrl);
+      }
     }
-  }
+  };
+  propagate(children$.value());
+  children$.on("change", propagate);
+  return () => children$.off("change", propagate);
 }

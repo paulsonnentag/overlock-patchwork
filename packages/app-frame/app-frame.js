@@ -4,10 +4,10 @@ import html from "https://esm.sh/solid-js@1.9.5/html";
 // ─── Sibling package URL ────────────────────────────────────────────────
 //
 // After `pnpm push packages` runs, copy `rootDirectoryUrl` from
-// `packages/root/.pushwork/snapshot.json` into the constant below and
+// `packages/root-2/.pushwork/snapshot.json` into the constant below and
 // re-run `pnpm push packages`. The URL stays stable across subsequent
 // pushes because pushwork preserves the package's `rootDirectoryUrl`.
-const ROOT_SRC = "automerge:3t8ivUxWittXbhnmz5ZLVCMPqxJC/component.json";
+const ROOT_SRC = "automerge:3t8ivUxWittXbhnmz5ZLVCMPqxJC/root-2.json";
 
 const STORAGE_KEY = "overlock-patchwork:app-frame:account-url";
 

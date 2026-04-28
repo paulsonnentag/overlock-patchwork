@@ -16,7 +16,7 @@ sequenceDiagram
   participant Plug as PluginRegistry
   participant MV as mountView
   participant Repo as Automerge Repo
-  participant Mod as component.js
+  participant Mod as &lt;name&gt;.js
 
   DOM->>MO: <patchwork-view src=X doc=Y?> inserted
   MO->>Reg: #handleElement(el)

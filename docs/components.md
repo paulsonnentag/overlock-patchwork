@@ -22,20 +22,27 @@ A package is two files (plus a `.pushwork` folder once published):
 
 ```
 packages/counter/
-  component.json
-  component.js
+  counter.json
+  counter.js
 ```
 
-`component.json`:
+The names are conventions, not requirements — the loader takes any
+path inside the folder doc and `manifest.importUrl` can point at any
+sibling file. We name both files after the package because every
+cross-package reference is an automerge URL of the form
+`automerge:<rootDirectoryUrl>/<file>`, and `…/counter.json` is a lot
+more useful than `…/component.json` when scanning a list of imports.
+
+`counter.json`:
 
 ```json
 {
   "name": "my-counter",
-  "importUrl": "./component.js"
+  "importUrl": "./counter.js"
 }
 ```
 
-`component.js` — bundleless, imports are resolved by the loader's
+`counter.js` — bundleless, imports are resolved by the loader's
 specifier rewriter (so `https://esm.sh/...` URLs work as-is, and
 relative paths walk the package's folder doc):
 
@@ -78,7 +85,7 @@ A view that doesn't need cleanup just returns nothing.
 <script src="./dist/patchwork.js"></script>
 
 <patchwork-view
-  src="automerge:3F8HWx9Hm8JDDrSA1GZP9fRGSXi9/component.json"
+  src="automerge:3F8HWx9Hm8JDDrSA1GZP9fRGSXi9/counter.json"
 ></patchwork-view>
 ```
 
@@ -94,8 +101,8 @@ registry's observer will pick it up and bootstrap it the same way.
 URLs are referenced directly — there's no attribute pass-through:
 
 ```js
-const COUNTER_SRC = "automerge:4NdChAJ19xmag7Ae5sBnShBUq95i/component.json";
-const CLOCK_SRC = "automerge:2Xa2AQP4fg2MfuKc47pn7RmT6ZDB/component.json";
+const COUNTER_SRC = "automerge:4NdChAJ19xmag7Ae5sBnShBUq95i/counter.json";
+const CLOCK_SRC = "automerge:2Xa2AQP4fg2MfuKc47pn7RmT6ZDB/clock.json";
 
 function App() {
   return html`

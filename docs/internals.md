@@ -276,7 +276,7 @@ src/view.ts               mountView / unmountView / isView:
   from `@inkandswitch/patchwork-filesystem`, and `pinUrl` for module
   resolution) call into `repo.repo` directly.
 - `import: (url) => Promise<unknown>` — used to fetch and evaluate
-  `component.js` as an ES module. Wired in `src/main.ts` to
+  the package's JS module as an ES module. Wired in `src/main.ts` to
   `importFromAutomerge(repo, url)` against the raw `Repo` so module
   resolution is never affected by branches.
 

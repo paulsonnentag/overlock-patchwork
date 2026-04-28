@@ -22,7 +22,7 @@ export type ViewRegistryOptions = {
  * (`module.default` is the mount fn) — that's the kind-specific layer
  * on top of the generic plugin runtime.
  *
- * `<patchwork-view src="automerge:.../component.json">` is the bootstrap
+ * `<patchwork-view src="automerge:.../<name>.json">` is the bootstrap
  * tag: the registry recognizes it, asks the plugin registry for the
  * referenced plugin, registers `plugin.name` as a view, replaces the
  * `<patchwork-view>` element with `<plugin.name>` (carrying over
