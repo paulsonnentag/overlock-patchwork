@@ -35,10 +35,13 @@ considering and may not ship.
   `component.js`. Pushed independently with `pushwork`, so each package
   has a stable `rootDirectoryUrl` that can be referenced from other
   components or pages.
-- **Manifest.** A JSON document with `{ name, url }`. `name` is the
-  custom tag name the component will mount under (must contain a
-  hyphen, per HTML custom-element rules). `url` is a `./`-relative
-  path to the JS module.
+- **Manifest.** A JSON document. The plugin registry only requires
+  `{ name, importUrl }`; arbitrary additional fields are passed
+  through opaquely. `name` is the custom tag name the component
+  will mount under (must contain a hyphen, per HTML custom-element
+  rules). `importUrl` is a `./`-relative path to the JS module;
+  the registry resolves it to an absolute automerge spec at load
+  time.
 - **Mount fn.** The default export of `component.js`. An async
   function that gets the host element and returns an optional
   cleanup — equivalent to
@@ -55,11 +58,18 @@ considering and may not ship.
   forkable wrapper around the underlying Automerge `Repo` (see
   [`documents.md`](./documents.md#branching) and
   [`src/branchable-repo.ts`](../src/branchable-repo.ts)).
-- **Component registry.** A per-root orchestrator owning a
-  `MutationObserver`, the bootstrap-load cache, and the name table.
-  Per-element instance state lives in `component.ts`'s
-  module-private `cleanups` map, not on the registry. See
+- **Plugin registry.** A spec → `LoadedPlugin` cache with one folder
+  subscription per spec driving HMR. Extends `EventEmitter`
+  (`eventemitter3`) and emits `loaded` / `updated` / `removed` /
+  `changed` events. The component registry consumes `load(spec)`
+  and `on("updated", ...)`; the plugin registry knows nothing about
+  the DOM or about the component-specific shape. See
   [`internals.md`](./internals.md).
+- **Component registry.** A per-root orchestrator owning a
+  `MutationObserver` and the name table. Delegates plugin loading +
+  HMR to the plugin registry. Per-element instance state lives in
+  `component.ts`'s module-private `cleanups` map, not on the registry.
+  See [`internals.md`](./internals.md).
 - **Race guarantee for in-flight mounts.** `mountComponent` reads
   `el.isConnected` after each `await`. If the element disconnected
   while the mount fn was in flight, the returned cleanup runs
@@ -71,11 +81,12 @@ considering and may not ship.
 
 | Path | Role |
 | --- | --- |
-| [`src/main.ts`](../src/main.ts) | bootstrap: base64-inline wasm init, Repo, `BranchableRepo` wrap, `ComponentRegistry` mount on `document.body` |
+| [`src/main.ts`](../src/main.ts) | bootstrap: base64-inline wasm init, Repo, `BranchableRepo` wrap, `PluginRegistry` + `ComponentRegistry` mount on `document.body` |
 | [`src/branchable-repo.ts`](../src/branchable-repo.ts) | `BranchableRepo` / `BranchedDocHandle`: forkable wrapper over `Repo` with copy-on-write per doc |
 | [`src/automerge-import.ts`](../src/automerge-import.ts) | resolve → parse → rewrite → blob URL → `import()` |
 | [`src/resolve.ts`](../src/resolve.ts) | folder walk + `package.json` `exports` lookup |
-| [`src/components/component-registry.ts`](../src/components/component-registry.ts) | DOM observer, manifest fetch, HMR, `swapTag`, microtask-batched `doc=` rebuild |
+| [`src/components/plugin-registry.ts`](../src/components/plugin-registry.ts) | `PluginRegistry`: spec → manifest + module load cache, per-spec folder subscription for HMR, `onUpdate` listeners |
+| [`src/components/component-registry.ts`](../src/components/component-registry.ts) | DOM observer, name table, `<patchwork-view>` bootstrap, `swapTag`, microtask-batched `doc=` rebuild, HMR rebuild on `pluginRegistry.onUpdate` |
 | [`src/components/patchwork-view-element.ts`](../src/components/patchwork-view-element.ts) | `PatchworkView` autonomous custom element: `src`/`doc` reflection, lazy property upgrade |
 | [`src/components/automerge-repo-element.ts`](../src/components/automerge-repo-element.ts) | `AutomergeRepoElement` scope marker: `.repo` property, `checkout`/`fork`/`reset` mutators |
 | [`src/components/component.ts`](../src/components/component.ts) | `mountComponent` / `unmountElement` / `isComponent`: per-element lifecycle, doc-context resolution, race guard via `isConnected`, `el.repo` stamping. Owns the `WeakMap<Element, cleanup \| null>`. |

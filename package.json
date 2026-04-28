@@ -16,6 +16,7 @@
     "@automerge/automerge-subduction": "0.7.0",
     "@inkandswitch/patchwork-filesystem": "0.0.4",
     "es-module-lexer": "^1.5.4",
+    "eventemitter3": "^5.0.4",
     "resolve.exports": "^2.0.3"
   },
   "devDependencies": {

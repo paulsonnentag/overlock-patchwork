@@ -2,7 +2,8 @@
 
 Mount/unmount sequence, hot module reload, and race handling for the
 component registry. Reads the source it documents:
-[`src/components/component-registry.ts`](../src/components/component-registry.ts)
+[`src/components/component-registry.ts`](../src/components/component-registry.ts),
+[`src/components/plugin-registry.ts`](../src/components/plugin-registry.ts),
 and [`src/components/component.ts`](../src/components/component.ts).
 
 ## Mount sequence
@@ -12,18 +13,24 @@ sequenceDiagram
   participant DOM
   participant MO as MutationObserver
   participant Reg as ComponentRegistry
+  participant Plug as PluginRegistry
   participant MC as mountComponent
   participant Repo as Automerge Repo
   participant Mod as component.js
 
   DOM->>MO: <patchwork-view src=X doc=Y?> inserted
   MO->>Reg: #handleElement(el)
-  Reg->>Reg: #ensureLoaded(X) (dedupes parallel calls)
-  Reg->>Repo: find folder + manifest doc
-  Repo-->>Reg: { name, url }
-  Reg->>Repo: pinSpec(url) -> AutomergeUrl with current heads
-  Reg->>Mod: automergeImport(pinned) -> default export
-  Mod-->>Reg: mountFn
+  Reg->>Plug: load(X) (dedupes parallel calls)
+  Plug->>Repo: find folder + manifest doc
+  Repo-->>Plug: { name, importUrl, ... }
+  Plug->>Plug: resolve importUrl to absolute spec
+  Plug->>Repo: pinSpec(absolute) -> AutomergeUrl with current heads
+  Plug->>Mod: automergeImport(pinned) -> module
+  Mod-->>Plug: module
+  Plug->>Plug: subscribe parent folder for HMR (first load only)
+  Plug-->>Reg: LoadedPlugin { name, importUrl, module, ... }
+  Plug->>Plug: emit "loaded" + "changed"
+  Reg->>Reg: extract mount fn from module.default
   Reg->>Reg: #registerComponent(name, mountFn) (collision -> throw)
   Reg->>DOM: swapTag <patchwork-view> -> <name>
   Reg->>MC: mountComponent(newEl, mountFn)
@@ -39,26 +46,45 @@ sequenceDiagram
   MC->>MC: install cleanup in cleanups map
 ```
 
+The component registry installs a single `pluginRegistry.on("updated", ...)`
+listener in its constructor so subsequent folder changes flow back
+to `#onPluginUpdate` (see below). The unsubscribe handle is held in
+`#unsubUpdated` and called by `destroy()`. One global listener
+fans out updates for every spec — there's no per-spec subscription.
+
 When `<name>` is later removed from the DOM, the observer fires for
 the removal and the registry calls `unmountElement(el)`, which runs
 the installed cleanup and forgets the element.
 
 ## Hot module reload
 
-The registry subscribes to the manifest's *parent folder* document on
-load. Pushwork propagates child writes upward, so any change inside
-the component's package — manifest, JS, anything — fires a `change`
-event on the parent folder handle.
+The plugin registry subscribes to the manifest's *parent folder*
+document on first load. Pushwork propagates child writes upward, so
+any change inside the component's package — manifest, JS, anything —
+fires a `change` event on the parent folder handle.
 
-On change, the registry:
+On change, the **plugin registry**:
 
 1. Re-fetches the manifest and re-imports the JS (with a heads-pinned
    spec so `automergeImport`'s blob cache produces a fresh module).
-2. No-ops if both `manifest.name` and the `mountFn` reference are
-   unchanged (defends against spurious change events).
-3. If `manifest.name` changed, drops the old name from the registry
-   and throws if the new name collides with an existing entry.
-4. For every element currently mounted under the previous tag name
+2. Splices the fresh `LoadedPlugin` into its cached record.
+3. Emits `updated(spec, previous, next)` and `changed()`.
+
+The **component registry**'s `#onPluginUpdate` handler then:
+
+1. No-ops if both `name` and the `module` reference are unchanged
+   (defends against spurious change events; the plugin registry
+   doesn't pre-dedup).
+2. Bails if the previous load wasn't component-shaped — there's
+   nothing in the name table to update.
+3. Tries to extract a fresh mount fn from `next.module.default`.
+   If extraction fails (the new module isn't component-shaped),
+   tears down every existing instance under the previous tag name
+   and removes those elements from the DOM. Otherwise:
+4. If `name` changed, drops the old name from the name table and
+   throws if the new name collides with an existing entry.
+5. Sets the new name → mountFn entry.
+6. For every element currently mounted under the previous tag name
    (found by walking the registry's root looking for the tag, filtered
    by `isComponent`): tears it down via `unmountElement` (runs the
    installed cleanup), creates a fresh element under the new tag name

@@ -2,11 +2,6 @@ import type { DocHandle } from "@automerge/automerge-repo/slim";
 
 import type { BranchableRepo } from "./branchable-repo";
 
-export type ComponentManifest = {
-  name: string;
-  url: string;
-};
-
 /**
  * The element a mount fn receives. A plain `HTMLElement` plus:
  *

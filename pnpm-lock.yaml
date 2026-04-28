@@ -26,6 +26,9 @@ importers:
       es-module-lexer:
         specifier: ^1.5.4
         version: 1.7.0
+      eventemitter3:
+        specifier: ^5.0.4
+        version: 5.0.4
       resolve.exports:
         specifier: ^2.0.3
         version: 2.0.3

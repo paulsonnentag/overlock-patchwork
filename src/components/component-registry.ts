@@ -1,16 +1,3 @@
-import {
-  isValidAutomergeUrl,
-  parseAutomergeUrl,
-  stringifyAutomergeUrl,
-  type AutomergeUrl,
-  type DocHandle,
-} from "@automerge/automerge-repo/slim";
-import {
-  findHandleInFolderHandle,
-  type FolderDoc,
-  type UnixFileEntry,
-} from "@inkandswitch/patchwork-filesystem";
-
 import { BranchableRepo } from "../branchable-repo";
 import { AutomergeRepoElement, AUTOMERGE_REPO_TAG } from "./automerge-repo-element";
 import { PATCHWORK_VIEW_TAG } from "./patchwork-view-element";
@@ -19,57 +6,51 @@ import {
   mountComponent,
   unmountElement,
 } from "./component";
-import type { ComponentManifest, MountFn } from "../types";
-
-type AutomergeImport = (spec: string) => Promise<unknown>;
-
-type LoadedComponent = {
-  spec: string;
-  parentFolderHandle: DocHandle<FolderDoc>;
-  manifest: ComponentManifest;
-  mountFn: MountFn;
-  unsubscribe: () => void;
-};
+import type { LoadedPlugin, PluginRegistry } from "./plugin-registry";
+import type { MountFn } from "../types";
 
 type Deps = {
   repo: BranchableRepo;
-  automergeImport: AutomergeImport;
+  pluginRegistry: PluginRegistry;
 };
 
 /**
- * One mount root. Owns the component-name table, the manifest-load cache,
- * and a `MutationObserver` over the root element. Per-element instance
- * state lives in `component.ts`'s module-private `cleanups` map; the
- * registry doesn't track Component instances itself — the element is the
- * identity carrier. Tears everything down on `destroy()`.
+ * One mount root. Owns the component-name table and a `MutationObserver`
+ * over the root element. Per-element instance state lives in
+ * `component.ts`'s module-private `cleanups` map; the registry doesn't
+ * track Component instances itself — the element is the identity carrier.
  *
- * `<patchwork-view src="automerge:.../component.json">` is the bootstrap tag:
- * the registry recognizes it, fetches the referenced manifest + JS module
- * from the automerge graph, registers the manifest's `name` as a component,
- * replaces the `<patchwork-view>` element with `<name>` (carrying over
- * non-`src` attributes and children), and calls `mountComponent` against
- * the new element.
+ * Plugin loading and HMR live in `PluginRegistry`. This class consumes
+ * its `load(spec)` API for bootstrap and subscribes to the `updated`
+ * event for HMR. It validates that loaded plugins are component-shaped
+ * (`module.default` is the mount fn) — that's the kind-specific layer
+ * on top of the generic plugin runtime.
  *
- * The registry also subscribes to the manifest's parent folder document.
- * Pushwork propagates child updates upward, so any edit under the folder
- * triggers a `change` event there; on change the registry re-fetches the
- * manifest + module and rebuilds every mounted instance under the (possibly
- * renamed) tag.
+ * `<patchwork-view src="automerge:.../component.json">` is the bootstrap
+ * tag: the registry recognizes it, asks the plugin registry for the
+ * referenced plugin, registers `plugin.name` as a component, replaces
+ * the `<patchwork-view>` element with `<plugin.name>` (carrying over
+ * non-`src` attributes and children), and calls `mountComponent`
+ * against the new element.
  *
- * No namespaces yet: a name collision throws.
+ * On HMR (delivered via `pluginRegistry.on("updated", ...)`) the
+ * registry updates the name table — handling rename + collision —
+ * and rebuilds every mounted instance under the previous tag name.
+ *
+ * No namespaces yet: a name collision throws. Tears everything down
+ * on `destroy()`.
  */
 export class ComponentRegistry {
   readonly #root: HTMLElement;
   readonly #repo: BranchableRepo;
-  readonly #automergeImport: AutomergeImport;
+  readonly #pluginRegistry: PluginRegistry;
 
   // name -> mount fn. Throws on collision.
   readonly #registry = new Map<string, MountFn>();
 
-  // spec -> loaded record. One entry per unique manifest spec; multiple
-  // <patchwork-view src="X"> share the same load and the same HMR sub.
-  readonly #loaded = new Map<string, LoadedComponent>();
-  readonly #loading = new Map<string, Promise<LoadedComponent>>();
+  // Single subscription to the plugin registry's `updated` event,
+  // installed in the constructor and torn down by `destroy()`.
+  readonly #unsubUpdated: () => void;
 
   // Tracks which <patchwork-view> elements have already been claimed by a
   // bootstrap, so a remove + re-add cycle on the same node doesn't kick off
@@ -91,7 +72,12 @@ export class ComponentRegistry {
   constructor(root: HTMLElement, deps: Deps) {
     this.#root = root;
     this.#repo = deps.repo;
-    this.#automergeImport = deps.automergeImport;
+    this.#pluginRegistry = deps.pluginRegistry;
+
+    this.#unsubUpdated = this.#pluginRegistry.on(
+      "updated",
+      (_spec, previous, next) => this.#onPluginUpdate(previous, next),
+    );
 
     this.#forEachElementIn(root, (el) => this.#handleElement(el));
 
@@ -138,9 +124,7 @@ export class ComponentRegistry {
     // element-keyed `cleanups` map is the source of truth; `unmountElement`
     // is a no-op on anything we walk that isn't a component.
     this.#forEachElementIn(this.#root, (el) => unmountElement(el));
-    for (const loaded of this.#loaded.values()) loaded.unsubscribe();
-    this.#loaded.clear();
-    this.#loading.clear();
+    this.#unsubUpdated();
     this.#registry.clear();
   }
 
@@ -220,20 +204,21 @@ export class ComponentRegistry {
 
   /**
    * The 4-step `<patchwork-view>` handoff:
-   *   1. fetch component.json via the repo
-   *   2. register manifest.name → mountFn (throw on collision)
-   *   3. replace <patchwork-view> with <manifest.name> (keep non-src attrs + children)
-   *   4. call `mountComponent` against the new element
+   *   1. ask the plugin registry to load the spec
+   *   2. extract the mount fn from the loaded module
+   *   3. register `plugin.name` → mountFn (throw on collision)
+   *   4. replace `<patchwork-view>` with `<plugin.name>` (keep non-src
+   *      attrs + children)
+   *   5. call `mountComponent` against the new element
    *
    * The mount fn's per-element doc context (read `doc=`, await
    * `repo.find(url)`, stamp `el.handle`) is resolved inside
-   * `mountComponent` itself before the user's mount fn runs. The folder
-   * subscription that drives HMR is set up inside `#load`.
+   * `mountComponent` itself before the user's mount fn runs.
    */
   async #bootstrap(viewEl: HTMLElement, spec: string): Promise<void> {
-    let loaded: LoadedComponent;
+    let loaded: LoadedPlugin;
     try {
-      loaded = await this.#ensureLoaded(spec);
+      loaded = await this.#pluginRegistry.load(spec);
     } catch (err) {
       console.error(`[overlock-patchwork] failed to load ${spec}:`, err);
       return;
@@ -241,10 +226,92 @@ export class ComponentRegistry {
 
     if (!viewEl.isConnected) return;
 
-    this.#registerComponent(loaded.manifest.name, loaded.mountFn);
+    let mountFn: MountFn;
+    try {
+      mountFn = extractMountFn(loaded);
+    } catch (err) {
+      console.error(`[overlock-patchwork] ${spec}:`, err);
+      return;
+    }
 
-    const newEl = swapTag(viewEl, loaded.manifest.name);
-    mountComponent(newEl, loaded.mountFn);
+    this.#registerComponent(loaded.name, mountFn);
+
+    const newEl = swapTag(viewEl, loaded.name);
+    mountComponent(newEl, mountFn);
+  }
+
+  /**
+   * HMR delivered by the plugin registry's `updated` event. Skips
+   * no-op updates (same name + same module reference — defensive
+   * against spurious change events; the plugin registry doesn't
+   * pre-dedup), checks for tag-name collisions on rename, swaps the
+   * name table, and rebuilds every element currently mounted under
+   * the previous tag name (found by walking the registry's root
+   * looking for the tag, filtered by `isComponent`).
+   *
+   * Plugins whose module isn't component-shaped (no default-export
+   * function) are ignored: this registry only consumes the component
+   * kind. Other plugin kinds will surface their own consumers.
+   *
+   * Element identity is intentionally lost on reload — see
+   * [`docs/lifecycle.md`](../../docs/lifecycle.md).
+   */
+  #onPluginUpdate(previous: LoadedPlugin, next: LoadedPlugin): void {
+    if (previous.name === next.name && previous.module === next.module) {
+      return;
+    }
+    // Only consume component-shaped plugins. If the previous load
+    // wasn't a component, there's nothing in our name table to update;
+    // if the new load isn't a component, we drop the old entry.
+    if (!isComponentPlugin(previous)) return;
+
+    let nextMountFn: MountFn | null = null;
+    if (isComponentPlugin(next)) {
+      try {
+        nextMountFn = extractMountFn(next);
+      } catch (err) {
+        console.error(
+          `[overlock-patchwork] HMR for ${next.importUrl}:`,
+          err,
+        );
+        nextMountFn = null;
+      }
+    }
+
+    if (
+      nextMountFn !== null &&
+      previous.name !== next.name &&
+      this.#registry.has(next.name)
+    ) {
+      throw new Error(
+        `[overlock-patchwork] HMR collision: "${next.name}" is already registered`,
+      );
+    }
+
+    const previousName = previous.name;
+    const instances = this.#findMountedElements(this.#root, previousName);
+
+    if (nextMountFn === null || next.name !== previousName) {
+      this.#registry.delete(previousName);
+    }
+    if (nextMountFn !== null) {
+      this.#registry.set(next.name, nextMountFn);
+    }
+
+    if (nextMountFn === null) {
+      // Tear down without remount: the new module isn't component-shaped,
+      // so nothing to mount under the new name. Run cleanup on existing
+      // instances and drop them.
+      for (const el of instances) {
+        unmountElement(el);
+        el.remove();
+      }
+      return;
+    }
+
+    for (const el of instances) {
+      this.#rebuildInstance(el, next.name, nextMountFn);
+    }
   }
 
   #registerComponent(name: string, mountFn: MountFn): void {
@@ -255,155 +322,6 @@ export class ComponentRegistry {
       );
     }
     this.#registry.set(name, mountFn);
-  }
-
-  #ensureLoaded(spec: string): Promise<LoadedComponent> {
-    const existing = this.#loaded.get(spec);
-    if (existing) return Promise.resolve(existing);
-    const inFlight = this.#loading.get(spec);
-    if (inFlight) return inFlight;
-    const promise = this.#load(spec)
-      .then((loaded) => {
-        this.#loaded.set(spec, loaded);
-        this.#loading.delete(spec);
-        return loaded;
-      })
-      .catch((err) => {
-        this.#loading.delete(spec);
-        throw err;
-      });
-    this.#loading.set(spec, promise);
-    return promise;
-  }
-
-  async #load(spec: string): Promise<LoadedComponent> {
-    const { rootUrl, path } = parseSpec(spec);
-    const parts = splitPath(path);
-    if (parts.length === 0) {
-      throw new Error(
-        `[overlock-patchwork] manifest spec must reference a file: ${spec}`,
-      );
-    }
-
-    const rootHandle = await this.#repo.find<FolderDoc>(rootUrl);
-    const parentParts = parts.slice(0, -1);
-    const manifestName = parts[parts.length - 1];
-    const parentFolderHandle =
-      parentParts.length === 0
-        ? rootHandle
-        : ((await findHandleInFolderHandle<FolderDoc>(
-            // findHandleInFolderHandle expects a raw `Repo`; module
-            // resolution should never see branched docs.
-            this.#repo.repo,
-            rootHandle,
-            parentParts,
-          )) as DocHandle<FolderDoc> | undefined);
-    if (!parentFolderHandle) {
-      throw new Error(
-        `[overlock-patchwork] could not resolve parent folder for ${spec}`,
-      );
-    }
-
-    const { manifest, mountFn } = await this.#fetchManifestAndModule(
-      spec,
-      parentFolderHandle,
-      manifestName,
-    );
-
-    const onChange = (): void => {
-      void this.#hmrReload(spec);
-    };
-    parentFolderHandle.on("change", onChange);
-    const unsubscribe = (): void => {
-      parentFolderHandle.off("change", onChange);
-    };
-
-    return { spec, parentFolderHandle, manifest, mountFn, unsubscribe };
-  }
-
-  /**
-   * HMR: the manifest's parent folder doc changed. Re-fetch manifest +
-   * module, then for every element currently mounted under the previous
-   * tag name: tear it down (run cleanup), recreate a fresh element with
-   * the new tag name, and mount the new mount fn against it.
-   *
-   * If the manifest's `name` changed, drop the old name from the registry
-   * and check the new one for collision.
-   */
-  async #hmrReload(spec: string): Promise<void> {
-    const old = this.#loaded.get(spec);
-    if (!old) return;
-
-    const { path } = parseSpec(spec);
-    const parts = splitPath(path);
-    const manifestName = parts[parts.length - 1];
-
-    const fresh = await this.#fetchManifestAndModule(
-      spec,
-      old.parentFolderHandle,
-      manifestName,
-    );
-
-    // No-op if the source is byte-identical (same mount fn would be a
-    // pinned-cache hit — unlikely after a folder change — but defending
-    // against spurious change events is cheap).
-    if (
-      fresh.manifest.name === old.manifest.name &&
-      fresh.mountFn === old.mountFn
-    ) {
-      return;
-    }
-
-    if (
-      fresh.manifest.name !== old.manifest.name &&
-      this.#registry.has(fresh.manifest.name)
-    ) {
-      throw new Error(
-        `[overlock-patchwork] HMR collision: ${spec} renamed to "${fresh.manifest.name}", which is already registered`,
-      );
-    }
-
-    const previousName = old.manifest.name;
-    const instances = this.#findMountedElements(this.#root, previousName);
-
-    if (fresh.manifest.name !== previousName) {
-      this.#registry.delete(previousName);
-    }
-    this.#registry.set(fresh.manifest.name, fresh.mountFn);
-    old.manifest = fresh.manifest;
-    old.mountFn = fresh.mountFn;
-
-    for (const el of instances) {
-      this.#rebuildInstance(el, fresh.manifest.name, fresh.mountFn);
-    }
-  }
-
-  async #fetchManifestAndModule(
-    spec: string,
-    parentFolderHandle: DocHandle<FolderDoc>,
-    manifestName: string,
-  ): Promise<{ manifest: ComponentManifest; mountFn: MountFn }> {
-    const manifestHandle = await findHandleInFolderHandle<UnixFileEntry>(
-      // findHandleInFolderHandle expects a raw `Repo`; module resolution
-      // should never see branched docs.
-      this.#repo.repo,
-      parentFolderHandle,
-      [manifestName],
-    );
-    if (!manifestHandle) {
-      throw new Error(`[overlock-patchwork] manifest not found: ${spec}`);
-    }
-    const manifest = readManifest(
-      manifestHandle as DocHandle<UnixFileEntry>,
-      spec,
-    );
-
-    const moduleSpec = resolveModuleSpec(spec, manifest.url);
-    const pinnedModuleSpec = await pinSpec(this.#repo, moduleSpec);
-    const mod = await this.#automergeImport(pinnedModuleSpec);
-    const mountFn = extractMountFn(mod, moduleSpec);
-
-    return { manifest, mountFn };
   }
 
   /**
@@ -515,114 +433,31 @@ function swapTag(oldEl: HTMLElement, newTag: string): HTMLElement {
   return newEl;
 }
 
-function readManifest(
-  handle: DocHandle<UnixFileEntry>,
-  spec: string,
-): ComponentManifest {
-  const doc = handle.doc();
-  const content = doc?.content;
-  if (content == null) {
-    throw new Error(`[overlock-patchwork] manifest has no content: ${spec}`);
-  }
-  const text =
-    typeof content === "string"
-      ? content
-      : new TextDecoder().decode(content as Uint8Array);
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch (err) {
-    throw new Error(
-      `[overlock-patchwork] invalid JSON in manifest ${spec}: ${(err as Error).message}`,
-    );
-  }
-  if (
-    typeof parsed !== "object" ||
-    parsed === null ||
-    typeof (parsed as { name?: unknown }).name !== "string" ||
-    typeof (parsed as { url?: unknown }).url !== "string"
-  ) {
-    throw new Error(
-      `[overlock-patchwork] manifest missing "name" or "url": ${spec}`,
-    );
-  }
-  const manifest = parsed as ComponentManifest;
-  if (!manifest.name.includes("-")) {
-    throw new Error(
-      `[overlock-patchwork] manifest name must contain a hyphen: "${manifest.name}"`,
-    );
-  }
-  return manifest;
+/**
+ * A plugin is component-shaped if its module default-exports a
+ * function. Other plugin kinds (datatypes, tools, etc. — when those
+ * land) will have different shape requirements; this registry only
+ * consumes the component kind.
+ */
+function isComponentPlugin(plugin: LoadedPlugin): boolean {
+  const mod = plugin.module;
+  return (
+    typeof mod === "object" &&
+    mod !== null &&
+    typeof (mod as { default?: unknown }).default === "function"
+  );
 }
 
-function extractMountFn(mod: unknown, jsUrl: string): MountFn {
+function extractMountFn(plugin: LoadedPlugin): MountFn {
+  const mod = plugin.module;
   if (
     typeof mod !== "object" ||
     mod === null ||
     typeof (mod as { default?: unknown }).default !== "function"
   ) {
     throw new Error(
-      `[overlock-patchwork] ${jsUrl} does not default-export a function`,
+      `${plugin.importUrl} does not default-export a function`,
     );
   }
   return (mod as { default: MountFn }).default;
-}
-
-function parseSpec(spec: string): { rootUrl: AutomergeUrl; path: string } {
-  if (!spec.startsWith("automerge:")) {
-    throw new Error(
-      `[overlock-patchwork] expected an automerge: spec, got "${spec}"`,
-    );
-  }
-  const slash = spec.indexOf("/", "automerge:".length);
-  const urlPart = (slash === -1 ? spec : spec.slice(0, slash)) as AutomergeUrl;
-  const path = slash === -1 ? "" : spec.slice(slash + 1);
-  if (!isValidAutomergeUrl(urlPart)) {
-    throw new Error(
-      `[overlock-patchwork] not a valid automerge URL: "${urlPart}"`,
-    );
-  }
-  return { rootUrl: urlPart, path };
-}
-
-function splitPath(p: string): string[] {
-  return p
-    .replace(/^\.\//, "")
-    .split("/")
-    .filter(Boolean);
-}
-
-/**
- * Resolve a `./component.js`-style sibling reference against the manifest's
- * own spec. Only `./` is supported for now — `../` and bare specifiers are
- * rejected so HMR's pinning semantics stay obvious.
- */
-function resolveModuleSpec(manifestSpec: string, relativeUrl: string): string {
-  if (!relativeUrl.startsWith("./")) {
-    throw new Error(
-      `[overlock-patchwork] manifest "url" must start with "./" (got "${relativeUrl}")`,
-    );
-  }
-  const lastSlash = manifestSpec.lastIndexOf("/");
-  if (lastSlash === -1 || lastSlash <= "automerge:".length) {
-    throw new Error(
-      `[overlock-patchwork] cannot resolve "${relativeUrl}" against root spec`,
-    );
-  }
-  const dir = manifestSpec.slice(0, lastSlash);
-  return `${dir}/${relativeUrl.slice(2)}`;
-}
-
-/**
- * Pre-pin the spec's root url to current heads so `automergeImport`'s blob
- * cache doesn't serve stale content across HMR reloads. Each pinned URL is
- * unique per heads, so each HMR fetch produces a fresh module.
- */
-async function pinSpec(repo: BranchableRepo, spec: string): Promise<string> {
-  const { rootUrl, path } = parseSpec(spec);
-  const { documentId, heads } = parseAutomergeUrl(rootUrl);
-  if (heads && heads.length) return spec;
-  const handle = await repo.find(rootUrl);
-  const pinned = stringifyAutomergeUrl({ documentId, heads: handle.heads() });
-  return path ? `${pinned}/${path}` : pinned;
 }

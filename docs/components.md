@@ -31,7 +31,7 @@ packages/counter/
 ```json
 {
   "name": "my-counter",
-  "url": "./component.js"
+  "importUrl": "./component.js"
 }
 ```
 

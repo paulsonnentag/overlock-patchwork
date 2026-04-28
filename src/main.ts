@@ -15,7 +15,7 @@ import { IndexedDBStorageAdapter } from "@automerge/automerge-repo-storage-index
 
 import { automergeImport } from "./automerge-import";
 import { BranchableRepo } from "./branchable-repo";
-import { ComponentRegistry } from "./components";
+import { ComponentRegistry, PluginRegistry } from "./components";
 
 const SUBDUCTION_ENDPOINT = "wss://subduction.sync.inkandswitch.com";
 
@@ -39,9 +39,14 @@ async function initPatchwork () {
 
   window.repo = BranchableRepo.wrap(repo);
 
-  new ComponentRegistry(document.body, {
+  const pluginRegistry = new PluginRegistry({
     repo: window.repo,
     automergeImport: (url) => automergeImport(repo, url),
+  });
+
+  new ComponentRegistry(document.body, {
+    repo: window.repo,
+    pluginRegistry,
   });
 }
 
