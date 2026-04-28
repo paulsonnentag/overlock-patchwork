@@ -1,4 +1,4 @@
 {
   "name": "branch-picker",
-  "url": "./component.js"
+  "importUrl": "./component.js"
 }

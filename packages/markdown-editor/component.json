@@ -1,4 +1,4 @@
 {
   "name": "markdown-editor",
-  "url": "./component.js"
+  "importUrl": "./component.js"
 }

@@ -7,10 +7,10 @@ The registry watches the DOM, fetches the referenced sources, and
 mounts them — including hot reloads when the underlying Automerge
 folder changes.
 
-This builds on top of [the loader](./loader.md): `automergeImport(spec)`
-resolves an `automerge:` URL to an executable ES module via blob URLs.
-The component system layers a manifest format and a DOM lifecycle on
-top.
+This builds on top of [the loader](./loader.md):
+`importFromAutomerge(repo, url)` resolves an `automerge:` URL to an
+executable ES module via blob URLs. The component system layers a
+manifest format and a DOM lifecycle on top.
 
 For doc binding (`<automerge-repo>`, `doc=`, `el.handle`) see
 [`documents.md`](./documents.md). For mount/unmount semantics, HMR,
@@ -35,7 +35,7 @@ packages/counter/
 }
 ```
 
-`component.js` — bundleless, imports are resolved by `automergeImport`'s
+`component.js` — bundleless, imports are resolved by the loader's
 specifier rewriter (so `https://esm.sh/...` URLs work as-is, and
 relative paths walk the package's folder doc):
 
@@ -84,7 +84,7 @@ A component that doesn't need cleanup just returns nothing.
 
 `createComponentRegistry(root)` is the factory exposed by
 [`src/main.ts`](../src/main.ts); it closes over the bootstrapped `repo`
-and `automergeImport` and only requires you to pick a root element
+and `importFromAutomerge` and only requires you to pick a root element
 (almost always `document.body`).
 
 ## Composition: components inside components

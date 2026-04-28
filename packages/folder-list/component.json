@@ -1,4 +1,4 @@
 {
   "name": "folder-list",
-  "url": "./component.js"
+  "importUrl": "./component.js"
 }

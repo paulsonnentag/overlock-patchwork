@@ -1,10 +1,10 @@
 # Loader
 
-`automergeImport(spec)` is the bottom layer of overlock-patchwork. It
-resolves an `automerge:` URL into an executable ES module by walking
-the folder document in the in-page `Repo`, rewriting every import in
-the source to a sibling blob URL, and dynamically importing the
-rewritten module.
+`importFromAutomerge(repo, url)` is the bottom layer of
+overlock-patchwork. It resolves an `automerge:` URL into an executable
+ES module by walking the folder document in the in-page `Repo`,
+rewriting every import in the source to a sibling blob URL, and
+dynamically importing the rewritten module.
 
 This is the in-page equivalent of patchwork's service-worker loader
 (`patchwork-next/core/bootloader/src/service-worker.ts`): instead of
@@ -12,26 +12,38 @@ intercepting `fetch` and returning real HTTP responses, the loader
 stays inside the page so the bundle works under `file://`.
 
 Implementation lives in
-[`src/automerge-import.ts`](../src/automerge-import.ts), with the wasm
-bootstrap inlined at the top of [`src/main.ts`](../src/main.ts).
+[`src/loader.ts`](../src/loader.ts), with the wasm bootstrap inlined at
+the top of [`src/main.ts`](../src/main.ts).
 
 ## API
 
-`automergeImport(spec) -> Promise<Module>` is the internal loader used
-by `ComponentRegistry` to resolve and execute component modules. It is
-not exposed on `window`.
+`importFromAutomerge(repo, url) -> Promise<Module>` is the loader entry
+point used by `PluginRegistry` (via the `import` option) to resolve and
+execute component modules. It is not exposed on `window`.
 
-A `spec` is `automerge:<documentId>[?heads=...][/<path>]`. The loader
+A `url` is `automerge:<documentId>[?heads=...][/<path>]`. The loader
 splits at the first `/` after the `automerge:` prefix:
 
-- `automerge:abc...` → root URL, path `.`
+- `automerge:abc...` → root URL, path `""`
 - `automerge:abc.../greet.js` → root URL, path `greet.js`
 
 `path` falls back to `package.json` `exports` (and then `main`) the
 same way patchwork's service worker does
 (`core/bootloader/src/service-worker.ts` lines 249–315). The fallback
 is implemented in `resolveFileHandle` in
-[`src/automerge-import.ts`](../src/automerge-import.ts).
+[`src/loader.ts`](../src/loader.ts).
+
+The loader also exports a few small URL helpers reused by
+`PluginRegistry`:
+
+- `parseAutomergeUrlWithPath(url) -> { rootUrl, path }` — split a URL
+  with optional path into its document URL and path component.
+- `pinUrl(repo, url) -> Promise<string>` — pin the URL's root to the
+  document's current heads (no-op if already pinned). Uncached, so
+  callers (notably `PluginRegistry`'s HMR path) see fresh heads on
+  every call.
+- `splitPath(p) -> string[]` — split a slash-delimited path into
+  segments, dropping empties and the leading `./`.
 
 ## Specifier rewriting
 
@@ -52,23 +64,29 @@ stay valid.
 
 ## Heads pinning
 
-If the spec's root URL carries no heads, the loader pins it to the
-document's current heads on first sight (`pinHeads` in
-[`src/automerge-import.ts`](../src/automerge-import.ts)). The pinned
-URL is cached in `pinnedRootCache`, and the resulting blob URL is
-cached in `blobUrlCache` keyed by `(rootUrl, path)`.
+If the URL's root carries no heads, the loader pins it to the
+document's current heads (`pinUrl` in
+[`src/loader.ts`](../src/loader.ts)). Pinning is uncached: each call
+queries `handle.heads()` afresh. The resulting blob URL is cached in
+`blobUrlCache` keyed by `(rootUrl, path)`, where `rootUrl` already
+carries heads.
 
-That keeps the cache stable across calls — two `automergeImport(spec)`
-calls with the same effective heads return the same blob URL — and
-lets the component registry produce a *fresh* module on HMR by
-re-pinning to the new heads (see [`lifecycle.md`](./lifecycle.md)).
+That keeps the cache stable across calls with the same effective heads
+— two `importFromAutomerge` calls return the same blob URL — and lets
+`PluginRegistry`'s HMR path produce a *fresh* module by re-pinning to
+the new heads (see [`lifecycle.md`](./lifecycle.md)).
+
+`blobUrlCache` is module-scoped and not keyed by `Repo`. The bootstrap
+in [`src/main.ts`](../src/main.ts) creates exactly one `Repo` per
+page, so this is fine. If multiple isolated `Repo`s ever share a page,
+the cache should be keyed by `Repo` via a `WeakMap`.
 
 ## Cycles
 
 ESM cycles aren't supported and throw a clear error on detection. Blob
 URLs can't be allocated before their content exists, so a cycle would
-deadlock the rewriter. The loader tracks an `inFlight` set per
-`materialize` call and throws on re-entry:
+deadlock the rewriter. The loader tracks an `inFlight` set per top-level
+`importFromAutomerge` call and throws on re-entry:
 
 ```
 overlock: import cycle detected at automerge:.../foo.js. Cycles are

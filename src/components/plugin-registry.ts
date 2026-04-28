@@ -1,11 +1,5 @@
 import EventEmitter from "eventemitter3";
-import {
-  isValidAutomergeUrl,
-  parseAutomergeUrl,
-  stringifyAutomergeUrl,
-  type AutomergeUrl,
-  type DocHandle,
-} from "@automerge/automerge-repo/slim";
+import { type DocHandle } from "@automerge/automerge-repo/slim";
 import {
   findHandleInFolderHandle,
   type FolderDoc,
@@ -13,8 +7,9 @@ import {
 } from "@inkandswitch/patchwork-filesystem";
 
 import { BranchableRepo } from "../branchable-repo";
+import { parseAutomergeUrlWithPath, pinUrl, splitPath } from "../loader";
 
-type AutomergeImport = (url: string) => Promise<unknown>;
+type Loader = (url: string) => Promise<unknown>;
 
 /**
  * A loaded plugin: every field declared on the source manifest, with
@@ -25,7 +20,8 @@ type AutomergeImport = (url: string) => Promise<unknown>;
  * else (including `module`, which it sets itself) is carried through
  * opaquely so plugin kinds can layer their own required fields on
  * top via consumer-side narrowing. `module` is the raw return of
- * `automergeImport(...)`; each plugin kind validates its own shape.
+ * the injected `import` function; each plugin kind validates its own
+ * shape.
  */
 export type LoadedPlugin = {
   name: string;
@@ -63,9 +59,9 @@ export type PluginRegistryEvents = {
   changed: () => void;
 };
 
-type Deps = {
+export type PluginRegistryOptions = {
   repo: BranchableRepo;
-  automergeImport: AutomergeImport;
+  import: Loader;
 };
 
 type PluginRecord = {
@@ -95,7 +91,7 @@ type PluginRecord = {
  */
 export class PluginRegistry extends EventEmitter<PluginRegistryEvents> {
   readonly #repo: BranchableRepo;
-  readonly #automergeImport: AutomergeImport;
+  readonly #import: Loader;
 
   // Cached records, keyed by plugin URL. One entry per unique URL.
   readonly #loaded = new Map<string, PluginRecord>();
@@ -103,10 +99,10 @@ export class PluginRegistry extends EventEmitter<PluginRegistryEvents> {
 
   #destroyed = false;
 
-  constructor(deps: Deps) {
+  constructor(options: PluginRegistryOptions) {
     super();
-    this.#repo = deps.repo;
-    this.#automergeImport = deps.automergeImport;
+    this.#repo = options.repo;
+    this.#import = options.import;
   }
 
   /**
@@ -174,7 +170,7 @@ export class PluginRegistry extends EventEmitter<PluginRegistryEvents> {
   }
 
   async #loadFresh(url: string): Promise<PluginRecord> {
-    const { rootUrl, path } = parsePluginUrl(url);
+    const { rootUrl, path } = parseAutomergeUrlWithPath(url);
     const parts = splitPath(path);
     if (parts.length === 0) {
       throw new Error(
@@ -224,7 +220,7 @@ export class PluginRegistry extends EventEmitter<PluginRegistryEvents> {
     const old = this.#loaded.get(url);
     if (!old) return;
 
-    const { path } = parsePluginUrl(url);
+    const { path } = parseAutomergeUrlWithPath(url);
     const parts = splitPath(path);
     const manifestName = parts[parts.length - 1];
 
@@ -253,8 +249,8 @@ export class PluginRegistry extends EventEmitter<PluginRegistryEvents> {
    * Fetch the manifest doc, parse it (only `name` and `importUrl` are
    * required; other fields are preserved opaquely), resolve `importUrl`
    * against the manifest's URL to an absolute automerge URL, pin the
-   * absolute URL to current heads for `automergeImport`'s blob cache,
-   * and fetch the module.
+   * absolute URL to current heads so the loader's blob cache produces
+   * a fresh module on HMR, and fetch the module.
    */
   async #fetchPlugin(
     url: string,
@@ -277,8 +273,8 @@ export class PluginRegistry extends EventEmitter<PluginRegistryEvents> {
     );
 
     const absoluteImportUrl = resolveImportUrl(url, manifest.importUrl);
-    const pinnedImportUrl = await pinPluginUrl(this.#repo, absoluteImportUrl);
-    const module = await this.#automergeImport(pinnedImportUrl);
+    const pinnedImportUrl = await pinUrl(this.#repo.repo, absoluteImportUrl);
+    const module = await this.#import(pinnedImportUrl);
 
     return {
       ...manifest,
@@ -328,34 +324,6 @@ function readManifest(
   return parsed as RawManifest;
 }
 
-function parsePluginUrl(
-  pluginUrl: string,
-): { rootUrl: AutomergeUrl; path: string } {
-  if (!pluginUrl.startsWith("automerge:")) {
-    throw new Error(
-      `[overlock-patchwork] expected an automerge: URL, got "${pluginUrl}"`,
-    );
-  }
-  const slash = pluginUrl.indexOf("/", "automerge:".length);
-  const urlPart = (
-    slash === -1 ? pluginUrl : pluginUrl.slice(0, slash)
-  ) as AutomergeUrl;
-  const path = slash === -1 ? "" : pluginUrl.slice(slash + 1);
-  if (!isValidAutomergeUrl(urlPart)) {
-    throw new Error(
-      `[overlock-patchwork] not a valid automerge URL: "${urlPart}"`,
-    );
-  }
-  return { rootUrl: urlPart, path };
-}
-
-function splitPath(p: string): string[] {
-  return p
-    .replace(/^\.\//, "")
-    .split("/")
-    .filter(Boolean);
-}
-
 /**
  * Resolve a manifest's `importUrl` (currently restricted to a `./`
  * sibling reference) against the manifest's own URL. Only `./` is
@@ -380,21 +348,4 @@ function resolveImportUrl(manifestUrl: string, importUrl: string): string {
   }
   const dir = manifestUrl.slice(0, lastSlash);
   return `${dir}/${importUrl.slice(2)}`;
-}
-
-/**
- * Pre-pin the URL's root to current heads so `automergeImport`'s blob
- * cache doesn't serve stale content across HMR reloads. Each pinned URL is
- * unique per heads, so each HMR fetch produces a fresh module.
- */
-async function pinPluginUrl(
-  repo: BranchableRepo,
-  pluginUrl: string,
-): Promise<string> {
-  const { rootUrl, path } = parsePluginUrl(pluginUrl);
-  const { documentId, heads } = parseAutomergeUrl(rootUrl);
-  if (heads && heads.length) return pluginUrl;
-  const handle = await repo.find(rootUrl);
-  const pinned = stringifyAutomergeUrl({ documentId, heads: handle.heads() });
-  return path ? `${pinned}/${path}` : pinned;
 }

@@ -1,4 +1,4 @@
 {
   "name": "new-markdown-button",
-  "url": "./component.js"
+  "importUrl": "./component.js"
 }

@@ -117,6 +117,11 @@ type LoadedPlugin = {
   module: unknown;    // raw imported JS module
   [key: string]: unknown;  // arbitrary manifest fields preserved
 };
+
+type PluginRegistryOptions = {
+  repo: BranchableRepo;
+  import: (url: string) => Promise<unknown>;
+};
 ```
 
 The manifest JSON only has to declare `name` and `importUrl`; any
@@ -182,6 +187,9 @@ either way.
 
 ```
 src/types.ts              ComponentManifest, MountFn, ComponentRoot
+src/loader.ts             importFromAutomerge entry point, URL helpers
+                          (parseAutomergeUrlWithPath, pinUrl, splitPath),
+                          page-global blob cache. No DOM dependency.
 src/subscribable.ts       Subscribable<T> interface +
                           BasicSubscribable<T> default impl;
                           framework reactive primitive
@@ -212,19 +220,18 @@ src/components/
 
 `PluginRegistry` depends on the loader half of overlock for two things:
 
-- `repo: BranchableRepo` — used to resolve folders, manifests, and read
-  `.heads()` for pinning. The wrapper passes through to the underlying
-  `Repo` while unbranched, so plugin loading doesn't care about the
-  branch state. Operations that must never be branched (e.g.
-  `findHandleInFolderHandle` from `@inkandswitch/patchwork-filesystem`)
-  call into `repo.repo` directly.
-- `automergeImport: (spec) => Promise<unknown>` — used to fetch and
-  evaluate `component.js` as an ES module. Always runs against the raw
-  `Repo` so module resolution is never affected by branches.
+- `repo: BranchableRepo` — used to resolve folders and manifests.
+  Operations that must never be branched (e.g. `findHandleInFolderHandle`
+  from `@inkandswitch/patchwork-filesystem`, and `pinUrl` for module
+  resolution) call into `repo.repo` directly.
+- `import: (url) => Promise<unknown>` — used to fetch and evaluate
+  `component.js` as an ES module. Wired in `src/main.ts` to
+  `importFromAutomerge(repo, url)` against the raw `Repo` so module
+  resolution is never affected by branches.
 
 `ComponentRegistry` depends on `PluginRegistry` (for plugin loading +
 HMR) and `BranchableRepo` (for the `<automerge-repo>` marker fallback).
-It does *not* see `automergeImport` directly.
+It does *not* see the loader directly.
 
 Both registries are wired up in [`src/main.ts`](../src/main.ts).
 

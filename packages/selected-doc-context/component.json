@@ -1,4 +1,4 @@
 {
   "name": "selected-doc-context",
-  "url": "./component.js"
+  "importUrl": "./component.js"
 }

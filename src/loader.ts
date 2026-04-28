@@ -1,9 +1,16 @@
-// Recursively resolve an automerge URL + path into a blob URL whose source has
-// every static `import` / dynamic `import("...")` / `export ... from` rewritten
-// to point at sibling blob URLs. Equivalent role to the SW's
-// `resolveAutomergeUrl` (patchwork-next/core/bootloader/src/service-worker.ts
-// lines 225-340) plus the browser's normal ESM resolution, but staying inside
-// the page so it works under file://.
+// In-page ES-module loader: resolves an automerge URL + path into a
+// blob URL whose source has every static `import` / dynamic
+// `import("...")` / `export ... from` rewritten to point at sibling
+// blob URLs. Equivalent role to the SW's `resolveAutomergeUrl`
+// (patchwork-next/core/bootloader/src/service-worker.ts lines 225-340)
+// plus the browser's normal ESM resolution, but staying inside the
+// page so it works under file://.
+//
+// State here is module-scoped — `blobUrlCache` is page-global and the
+// cache key doesn't include a `Repo` identity. We assume one `Repo`
+// per page, which is true for the bootstrap in `main.ts`. If we ever
+// support multiple isolated repos in the same page, key the cache by
+// `Repo` via a `WeakMap`.
 
 import {
   isValidAutomergeUrl,
@@ -20,36 +27,67 @@ import {
   type FolderDoc,
   type UnixFileEntry,
 } from "@inkandswitch/patchwork-filesystem";
-import { init as lexerInit, parse as lexerParse } from "es-module-lexer";
+import * as Lexer from "es-module-lexer";
 
 type CacheKey = string;
 const blobUrlCache = new Map<CacheKey, Promise<string>>();
-const pinnedRootCache = new Map<AutomergeUrl, Promise<AutomergeUrl>>();
 
-export async function automergeImport(
+export async function importFromAutomerge(
   repo: Repo,
-  spec: string,
+  url: string,
 ): Promise<unknown> {
-  await lexerInit;
-  const { url, path } = parseAutomergeSpec(spec);
-  const pinned = await pinHeads(repo, url);
-  const blobUrl = await materialize(repo, pinned, normalizePath(path));
+  await Lexer.init;
+  const pinned = await pinUrl(repo, url);
+  const { rootUrl, path } = parseAutomergeUrlWithPath(pinned);
+  const blobUrl = await materialize(repo, rootUrl, normalizePath(path));
   return import(/* @vite-ignore */ blobUrl);
 }
 
-function parseAutomergeSpec(spec: string): { url: AutomergeUrl; path: string } {
-  if (!spec.startsWith("automerge:")) {
-    throw new Error(
-      `overlock: expected an automerge: spec, got "${spec}"`,
-    );
+/**
+ * Split an `automerge:<docId>[?heads=...][/<path>]` URL into its
+ * document URL and its path inside the folder doc. `path` is `""` if
+ * the URL has no path component.
+ */
+export function parseAutomergeUrlWithPath(
+  url: string,
+): { rootUrl: AutomergeUrl; path: string } {
+  if (!url.startsWith("automerge:")) {
+    throw new Error(`overlock: expected an automerge: URL, got "${url}"`);
   }
-  const slash = spec.indexOf("/", "automerge:".length);
-  const urlPart = (slash === -1 ? spec : spec.slice(0, slash)) as AutomergeUrl;
-  const path = slash === -1 ? "." : spec.slice(slash + 1);
+  const slash = url.indexOf("/", "automerge:".length);
+  const urlPart = (slash === -1 ? url : url.slice(0, slash)) as AutomergeUrl;
+  const path = slash === -1 ? "" : url.slice(slash + 1);
   if (!isValidAutomergeUrl(urlPart)) {
     throw new Error(`overlock: not a valid automerge URL: "${urlPart}"`);
   }
-  return { url: urlPart, path };
+  return { rootUrl: urlPart, path };
+}
+
+/**
+ * Pin the root of `url` to the document's current heads. Already-pinned
+ * URLs are returned unchanged. The path (if any) is preserved.
+ *
+ * Uncached: each call queries `handle.heads()` afresh. That's cheap and
+ * intentional — callers (notably `PluginRegistry`'s HMR path) rely on
+ * seeing fresh heads to invalidate the loader's blob cache.
+ */
+export async function pinUrl(repo: Repo, url: string): Promise<string> {
+  const { rootUrl, path } = parseAutomergeUrlWithPath(url);
+  const { documentId, heads } = parseAutomergeUrl(rootUrl);
+  if (heads && heads.length) return url;
+  const handle = await repo.find(rootUrl);
+  const pinnedRoot = stringifyAutomergeUrl({
+    documentId,
+    heads: handle.heads(),
+  });
+  return path ? `${pinnedRoot}/${path}` : pinnedRoot;
+}
+
+export function splitPath(p: string): string[] {
+  return p
+    .replace(/^\.\//, "")
+    .split("/")
+    .filter(Boolean);
 }
 
 // ── core resolution ────────────────────────────────────────────────────
@@ -130,7 +168,7 @@ async function rewriteImports(
   source: string,
   inFlight: Set<CacheKey>,
 ): Promise<string> {
-  const [imports] = lexerParse(source);
+  const [imports] = Lexer.parse(source);
 
   // Resolve every specifier in parallel, then splice end → start so offsets
   // stay valid.
@@ -174,9 +212,9 @@ async function resolveSpecifier(
   inFlight: Set<CacheKey>,
 ): Promise<string | null> {
   if (spec.startsWith("automerge:")) {
-    const { url, path } = parseAutomergeSpec(spec);
-    const pinned = await pinHeads(repo, url);
-    return materialize(repo, pinned, normalizePath(path), inFlight);
+    const pinned = await pinUrl(repo, spec);
+    const { rootUrl: pinnedRoot, path } = parseAutomergeUrlWithPath(pinned);
+    return materialize(repo, pinnedRoot, normalizePath(path), inFlight);
   }
 
   if (spec.startsWith("./") || spec.startsWith("../")) {
@@ -195,22 +233,6 @@ async function resolveSpecifier(
 }
 
 // ── helpers ────────────────────────────────────────────────────────────
-
-function pinHeads(repo: Repo, url: AutomergeUrl): Promise<AutomergeUrl> {
-  const cached = pinnedRootCache.get(url);
-  if (cached) return cached;
-  const promise = (async () => {
-    const { documentId, heads } = parseAutomergeUrl(url);
-    if (heads && heads.length) return url;
-    const handle = await repo.find(url);
-    return stringifyAutomergeUrl({
-      documentId,
-      heads: handle.heads(),
-    });
-  })();
-  pinnedRootCache.set(url, promise);
-  return promise;
-}
 
 function normalizePath(p: string): string {
   return p
@@ -323,11 +345,4 @@ async function resolveFileHandle(
     resolvedParts,
   );
   return target as DocHandle<UnixFileEntry> | undefined;
-}
-
-function splitPath(p: string): string[] {
-  return p
-    .replace(/^\.\//, "")
-    .split("/")
-    .filter(Boolean);
 }

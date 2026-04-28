@@ -11,7 +11,7 @@ overlock-patchwork is two layers stacked:
 
 Start with the doc closest to the change you want to make.
 
-- [`loader.md`](./loader.md) — `automergeImport`, blob URLs, package
+- [`loader.md`](./loader.md) — `importFromAutomerge`, blob URLs, package
   exports, heads pinning, wasm bootstrap.
 - [`components.md`](./components.md) — package layout, manifest
   schema, mount-fn contract, embedding `<patchwork-view>`, composition.
@@ -83,8 +83,7 @@ considering and may not ship.
 | --- | --- |
 | [`src/main.ts`](../src/main.ts) | bootstrap: base64-inline wasm init, Repo, `BranchableRepo` wrap, `PluginRegistry` + `ComponentRegistry` mount on `document.body` |
 | [`src/branchable-repo.ts`](../src/branchable-repo.ts) | `BranchableRepo` / `BranchedDocHandle`: forkable wrapper over `Repo` with copy-on-write per doc |
-| [`src/automerge-import.ts`](../src/automerge-import.ts) | resolve → parse → rewrite → blob URL → `import()` |
-| [`src/resolve.ts`](../src/resolve.ts) | folder walk + `package.json` `exports` lookup |
+| [`src/loader.ts`](../src/loader.ts) | `importFromAutomerge`: resolve → parse → rewrite → blob URL → `import()`. Also exports `parseAutomergeUrlWithPath`, `pinUrl`, `splitPath`. |
 | [`src/components/plugin-registry.ts`](../src/components/plugin-registry.ts) | `PluginRegistry`: pluginUrl → manifest + module load cache, per-URL folder subscription for HMR, `loaded`/`updated`/`removed`/`changed` events |
 | [`src/components/component-registry.ts`](../src/components/component-registry.ts) | DOM observer, name table, `<patchwork-view>` bootstrap, `swapTag`, microtask-batched `doc=` rebuild, HMR rebuild via `pluginRegistry.on("updated", ...)` |
 | [`src/components/patchwork-view-element.ts`](../src/components/patchwork-view-element.ts) | `PatchworkView` autonomous custom element: `src`/`doc` reflection, lazy property upgrade |

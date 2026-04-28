@@ -13,7 +13,7 @@ import { wasmBase64 as subductionWasmBase64 } from "@automerge/automerge-subduct
 import { Repo } from "@automerge/automerge-repo/slim";
 import { IndexedDBStorageAdapter } from "@automerge/automerge-repo-storage-indexeddb";
 
-import { automergeImport } from "./automerge-import";
+import { importFromAutomerge } from "./loader";
 import { BranchableRepo } from "./branchable-repo";
 import { ComponentRegistry, PluginRegistry } from "./components";
 
@@ -41,7 +41,7 @@ async function initPatchwork () {
 
   const pluginRegistry = new PluginRegistry({
     repo: window.repo,
-    automergeImport: (url) => automergeImport(repo, url),
+    import: (url) => importFromAutomerge(repo, url),
   });
 
   new ComponentRegistry(document.body, {

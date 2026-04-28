@@ -24,8 +24,8 @@ sequenceDiagram
   Plug->>Repo: find folder + manifest doc
   Repo-->>Plug: { name, importUrl, ... }
   Plug->>Plug: resolve importUrl to absolute URL
-  Plug->>Repo: pinPluginUrl(absolute) -> AutomergeUrl with current heads
-  Plug->>Mod: automergeImport(pinned) -> module
+  Plug->>Repo: pinUrl(absolute) -> URL with current heads
+  Plug->>Mod: loader(pinned) -> module
   Mod-->>Plug: module
   Plug->>Plug: subscribe parent folder for HMR (first load only)
   Plug-->>Reg: LoadedPlugin { name, importUrl, module, ... }
@@ -67,7 +67,7 @@ fires a `change` event on the parent folder handle.
 On change, the **plugin registry**:
 
 1. Re-fetches the manifest and re-imports the JS (with a heads-pinned
-   URL so `automergeImport`'s blob cache produces a fresh module).
+   URL so the loader's blob cache produces a fresh module).
 2. Splices the fresh `LoadedPlugin` into its cached record.
 3. Emits `updated(pluginUrl, previous, next)` and `changed()`.
 
