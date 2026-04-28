@@ -3,6 +3,15 @@
   <head>
     <meta charset="utf-8" />
     <title>overlock patchwork</title>
+    <!--
+      Optional. If set, scripts loaded from documents that are direct
+      children of this folder doc get a friendly DevTools sourceURL of
+      the form `packages/<child-name>/<file>` instead of the raw
+      automerge URL. The URL comes from `packages/.pushwork/snapshot.json`
+      (`rootFolderUrl`); pushwork preserves it across pushes.
+    -->
+    <meta name="overlock-packages-root" content="automerge:mExaJTQKBs6CHpzZtZYYzc2YDXr">
+
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🧶</text></svg>">
     <style>
       html, body { margin: 0; padding: 0; }

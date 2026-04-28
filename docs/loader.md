@@ -94,6 +94,40 @@ not supported because blob URLs cannot be allocated before their
 content exists.
 ```
 
+## DevTools naming
+
+Rewritten JS modules get a `//# sourceURL=…` pragma appended before
+they're turned into a blob. DevTools picks that up and shows the
+script under a friendly path in the Sources panel and in stack traces,
+instead of `blob:http://…/<uuid>`.
+
+There are two name shapes (`friendlyRootFor` in
+[`src/loader.ts`](../src/loader.ts)):
+
+- **Packages.** If the script's root document is a direct child of the
+  registered packages folder, the URL is
+  `packages/<child-name>/<file>` — e.g. `packages/url-sync/url-sync.js`.
+  The child name comes from the parent folder's `DocLink.name`, so
+  `pnpm push packages` controls it.
+- **Fallback.** Anything else gets `automerge:<documentId>/<file>` —
+  the unpinned root URL plus the file path. Heads are intentionally
+  dropped so every version of the doc shares one DevTools entry and
+  breakpoints persist across HMR reloads.
+
+The packages folder is opt-in. Add a meta tag to the host page:
+
+```html
+<meta name="overlock-packages-root" content="automerge:…">
+```
+
+`main.ts` reads it once at boot and passes the URL to `setPackagesRoot`
+in [`src/loader.ts`](../src/loader.ts), which fetches the folder doc
+and builds an in-memory `documentId → name` index. The index is loaded
+once — adding a new package after page load won't show up under
+`packages/` until the next reload. The URL itself comes from
+`packages/.pushwork/snapshot.json`'s `rootFolderUrl`, which pushwork
+preserves across pushes.
+
 ## Wasm bootstrap
 
 The first step of the bootstrap IIFE in

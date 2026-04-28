@@ -32,6 +32,13 @@ import * as Lexer from "es-module-lexer";
 type CacheKey = string;
 const blobUrlCache = new Map<CacheKey, Promise<string>>();
 
+// Optional "packages folder" — when set, scripts whose root document is a
+// direct child of this folder get a friendly DevTools sourceURL of the
+// form `packages/<child-name>/<file>` instead of the raw automerge URL.
+// Loaded eagerly from `setPackagesRoot`; `null` until the folder doc has
+// resolved, in which case lookups fall through to the automerge fallback.
+let packagesIndex: Map<string, string> | null = null;
+
 export async function importFromAutomerge(
   repo: Repo,
   url: string,
@@ -151,7 +158,14 @@ async function materialize(
       inFlight,
     );
 
-    const blob = new Blob([rewritten], { type: "text/javascript" });
+    // Annotate with `//# sourceURL=…` so DevTools shows a meaningful path
+    // instead of the opaque blob: URL. Packages folder children get a
+    // `packages/<name>/<file>` URL; everything else falls back to the
+    // unpinned automerge URL.
+    const filePath = canonicalPath || path || "index.js";
+    const sourceUrl = `${friendlyRootFor(rootUrl)}/${filePath}`;
+    const annotated = `${rewritten}\n//# sourceURL=${sourceUrl}\n`;
+    const blob = new Blob([annotated], { type: "text/javascript" });
     return URL.createObjectURL(blob);
   })().finally(() => {
     inFlight.delete(key);
@@ -247,6 +261,43 @@ function resolveRelative(fromFile: string, spec: string): string {
   const base = "fake:///" + fromFile;
   const u = new URL(spec, base);
   return normalizePath(u.pathname);
+}
+
+/**
+ * Register a "packages folder" doc whose direct children get friendly
+ * `packages/<name>/<file>` sourceURLs in DevTools. Loaded once and
+ * cached; later writes to the packages folder are not picked up until
+ * the page reloads. Idempotent — calling twice with the same URL is a
+ * no-op; a different URL replaces the index.
+ */
+export function setPackagesRoot(repo: Repo, url: AutomergeUrl): void {
+  void loadPackagesIndex(repo, url);
+}
+
+async function loadPackagesIndex(
+  repo: Repo,
+  url: AutomergeUrl,
+): Promise<void> {
+  try {
+    const handle = await repo.find<FolderDoc>(url);
+    const index = new Map<string, string>();
+    for (const link of handle.doc()?.docs ?? []) {
+      const { documentId } = parseAutomergeUrl(link.url);
+      index.set(documentId, link.name);
+    }
+    packagesIndex = index;
+  } catch (error) {
+    console.warn(`overlock: failed to load packages root ${url}`, error);
+  }
+}
+
+function friendlyRootFor(rootUrl: AutomergeUrl): string {
+  const { documentId } = parseAutomergeUrl(rootUrl);
+  const pkgName = packagesIndex?.get(documentId);
+  if (pkgName) return `packages/${pkgName}`;
+  // Unpinned form — drop heads so all heads-versions share one DevTools
+  // entry and breakpoints survive HMR.
+  return stringifyAutomergeUrl({ documentId });
 }
 
 function canonicalPathOf(

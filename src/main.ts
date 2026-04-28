@@ -18,10 +18,12 @@ import {
 } from "@automerge/automerge-repo/slim";
 import { IndexedDBStorageAdapter } from "@automerge/automerge-repo-storage-indexeddb";
 
-import { importFromAutomerge } from "./loader";
+import { importFromAutomerge, setPackagesRoot } from "./loader";
 import { BranchableRepo } from "./branchable-repo";
 import { PluginRegistry } from "./plugin-registry";
 import { ViewRegistry } from "./view-registry";
+
+import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
 
 window.AutomergeRepo = {
   isValidAutomergeUrl,
@@ -50,6 +52,13 @@ async function initPatchwork () {
   });
 
   window.repo = BranchableRepo.wrap(repo);
+
+  const packagesRoot = document
+    .querySelector<HTMLMetaElement>('meta[name="overlock-packages-root"]')
+    ?.content?.trim();
+  if (packagesRoot && isValidAutomergeUrl(packagesRoot)) {
+    setPackagesRoot(repo, packagesRoot as AutomergeUrl);
+  }
 
   const pluginRegistry = new PluginRegistry({
     repo: window.repo,
