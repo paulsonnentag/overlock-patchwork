@@ -21,9 +21,9 @@
       package, not `component.json`, so the URL self-describes.
 
       `<app-frame>` is the demo's entry point: it find-or-creates an
-      account doc and renders `<root-2>` inside it, which in turn
+      account doc and renders `<app-root>` inside it, which in turn
       composes the rest of the views (`folder-list`, `doc-title`,
-      `markdown-editor`, etc.). `<root-2>` requires an account
+      `markdown-editor`, etc.). `<app-root>` requires an account
       ancestor, so it can't be bootstrapped directly — wire `app-frame`
       here.
     -->

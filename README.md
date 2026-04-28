@@ -23,7 +23,7 @@ Open `index.html` in a browser — no static host required.
 
 `packages/` ships a small markdown-notes app composed of a dozen
 single-file views: `app-frame` find-or-creates an account doc and
-renders `root-2` inside it; `root-2` composes the rest
+renders `root` inside it; `root` composes the rest
 (`folder-list`, `doc-title`, `markdown-editor`, `branch-picker`, …)
 and uses `root-folder-context` / `selected-doc-context` to push
 `doc=` down through the tree. `solid-helpers` is a tiny library
