@@ -1,5 +1,5 @@
 // Bootstrap entry. Sets up an Automerge Repo synced over Subduction (matching
-// pushwork --sub) and mounts a ComponentRegistry on document.body.
+// pushwork --sub) and mounts a ViewRegistry on document.body.
 //
 // Lives in a single self-contained ES module; everything below is bundled into
 // dist/patchwork.js by Vite. No service worker, no asset side-loads — wasm is
@@ -15,7 +15,8 @@ import { IndexedDBStorageAdapter } from "@automerge/automerge-repo-storage-index
 
 import { importFromAutomerge } from "./loader";
 import { BranchableRepo } from "./branchable-repo";
-import { ComponentRegistry, PluginRegistry } from "./components";
+import { PluginRegistry } from "./plugin-registry";
+import { ViewRegistry } from "./view-registry";
 
 const SUBDUCTION_ENDPOINT = "wss://subduction.sync.inkandswitch.com";
 
@@ -44,7 +45,8 @@ async function initPatchwork () {
     import: (url) => importFromAutomerge(repo, url),
   });
 
-  new ComponentRegistry(document.body, {
+  new ViewRegistry({
+    root: document.body,
     repo: window.repo,
     pluginRegistry,
   });

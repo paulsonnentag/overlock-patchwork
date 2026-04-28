@@ -44,9 +44,9 @@ type Engine = {
 
 /**
  * One node in the schema-indexed lookup tree. Roughly analogous to a
- * single mounted component element in `src/components/`: each `Scope`
- * carries an optional `handle` (analog of `el.handle`) and exposes
- * two schema-keyed views that work like DOM lookups:
+ * single mounted view element in `src/`: each `Scope` carries an
+ * optional `handle` (analog of `el.handle`) and exposes two
+ * schema-keyed views that work like DOM lookups:
  *
  * - `closest(s)` — `Element.closest(selector)` analog: the nearest
  *   match walking self → parent → root.

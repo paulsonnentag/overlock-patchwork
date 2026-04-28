@@ -7,33 +7,69 @@ import {
   AUTOMERGE_REPO_TAG,
   type AutomergeRepoElement,
 } from "./automerge-repo-element";
-import type { ComponentRoot, MountFn } from "../types";
+import type { BranchableRepo } from "./branchable-repo";
+
+/**
+ * The element a mount fn receives. A plain `HTMLElement` plus:
+ *
+ * - `handle?` — the `DocHandle` resolved from the `doc=` attribute
+ *   (absent when the host element had no `doc=`). The handle has stable
+ *   identity across branch operations; switching branches swaps the
+ *   handle's inner ref under the hood and surfaces as a `change` event,
+ *   so consumers can listen with the standard `handle.on("change", …)`
+ *   and don't need to re-acquire the reference.
+ * - `repo?` — the `BranchableRepo` from the closest `<automerge-repo>`
+ *   ancestor, stamped at construction time. Absent when the element is
+ *   mounted outside any `<automerge-repo>` scope. The repo is stateful:
+ *   `element.repo.checkout(...)` / `element.repo.fork(...)` /
+ *   `element.repo.reset()` mutate the same instance in place. Call
+ *   `element.repo.copy()` to obtain a fresh instance.
+ */
+export type ViewRoot<V = unknown> = HTMLElement & {
+  handle?: DocHandle<V>;
+  repo?: BranchableRepo;
+};
+
+/**
+ * A view's default export. Returns either nothing or a cleanup fn.
+ *
+ * The mount fn is `async` so authors can `await repo.find(...)`, dynamic
+ * imports, etc. before they touch the element. Races (element removed
+ * mid-mount, source hot-reloaded mid-mount, `doc=` flipped mid-mount)
+ * are observed by `mountView` via `el.isConnected` after each await:
+ * if the element disconnected while the mount fn was in flight, the
+ * returned cleanup runs immediately and is discarded rather than
+ * installed.
+ */
+export type MountFn = (
+  element: ViewRoot,
+) => Promise<(() => void) | void> | ((() => void) | void);
 
 /**
  * `WeakMap<Element, cleanup | null>` keyed by every element that has
- * been claimed by `mountComponent` and not yet unmounted. Three states:
+ * been claimed by `mountView` and not yet unmounted. Three states:
  *
- * - not in the map: `el` is not a mounted component.
+ * - not in the map: `el` is not a mounted view.
  * - value `null`: `el` is in flight (resolving doc context or running
  *   the user's mount fn), or has finished mounting with no user
  *   cleanup to install.
  * - value `() => void`: mounted with a user cleanup ready to run.
  *
- * The element is the identity carrier for a mounted component; there
- * is no Component instance. The map is the only persistent
- * per-component state in the system.
+ * The element is the identity carrier for a mounted view; there is no
+ * View instance. The map is the only persistent per-view state in the
+ * system.
  *
- * Entries are claimed *synchronously* at the top of `mountComponent`.
- * That matters because the registry's `MutationObserver` may fire on
- * the same microtask for a freshly inserted element; without the
+ * Entries are claimed *synchronously* at the top of `mountView`. That
+ * matters because the registry's `MutationObserver` may fire on the
+ * same microtask for a freshly inserted element; without the
  * synchronous claim, the registry's `mountIfRegistered` would see the
  * element as un-claimed and start a duplicate mount.
  */
 const cleanups = new WeakMap<Element, (() => void) | null>();
 
 /**
- * Mount a component on `el` against `mountFn`. Synchronously claims
- * the element (so the registry sees it as already-mounted on the next
+ * Mount a view on `el` against `mountFn`. Synchronously claims the
+ * element (so the registry sees it as already-mounted on the next
  * MutationObserver microtask) and stamps `el.repo` from the closest
  * `<automerge-repo>` ancestor, then runs the async lifecycle:
  *
@@ -49,7 +85,7 @@ const cleanups = new WeakMap<Element, (() => void) | null>();
  * 4. If the element was disconnected while `mountFn` was awaiting,
  *    run the returned cleanup immediately and discard it instead of
  *    installing it. That's the race guarantee for in-flight mounts.
- * 5. Otherwise install the cleanup so a later `unmountElement(el)`
+ * 5. Otherwise install the cleanup so a later `unmountView(el)`
  *    (or rebuild) runs it.
  *
  * `el.isConnected` is the single source of truth for "is this mount
@@ -58,13 +94,13 @@ const cleanups = new WeakMap<Element, (() => void) | null>();
  * detached it (user removal); the in-flight closure observes the
  * disconnect on its next await boundary and self-tears-down.
  */
-export function mountComponent(el: HTMLElement, mountFn: MountFn): void {
+export function mountView(el: HTMLElement, mountFn: MountFn): void {
   cleanups.set(el, null);
-  // Stamp `el.repo` synchronously, *before* any await, so a child mount
-  // fn that runs while this component is still resolving its doc
+  // Stamp `el.repo` synchronously, *before* any await, so a child
+  // mount fn that runs while this view is still resolving its doc
   // context can already read the repo off any claimed ancestor. The
   // `<automerge-repo>` marker's `repo` is set by the registry's
-  // tree-order walk before any descendant component reaches here.
+  // tree-order walk before any descendant view reaches here.
   stampRepo(el);
   void runLifecycle(el, mountFn);
 }
@@ -80,7 +116,7 @@ export function mountComponent(el: HTMLElement, mountFn: MountFn): void {
  * the DOM, and explicitly during the rebuild path before swapping in
  * a fresh element.
  */
-export function unmountElement(el: Element): void {
+export function unmountView(el: Element): void {
   const cleanup = cleanups.get(el);
   if (cleanup === undefined) return;
   cleanups.delete(el);
@@ -88,10 +124,10 @@ export function unmountElement(el: Element): void {
 }
 
 /**
- * Whether `el` is currently claimed by `mountComponent` (in flight or
+ * Whether `el` is currently claimed by `mountView` (in flight or
  * fully mounted). Used by the registry's `mountIfRegistered` to dedup.
  */
-export function isComponent(el: Element): boolean {
+export function isView(el: Element): boolean {
   return cleanups.has(el);
 }
 
@@ -113,13 +149,13 @@ async function runLifecycle(
 
   let result: (() => void) | void;
   try {
-    result = await mountFn(el as ComponentRoot);
+    result = await mountFn(el as ViewRoot);
   } catch (err) {
     console.error(
       `[overlock-patchwork] mount threw on <${el.localName}>:`,
       err,
     );
-    // Leave the entry as `null`. A later removal calls `unmountElement`
+    // Leave the entry as `null`. A later removal calls `unmountView`
     // which sees `null` and is a clean no-op.
     return;
   }
@@ -157,12 +193,12 @@ async function resolveContext(el: HTMLElement): Promise<void> {
   }
 
   const handle = await repoEl.repo.find(docUrl);
-  (el as ComponentRoot).handle = handle as DocHandle<unknown>;
+  (el as ViewRoot).handle = handle as DocHandle<unknown>;
 }
 
 function stampRepo(el: HTMLElement): void {
   const repoEl = el.closest(AUTOMERGE_REPO_TAG) as AutomergeRepoElement | null;
-  (el as ComponentRoot).repo = repoEl?.repo ?? undefined;
+  (el as ViewRoot).repo = repoEl?.repo ?? undefined;
 }
 
 function runCleanup(fn: () => void): void {

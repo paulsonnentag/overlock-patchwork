@@ -6,8 +6,8 @@ import {
   type UnixFileEntry,
 } from "@inkandswitch/patchwork-filesystem";
 
-import { BranchableRepo } from "../branchable-repo";
-import { parseAutomergeUrlWithPath, pinUrl, splitPath } from "../loader";
+import { BranchableRepo } from "./branchable-repo";
+import { parseAutomergeUrlWithPath, pinUrl, splitPath } from "./loader";
 
 type Loader = (url: string) => Promise<unknown>;
 

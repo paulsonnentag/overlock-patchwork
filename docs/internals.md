@@ -1,17 +1,16 @@
 # Internals
 
-Implementation details of the component registry, the plugin registry,
-and the per-element lifecycle. Read this before changing
-[`src/components/component-registry.ts`](../src/components/component-registry.ts),
-[`src/components/plugin-registry.ts`](../src/components/plugin-registry.ts),
-or [`src/components/component.ts`](../src/components/component.ts).
+Implementation details of the view registry, the plugin registry, and
+the per-element lifecycle. Read this before changing
+[`src/view-registry.ts`](../src/view-registry.ts),
+[`src/plugin-registry.ts`](../src/plugin-registry.ts), or
+[`src/view.ts`](../src/view.ts).
 
 ## Why `<patchwork-view>` and `<automerge-repo>` are custom elements
 
 Two registrations live in their own files —
-[`src/components/patchwork-view-element.ts`](../src/components/patchwork-view-element.ts)
-and
-[`src/components/automerge-repo-element.ts`](../src/components/automerge-repo-element.ts) —
+[`src/patchwork-view-element.ts`](../src/patchwork-view-element.ts) and
+[`src/automerge-repo-element.ts`](../src/automerge-repo-element.ts) —
 and run as side-effect `customElements.define` calls on module load:
 
 ```ts
@@ -57,53 +56,53 @@ no-op declaration is what tells the platform "this element survives
 moves intact."
 
 `AutomergeRepoElement` doesn't reflect anything — `repo` is a typed
-*property* slot for the registry to write into and for components to
-read out of. Putting it on a registered class instead of a plain
-expando just means TypeScript / DevTools recognize it. The class also
-exposes `checkout` / `fork` / `reset` mutators and a `_rebuildDescendants`
+*property* slot for the registry to write into and for views to read
+out of. Putting it on a registered class instead of a plain expando
+just means TypeScript / DevTools recognize it. The class also exposes
+`checkout` / `fork` / `reset` mutators and a `_rebuildDescendants`
 internal hook the registry installs on first sight; the mutators call
-through to the hook to rebuild every component descendant whose nearest
+through to the hook to rebuild every view descendant whose nearest
 `<automerge-repo>` ancestor is this element.
 
 These are the *only* two places in the system that use
-`customElements`. User components stay plain
-`document.createElement(name)` elements and are never registered
-globally — `customElements.define` is a one-shot ratchet that would
-block HMR. Component identity is the element itself, with mount
-state tracked in `component.ts`'s `cleanups` map (see below).
+`customElements`. User views stay plain `document.createElement(name)`
+elements and are never registered globally — `customElements.define`
+is a one-shot ratchet that would block HMR. View identity is the
+element itself, with mount state tracked in `view.ts`'s `cleanups`
+map (see below).
 
 ## Registry data structures
 
-The registry doesn't track `Component` instances — there *are* no
-`Component` instances. The element is the identity carrier for a
-mounted component; per-element state lives in `component.ts`'s
-module-private `cleanups` map. The registry's own state is just:
+The registry doesn't track `View` instances — there *are* no `View`
+instances. The element is the identity carrier for a mounted view;
+per-element state lives in `view.ts`'s module-private `cleanups` map.
+The registry's own state is just:
 
-- **`#registry`** — `Map<string, MountFn>` for name-to-mount-fn.
+- **`#viewsByTag`** — `Map<string, MountFn>` for tag-name to mount-fn.
   Throws on collision both on initial load and on HMR rename.
-- **`#onPluginUpdated`** — listener reference for the single
+- **`#onPluginUpdate`** — listener arrow function bound to the single
   `pluginRegistry.on("updated", ...)` subscription installed in the
   constructor. Detached via `pluginRegistry.off(...)` in `destroy()`.
   The HMR rebuild fans out *one* event source to every plugin URL
-  the component registry cares about, so a per-URL listener map
-  isn't needed.
-- **`#bootstrapping`** — `WeakSet<Element>` tracking which
+  the view registry cares about, so a per-URL listener map isn't
+  needed.
+- **`#claimedViews`** — `WeakSet<Element>` tracking which
   `<patchwork-view>` elements have already been claimed, so a remove
   + re-add cycle on the same node doesn't kick off a duplicate load.
 - **`#pendingRebuilds`** — `Set<HTMLElement>` of elements whose `doc=`
   flipped this tick. Drained on a microtask so coalesced writes
   produce a single rebuild. Stale entries (an element that was already
   rebuilt and is no longer claimed) are filtered out at flush via
-  `isComponent`.
+  `isView`.
 
 ## Plugin registry
 
 The plugin URL → `LoadedPlugin` cache and the folder subscription
 that drives HMR live in `PluginRegistry`
-([`src/components/plugin-registry.ts`](../src/components/plugin-registry.ts)),
-not in `ComponentRegistry`. The plugin registry knows nothing about
-the DOM or about component-specific shape — every plugin kind layers
-its own validation on top of the generic `LoadedPlugin` shape.
+([`src/plugin-registry.ts`](../src/plugin-registry.ts)), not in
+`ViewRegistry`. The plugin registry knows nothing about the DOM or
+about view-specific shape — every plugin kind layers its own
+validation on top of the generic `LoadedPlugin` shape.
 
 `PluginRegistry` extends `EventEmitter` from `eventemitter3` and uses
 the standard `on(event, fn)` / `off(event, fn)` pair (matching
@@ -112,7 +111,7 @@ fields are minimal:
 
 ```ts
 type LoadedPlugin = {
-  name: string;       // tag name (component plugins; opaque to others)
+  name: string;       // tag name (view plugins; opaque to others)
   importUrl: string;  // resolved absolute automerge: URL
   module: unknown;    // raw imported JS module
   [key: string]: unknown;  // arbitrary manifest fields preserved
@@ -166,19 +165,19 @@ there's no two-step register-then-load lifecycle.
 
 The plugin registry has no opinion on what counts as an observable
 change: it always fires `updated` after a successful re-fetch and
-lets the consumer dedupe. The component registry's `#onPluginUpdate`
-short-circuits when both `name` and `module` references are
+lets the consumer dedupe. The view registry's `#onPluginUpdate`
+short-circuits when both `name` and the `module` reference are
 unchanged — that's a defensive check against spurious folder
 events, not the main optimization path.
 
 Per-element state — the cleanups map keyed by element — sits in
-[`component.ts`](../src/components/component.ts) as
-`WeakMap<Element, cleanup | null>`. `WeakMap` so the map never keeps
-DOM nodes alive on its own. `mountComponent` claims an entry
-synchronously; `unmountElement` drains it; `isComponent(el)` answers
-"is this element currently a component?" for the registry's own dedup.
+[`view.ts`](../src/view.ts) as `WeakMap<Element, cleanup | null>`.
+`WeakMap` so the map never keeps DOM nodes alive on its own.
+`mountView` claims an entry synchronously; `unmountView` drains it;
+`isView(el)` answers "is this element currently a view?" for the
+registry's own dedup.
 
-The cleanups map is process-wide on purpose: two `ComponentRegistry`
+The cleanups map is process-wide on purpose: two `ViewRegistry`
 instances over disjoint subtrees never see each other's elements. On
 overlapping subtrees they would conflict — which is the same answer
 either way.
@@ -186,36 +185,34 @@ either way.
 ## Module layout
 
 ```
-src/types.ts              ComponentManifest, MountFn, ComponentRoot
 src/loader.ts             importFromAutomerge entry point, URL helpers
                           (parseAutomergeUrlWithPath, pinUrl, splitPath),
                           page-global blob cache. No DOM dependency.
 src/subscribable.ts       Subscribable<T> interface +
                           BasicSubscribable<T> default impl;
                           framework reactive primitive
-src/components/
-  plugin-registry.ts      PluginRegistry: pluginUrl -> LoadedPlugin
+src/plugin-registry.ts    PluginRegistry: pluginUrl -> LoadedPlugin
                           load cache, per-URL folder subscription,
                           eventemitter3 events (loaded/updated/
                           removed/changed). No DOM dependency.
-  component-registry.ts   ComponentRegistry: DOM observer, name
+src/view-registry.ts      ViewRegistry: DOM observer, tag-name
                           table, <patchwork-view> bootstrap, swapTag,
                           microtask-batched doc= rebuild, HMR rebuild
                           via pluginRegistry.on("updated", ...)
-  patchwork-view-element.ts
+src/patchwork-view-element.ts
                           PatchworkView class +
                           customElements.define; src/doc reflection,
                           lazy property upgrade, connectedMoveCallback
-  automerge-repo-element.ts
+src/automerge-repo-element.ts
                           AutomergeRepoElement class +
                           customElements.define; .repo property,
                           checkout/fork/reset mutators
-  component.ts            mountComponent / unmountElement /
-                          isComponent: per-element lifecycle, doc-
-                          context resolution, el.repo stamping,
-                          in-flight race guard via el.isConnected.
-                          Owns the WeakMap<Element, cleanup | null>.
-  index.ts                public re-exports
+src/view.ts               mountView / unmountView / isView:
+                          per-element lifecycle, doc-context
+                          resolution, el.repo stamping, in-flight
+                          race guard via el.isConnected. Owns the
+                          WeakMap<Element, cleanup | null>. Exports
+                          ViewRoot and MountFn types.
 ```
 
 `PluginRegistry` depends on the loader half of overlock for two things:
@@ -229,9 +226,9 @@ src/components/
   `importFromAutomerge(repo, url)` against the raw `Repo` so module
   resolution is never affected by branches.
 
-`ComponentRegistry` depends on `PluginRegistry` (for plugin loading +
-HMR) and `BranchableRepo` (for the `<automerge-repo>` marker fallback).
-It does *not* see the loader directly.
+`ViewRegistry` depends on `PluginRegistry` (for plugin loading + HMR)
+and `BranchableRepo` (for the `<automerge-repo>` marker fallback). It
+does *not* see the loader directly.
 
 Both registries are wired up in [`src/main.ts`](../src/main.ts).
 
@@ -244,17 +241,17 @@ Both registries are wired up in [`src/main.ts`](../src/main.ts).
   specifiers in the manifest are rejected so HMR's pinning semantics
   stay obvious — the JS module always lives in the same folder doc
   as its manifest.
-- **No namespaces yet.** Component name collisions throw immediately,
+- **No namespaces yet.** View name collisions throw immediately,
   both on initial load and on HMR rename.
 - **`doc=` requires `<automerge-repo>`.** Setting `doc=` on a
   `<patchwork-view>` outside any `<automerge-repo>` ancestor is an
-  error; the mount is aborted with a logged exception. Components
-  that don't need a doc (e.g. `clock`) work fine with no scope.
-- **`el.repo` stamping.** Every component element has `el.repo` set
-  synchronously inside `mountComponent` from
+  error; the mount is aborted with a logged exception. Views that
+  don't need a doc (e.g. `clock`) work fine with no scope.
+- **`el.repo` stamping.** Every view element has `el.repo` set
+  synchronously inside `mountView` from
   `el.closest("automerge-repo")`. Outside any `<automerge-repo>`
-  ancestor, `el.repo` is `undefined` and the component is responsible
-  for handling that gracefully. The `<automerge-repo>` marker's `repo`
-  property is stamped by the registry's tree-order initial walk before
-  any descendant `<patchwork-view>` bootstraps, so the lookup is
-  always populated by the time a component reads `el.repo`.
+  ancestor, `el.repo` is `undefined` and the view is responsible for
+  handling that gracefully. The `<automerge-repo>` marker's `repo`
+  property is stamped by the registry's tree-order initial walk
+  before any descendant `<patchwork-view>` bootstraps, so the lookup
+  is always populated by the time a view reads `el.repo`.

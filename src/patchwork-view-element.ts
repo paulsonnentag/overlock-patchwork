@@ -7,10 +7,10 @@ export const PATCHWORK_VIEW_TAG = "patchwork-view";
  * over a plain `HTMLElement` is `src` and `doc` accessors that reflect to
  * the matching attribute, so frameworks that property-assign on hyphenated
  * tags (Solid's `html` template, Lit, etc.) end up writing through
- * `setAttribute`. The `ComponentRegistry`'s MutationObserver-based
- * bootstrap then reads the attributes as usual.
+ * `setAttribute`. The `ViewRegistry`'s MutationObserver-based bootstrap
+ * then reads the attributes as usual.
  *
- * Defined once at module load. Registry orchestration for actual components
+ * Defined once at module load. Registry orchestration for actual views
  * (`my-counter`, `wall-clock`, ...) does NOT go through `customElements` —
  * those stay plain `document.createElement(name)` elements so HMR can
  * rebuild them freely without hitting the global one-shot ratchet.

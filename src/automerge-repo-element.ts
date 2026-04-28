@@ -1,6 +1,6 @@
 import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
 
-import type { BranchableRepo, ForkOpts } from "../branchable-repo";
+import type { BranchableRepo, ForkOpts } from "./branchable-repo";
 
 export const AUTOMERGE_REPO_TAG = "automerge-repo"
 
@@ -9,7 +9,7 @@ export const AUTOMERGE_REPO_TAG = "automerge-repo"
  * resolve their `doc=` attribute against `closest("automerge-repo").repo`.
  *
  * The element holds a reference to the repo as a property (not an
- * attribute — repos aren't strings). The `ComponentRegistry` injects the
+ * attribute — repos aren't strings). The `ViewRegistry` injects the
  * initial repo on discovery; it inherits from the closest enclosing
  * `<automerge-repo>` ancestor (if any), or falls back to the registry's
  * root repo.
@@ -18,9 +18,9 @@ export const AUTOMERGE_REPO_TAG = "automerge-repo"
  * its `.repo` *in place* — the same `BranchableRepo` instance is
  * navigated to a different branch (or back off-branch). Existing
  * `BranchedDocHandle`s rewire to the new branch silently. After each
- * mutation, every component descendant that resolves against this
+ * mutation, every view descendant that resolves against this
  * `<automerge-repo>` is rebuilt so its `doc=` re-resolves through the
- * updated repo. The rebuild hook is set by the `ComponentRegistry` (via
+ * updated repo. The rebuild hook is set by the `ViewRegistry` (via
  * `_rebuildDescendants`) the first time it sees this element.
  */
 export class AutomergeRepoElement extends HTMLElement {

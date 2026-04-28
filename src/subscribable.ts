@@ -1,8 +1,8 @@
 /**
  * `Subscribable<T>` is the framework's reactive primitive: a value that
- * can be observed for changes. Used by `ComponentRoot`'s ancestor and
+ * can be observed for changes. Used by `ViewRoot`'s ancestor and
  * descendant lookup methods so consumers can subscribe to "the closest
- * matching ancestor" or "my child components" and react when the answer
+ * matching ancestor" or "my child views" and react when the answer
  * changes.
  *
  * `el.handle` and `el.repo` are *not* `Subscribable`s — they keep their
@@ -28,7 +28,7 @@ export type Subscribable<T> = {
  * from the current value under `Object.is`.
  *
  * `change` is public so framework code can drive updates; consumers
- * receive the read-only `Subscribable<T>` view via `ComponentRoot`.
+ * receive the read-only `Subscribable<T>` view via `ViewRoot`.
  */
 export class BasicSubscribable<T> implements Subscribable<T> {
   readonly #subs = new Set<(value: T) => void>();

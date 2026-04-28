@@ -19,7 +19,7 @@ the top of [`src/main.ts`](../src/main.ts).
 
 `importFromAutomerge(repo, url) -> Promise<Module>` is the loader entry
 point used by `PluginRegistry` (via the `import` option) to resolve and
-execute component modules. It is not exposed on `window`.
+execute view modules. It is not exposed on `window`.
 
 A `url` is `automerge:<documentId>[?heads=...][/<path>]`. The loader
 splits at the first `/` after the `automerge:` prefix:

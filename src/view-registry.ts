@@ -1,41 +1,33 @@
-import { BranchableRepo } from "../branchable-repo";
+import { BranchableRepo } from "./branchable-repo";
 import { AutomergeRepoElement, AUTOMERGE_REPO_TAG } from "./automerge-repo-element";
 import { PATCHWORK_VIEW_TAG } from "./patchwork-view-element";
-import {
-  isComponent,
-  mountComponent,
-  unmountElement,
-} from "./component";
-import type {
-  LoadedPlugin,
-  PluginRegistry,
-  PluginRegistryEvents,
-} from "./plugin-registry";
-import type { MountFn } from "../types";
+import { isView, mountView, unmountView, type MountFn } from "./view";
+import type { LoadedPlugin, PluginRegistry } from "./plugin-registry";
 
-type Deps = {
+export type ViewRegistryOptions = {
+  root: HTMLElement;
   repo: BranchableRepo;
   pluginRegistry: PluginRegistry;
 };
 
 /**
- * One mount root. Owns the component-name table and a `MutationObserver`
+ * One mount root. Owns the view tag-name table and a `MutationObserver`
  * over the root element. Per-element instance state lives in
- * `component.ts`'s module-private `cleanups` map; the registry doesn't
- * track Component instances itself — the element is the identity carrier.
+ * `view.ts`'s module-private `cleanups` map; the registry doesn't track
+ * View instances itself — the element is the identity carrier.
  *
  * Plugin loading and HMR live in `PluginRegistry`. This class consumes
  * its `load(url)` API for bootstrap and subscribes to the `updated`
- * event for HMR. It validates that loaded plugins are component-shaped
+ * event for HMR. It validates that loaded plugins are view-shaped
  * (`module.default` is the mount fn) — that's the kind-specific layer
  * on top of the generic plugin runtime.
  *
  * `<patchwork-view src="automerge:.../component.json">` is the bootstrap
  * tag: the registry recognizes it, asks the plugin registry for the
- * referenced plugin, registers `plugin.name` as a component, replaces
- * the `<patchwork-view>` element with `<plugin.name>` (carrying over
- * non-`src` attributes and children), and calls `mountComponent`
- * against the new element.
+ * referenced plugin, registers `plugin.name` as a view, replaces the
+ * `<patchwork-view>` element with `<plugin.name>` (carrying over
+ * non-`src` attributes and children), and calls `mountView` against
+ * the new element.
  *
  * On HMR (delivered via `pluginRegistry.on("updated", ...)`) the
  * registry updates the name table — handling rename + collision —
@@ -44,22 +36,18 @@ type Deps = {
  * No namespaces yet: a name collision throws. Tears everything down
  * on `destroy()`.
  */
-export class ComponentRegistry {
+export class ViewRegistry {
   readonly #root: HTMLElement;
   readonly #repo: BranchableRepo;
   readonly #pluginRegistry: PluginRegistry;
 
-  // name -> mount fn. Throws on collision.
-  readonly #registry = new Map<string, MountFn>();
+  // tag name -> mount fn. Throws on collision.
+  readonly #viewsByTag = new Map<string, MountFn>();
 
-  // Listener installed on the plugin registry's `updated` event in the
-  // constructor; removed by `destroy()` via `pluginRegistry.off(...)`.
-  readonly #onPluginUpdated: PluginRegistryEvents["updated"];
-
-  // Tracks which <patchwork-view> elements have already been claimed by a
-  // bootstrap, so a remove + re-add cycle on the same node doesn't kick off
-  // a duplicate load.
-  readonly #bootstrapping = new WeakSet<Element>();
+  // Tracks which <patchwork-view> elements have already been claimed by
+  // a bootstrap, so a remove + re-add cycle on the same node doesn't
+  // kick off a duplicate load.
+  readonly #claimedViews = new WeakSet<Element>();
 
   // Elements whose `doc=` flipped this tick. Drained on a microtask so
   // multiple synchronous attribute writes (e.g. a context-provider running
@@ -67,55 +55,20 @@ export class ComponentRegistry {
   // rebuild that reads the *final* attribute value. Keyed by element so
   // a rebuild that swaps the element identity (HMR or doc-rebuild) leaves
   // the stale old element in the set; the flush filters it out via
-  // `isComponent` and operates only on the current live element.
+  // `isView` and operates only on the current live element.
   readonly #pendingRebuilds = new Set<HTMLElement>();
   #rebuildScheduled = false;
 
   #observer: MutationObserver | null = null;
 
-  constructor(root: HTMLElement, deps: Deps) {
-    this.#root = root;
-    this.#repo = deps.repo;
-    this.#pluginRegistry = deps.pluginRegistry;
+  constructor(options: ViewRegistryOptions) {
+    this.#root = options.root;
+    this.#repo = options.repo;
+    this.#pluginRegistry = options.pluginRegistry;
 
-    this.#onPluginUpdated = (_pluginUrl, previous, next) =>
-      this.#onPluginUpdate(previous, next);
-    this.#pluginRegistry.on("updated", this.#onPluginUpdated);
-
-    this.#forEachElementIn(root, (el) => this.#handleElement(el));
-
-    const observer = new MutationObserver((records) => {
-      for (const record of records) {
-        if (record.type === "attributes") {
-          if (record.attributeName !== "doc") continue;
-          const target = record.target;
-          if (!(target instanceof HTMLElement)) continue;
-          this.#handleDocAttributeChange(target);
-          continue;
-        }
-        for (const node of record.addedNodes) {
-          if (node instanceof Element) {
-            this.#forEachElement(node, (el) => this.#handleElement(el));
-          }
-        }
-        for (const node of record.removedNodes) {
-          if (!(node instanceof Element)) continue;
-          // Still connected ⇒ the node was moved, not removed. Skip.
-          if (node.isConnected) continue;
-          this.#forEachElement(node, (el) => {
-            if (el.isConnected) return;
-            unmountElement(el);
-          });
-        }
-      }
-    });
-    observer.observe(root, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ["doc"],
-    });
-    this.#observer = observer;
+    this.#subscribeToPluginRegistry();
+    this.#scanInitialTree();
+    this.#observer = this.#startMutationObserver();
   }
 
   destroy(): void {
@@ -124,11 +77,56 @@ export class ComponentRegistry {
     this.#observer = null;
     this.#pendingRebuilds.clear();
     // Walk the root subtree and tear down every claimed element. The
-    // element-keyed `cleanups` map is the source of truth; `unmountElement`
-    // is a no-op on anything we walk that isn't a component.
-    this.#forEachElementIn(this.#root, (el) => unmountElement(el));
-    this.#pluginRegistry.off("updated", this.#onPluginUpdated);
-    this.#registry.clear();
+    // element-keyed `cleanups` map is the source of truth; `unmountView`
+    // is a no-op on anything we walk that isn't a view.
+    walkSubtree(this.#root, (el) => unmountView(el));
+    this.#pluginRegistry.off("updated", this.#onPluginUpdate);
+    this.#viewsByTag.clear();
+  }
+
+  #subscribeToPluginRegistry(): void {
+    this.#pluginRegistry.on("updated", this.#onPluginUpdate);
+  }
+
+  #scanInitialTree(): void {
+    walkSubtree(this.#root, (el) => this.#handleElement(el));
+  }
+
+  #startMutationObserver(): MutationObserver {
+    const observer = new MutationObserver((records) => {
+      for (const record of records) this.#handleMutation(record);
+    });
+    observer.observe(this.#root, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["doc"],
+    });
+    return observer;
+  }
+
+  #handleMutation(record: MutationRecord): void {
+    if (record.type === "attributes") {
+      if (record.attributeName !== "doc") return;
+      const target = record.target;
+      if (!(target instanceof HTMLElement)) return;
+      this.#handleDocAttributeChange(target);
+      return;
+    }
+    for (const node of record.addedNodes) {
+      if (node instanceof Element) {
+        walkSelfAndDescendants(node, (el) => this.#handleElement(el));
+      }
+    }
+    for (const node of record.removedNodes) {
+      if (!(node instanceof Element)) continue;
+      // Still connected ⇒ the node was moved, not removed. Skip.
+      if (node.isConnected) continue;
+      walkSelfAndDescendants(node, (el) => {
+        if (el.isConnected) return;
+        unmountView(el);
+      });
+    }
   }
 
   #handleElement(el: Element): void {
@@ -158,8 +156,8 @@ export class ComponentRegistry {
     if (el.localName === PATCHWORK_VIEW_TAG) {
       const src = el.getAttribute("src");
       if (!src) return;
-      if (this.#bootstrapping.has(el)) return;
-      this.#bootstrapping.add(el);
+      if (this.#claimedViews.has(el)) return;
+      this.#claimedViews.add(el);
       void this.#bootstrap(el as HTMLElement, src);
       return;
     }
@@ -171,9 +169,9 @@ export class ComponentRegistry {
    *
    * 1. `<patchwork-view>` pre-bootstrap — let the in-flight (or future)
    *    bootstrap pick up the new value when it reads the attribute.
-   * 2. Mounted component — schedule a rebuild on the next microtask.
-   *    The rebuild path swaps the element so `mountComponent` reads
-   *    the fresh `doc=` from scratch and resolves the new handle.
+   * 2. Mounted view — schedule a rebuild on the next microtask. The
+   *    rebuild path swaps the element so `mountView` reads the fresh
+   *    `doc=` from scratch and resolves the new handle.
    * 3. Anything else — ignore.
    *
    * The rebuild is microtask-batched so a series of synchronous `doc=`
@@ -183,7 +181,7 @@ export class ComponentRegistry {
    * tear down and re-mount the same descendant three times.
    */
   #handleDocAttributeChange(el: HTMLElement): void {
-    if (!isComponent(el)) return;
+    if (!isView(el)) return;
     this.#pendingRebuilds.add(el);
     if (this.#rebuildScheduled) return;
     this.#rebuildScheduled = true;
@@ -198,8 +196,8 @@ export class ComponentRegistry {
     for (const el of pending) {
       // Skip if the element was unmounted (or rebuilt — which counts
       // as unmounted) between the attribute change and this flush.
-      if (!isComponent(el)) continue;
-      const mountFn = this.#registry.get(el.localName);
+      if (!isView(el)) continue;
+      const mountFn = this.#viewsByTag.get(el.localName);
       if (!mountFn) continue;
       this.#rebuildInstance(el, el.localName, mountFn);
     }
@@ -212,11 +210,11 @@ export class ComponentRegistry {
    *   3. register `plugin.name` → mountFn (throw on collision)
    *   4. replace `<patchwork-view>` with `<plugin.name>` (keep non-src
    *      attrs + children)
-   *   5. call `mountComponent` against the new element
+   *   5. call `mountView` against the new element
    *
    * The mount fn's per-element doc context (read `doc=`, await
-   * `repo.find(url)`, stamp `el.handle`) is resolved inside
-   * `mountComponent` itself before the user's mount fn runs.
+   * `repo.find(url)`, stamp `el.handle`) is resolved inside `mountView`
+   * itself before the user's mount fn runs.
    */
   async #bootstrap(viewEl: HTMLElement, pluginUrl: string): Promise<void> {
     let loaded: LoadedPlugin;
@@ -237,10 +235,10 @@ export class ComponentRegistry {
       return;
     }
 
-    this.#registerComponent(loaded.name, mountFn);
+    this.#registerView(loaded.name, mountFn);
 
     const newEl = swapTag(viewEl, loaded.name);
-    mountComponent(newEl, mountFn);
+    mountView(newEl, mountFn);
   }
 
   /**
@@ -250,26 +248,30 @@ export class ComponentRegistry {
    * pre-dedup), checks for tag-name collisions on rename, swaps the
    * name table, and rebuilds every element currently mounted under
    * the previous tag name (found by walking the registry's root
-   * looking for the tag, filtered by `isComponent`).
+   * looking for the tag, filtered by `isView`).
    *
-   * Plugins whose module isn't component-shaped (no default-export
-   * function) are ignored: this registry only consumes the component
-   * kind. Other plugin kinds will surface their own consumers.
+   * Plugins whose module isn't view-shaped (no default-export
+   * function) are ignored: this registry only consumes the view kind.
+   * Other plugin kinds will surface their own consumers.
    *
    * Element identity is intentionally lost on reload — see
-   * [`docs/lifecycle.md`](../../docs/lifecycle.md).
+   * [`docs/lifecycle.md`](../docs/lifecycle.md).
    */
-  #onPluginUpdate(previous: LoadedPlugin, next: LoadedPlugin): void {
+  #onPluginUpdate = (
+    _pluginUrl: string,
+    previous: LoadedPlugin,
+    next: LoadedPlugin,
+  ): void => {
     if (previous.name === next.name && previous.module === next.module) {
       return;
     }
-    // Only consume component-shaped plugins. If the previous load
-    // wasn't a component, there's nothing in our name table to update;
-    // if the new load isn't a component, we drop the old entry.
-    if (!isComponentPlugin(previous)) return;
+    // Only consume view-shaped plugins. If the previous load wasn't a
+    // view, there's nothing in our name table to update; if the new
+    // load isn't a view, we drop the old entry.
+    if (!isViewPlugin(previous)) return;
 
     let nextMountFn: MountFn | null = null;
-    if (isComponentPlugin(next)) {
+    if (isViewPlugin(next)) {
       try {
         nextMountFn = extractMountFn(next);
       } catch (err) {
@@ -284,7 +286,7 @@ export class ComponentRegistry {
     if (
       nextMountFn !== null &&
       previous.name !== next.name &&
-      this.#registry.has(next.name)
+      this.#viewsByTag.has(next.name)
     ) {
       throw new Error(
         `[overlock-patchwork] HMR collision: "${next.name}" is already registered`,
@@ -295,18 +297,18 @@ export class ComponentRegistry {
     const instances = this.#findMountedElements(this.#root, previousName);
 
     if (nextMountFn === null || next.name !== previousName) {
-      this.#registry.delete(previousName);
+      this.#viewsByTag.delete(previousName);
     }
     if (nextMountFn !== null) {
-      this.#registry.set(next.name, nextMountFn);
+      this.#viewsByTag.set(next.name, nextMountFn);
     }
 
     if (nextMountFn === null) {
-      // Tear down without remount: the new module isn't component-shaped,
+      // Tear down without remount: the new module isn't view-shaped,
       // so nothing to mount under the new name. Run cleanup on existing
       // instances and drop them.
       for (const el of instances) {
-        unmountElement(el);
+        unmountView(el);
         el.remove();
       }
       return;
@@ -315,16 +317,16 @@ export class ComponentRegistry {
     for (const el of instances) {
       this.#rebuildInstance(el, next.name, nextMountFn);
     }
-  }
+  };
 
-  #registerComponent(name: string, mountFn: MountFn): void {
-    const existing = this.#registry.get(name);
+  #registerView(name: string, mountFn: MountFn): void {
+    const existing = this.#viewsByTag.get(name);
     if (existing && existing !== mountFn) {
       throw new Error(
-        `[overlock-patchwork] component name collision: "${name}" is already registered`,
+        `[overlock-patchwork] view name collision: "${name}" is already registered`,
       );
     }
-    this.#registry.set(name, mountFn);
+    this.#viewsByTag.set(name, mountFn);
   }
 
   /**
@@ -335,11 +337,11 @@ export class ComponentRegistry {
    * `doc=` attribute changes so the rebuild path always re-resolves the
    * handle from scratch.
    *
-   * Order of operations matters: `unmountElement(oldEl)` runs the old
-   * cleanup *before* `mountComponent(newEl)` claims the new element and
+   * Order of operations matters: `unmountView(oldEl)` runs the old
+   * cleanup *before* `mountView(newEl)` claims the new element and
    * starts the next lifecycle, so cleanup-before-new-mount ordering is
    * preserved. The MO will later see `removedNodes: [oldEl]` and call
-   * `unmountElement(oldEl)` again — that's a no-op because the entry is
+   * `unmountView(oldEl)` again — that's a no-op because the entry is
    * already gone from the cleanups map.
    */
   #rebuildInstance(
@@ -348,7 +350,7 @@ export class ComponentRegistry {
     mountFn: MountFn,
   ): void {
     const parent = oldEl.parentNode;
-    unmountElement(oldEl);
+    unmountView(oldEl);
     if (!parent) return;
 
     const newEl = oldEl.ownerDocument.createElement(newName);
@@ -358,69 +360,55 @@ export class ComponentRegistry {
     while (oldEl.firstChild) newEl.appendChild(oldEl.firstChild);
     parent.replaceChild(newEl, oldEl);
 
-    mountComponent(newEl, mountFn);
+    mountView(newEl, mountFn);
   }
 
   /**
    * Called when an `<automerge-repo>` element's `.repo` was swapped (via
-   * its `checkout` / `fork` / `reset` methods). Rebuilds every component
+   * its `checkout` / `fork` / `reset` methods). Rebuilds every view
    * descendant whose nearest enclosing `<automerge-repo>` is `repoEl`,
    * so each descendant's `doc=` is re-resolved against the new repo and
    * `el.repo` is re-stamped on the fresh element.
    *
-   * Components inside a *nested* `<automerge-repo>` are skipped — their
+   * Views inside a *nested* `<automerge-repo>` are skipped — their
    * scope hasn't changed.
    */
   #rebuildDescendantsOfRepoEl(repoEl: HTMLElement): void {
     const targets: HTMLElement[] = [];
-    this.#forEachElementIn(repoEl, (el) => {
+    walkSubtree(repoEl, (el) => {
       if (!(el instanceof HTMLElement)) return;
-      if (!isComponent(el)) return;
+      if (!isView(el)) return;
       if (el.closest(AUTOMERGE_REPO_TAG) !== repoEl) return;
       targets.push(el);
     });
     for (const el of targets) {
-      const mountFn = this.#registry.get(el.localName);
+      const mountFn = this.#viewsByTag.get(el.localName);
       if (!mountFn) continue;
       this.#rebuildInstance(el, el.localName, mountFn);
     }
   }
 
   #mountIfRegistered(el: Element): void {
-    if (isComponent(el)) return;
-    const mountFn = this.#registry.get(el.localName);
+    if (isView(el)) return;
+    const mountFn = this.#viewsByTag.get(el.localName);
     if (!mountFn) return;
-    mountComponent(el as HTMLElement, mountFn);
+    mountView(el as HTMLElement, mountFn);
   }
 
   /**
    * Snapshot of every element under `root` that currently has tag `tag`
-   * and is a claimed component. Snapshotted up-front because the HMR
+   * and is a claimed view. Snapshotted up-front because the HMR
    * rebuild loop mutates the DOM as it goes.
    */
   #findMountedElements(root: HTMLElement, tag: string): HTMLElement[] {
     const out: HTMLElement[] = [];
-    this.#forEachElementIn(root, (el) => {
+    walkSubtree(root, (el) => {
       if (!(el instanceof HTMLElement)) return;
       if (el.localName !== tag) return;
-      if (!isComponent(el)) return;
+      if (!isView(el)) return;
       out.push(el);
     });
     return out;
-  }
-
-  #forEachElement(el: Element, fn: (el: Element) => void): void {
-    fn(el);
-    this.#forEachElementIn(el, fn);
-  }
-
-  #forEachElementIn(root: Element, fn: (el: Element) => void): void {
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
-    let node = walker.nextNode() as Element | null;
-    while (node) {
-      fn(node);
-      node = walker.nextNode() as Element | null;
-    }
   }
 }
 
@@ -437,12 +425,12 @@ function swapTag(oldEl: HTMLElement, newTag: string): HTMLElement {
 }
 
 /**
- * A plugin is component-shaped if its module default-exports a
- * function. Other plugin kinds (datatypes, tools, etc. — when those
- * land) will have different shape requirements; this registry only
- * consumes the component kind.
+ * A plugin is view-shaped if its module default-exports a function.
+ * Other plugin kinds (datatypes, tools, etc. — when those land) will
+ * have different shape requirements; this registry only consumes the
+ * view kind.
  */
-function isComponentPlugin(plugin: LoadedPlugin): boolean {
+function isViewPlugin(plugin: LoadedPlugin): boolean {
   const mod = plugin.module;
   return (
     typeof mod === "object" &&
@@ -463,4 +451,21 @@ function extractMountFn(plugin: LoadedPlugin): MountFn {
     );
   }
   return (mod as { default: MountFn }).default;
+}
+
+function walkSelfAndDescendants(
+  el: Element,
+  fn: (el: Element) => void,
+): void {
+  fn(el);
+  walkSubtree(el, fn);
+}
+
+function walkSubtree(root: Element, fn: (el: Element) => void): void {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+  let node = walker.nextNode() as Element | null;
+  while (node) {
+    fn(node);
+    node = walker.nextNode() as Element | null;
+  }
 }

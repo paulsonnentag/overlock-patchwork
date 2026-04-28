@@ -5,9 +5,9 @@
 > [`docs/README.md`](../README.md) for the actual architecture and
 > [`design/README.md`](./README.md) for what this folder is.
 
-Components depend on context derived from their position in the DOM:
-the scope repo and the resolved doc handle. Both are read once today
-and stamped onto the element as a property. Several things can change
+Views depend on context derived from their position in the DOM: the
+scope repo and the resolved doc handle. Both are read once today and
+stamped onto the element as a property. Several things can change
 after that read without any signal back to the consumer.
 
 This note is in three parts:
@@ -22,7 +22,7 @@ This note is in three parts:
 
 ## Where reactivity is missing
 
-Two pieces of context every Component depends on:
+Two pieces of context every View depends on:
 
 1. The **scope repo** — `el.closest("automerge-repo").repo`.
 2. The **handle** for `el.handle`, derived from
@@ -32,18 +32,17 @@ Each is computed once. Each can become stale.
 
 ### Scope repo (`el.repo`) goes stale
 
-`mountComponent` reads `el.closest("automerge-repo").repo` once at
-invocation
-([`component.ts`](../../src/components/component.ts)). Triggers:
+`mountView` reads `el.closest("automerge-repo").repo` once at
+invocation ([`view.ts`](../../src/view.ts)). Triggers:
 
 - **`<automerge-repo>.repo` swap** via `checkout` / `fork` / `reset`.
-  Today `_rebuildDescendants` ([`component-registry.ts`](../../src/components/component-registry.ts))
-  unmounts and remounts every component element in the scope; mitigates
-  but is destructive and only handles things that *are* components.
+  Today `_rebuildDescendants` ([`view-registry.ts`](../../src/view-registry.ts))
+  unmounts and remounts every view element in the scope; mitigates
+  but is destructive and only handles things that *are* views.
 - **Nested `<automerge-repo>` inheritance.** A nested marker captures
   the outer marker's `.repo` once, at insertion. If the outer
   swaps, the nested marker is stale forever — `_rebuildDescendants`
-  only rebuilds components, not markers.
+  only rebuilds views, not markers.
 - **Element reparented** under a different `<automerge-repo>` scope.
 - **A new `<automerge-repo>` inserted** between element and current
   ancestor.
@@ -78,7 +77,7 @@ trigger affects multiple lookups:
 
 | Trigger | Affects |
 |---|---|
-| `<automerge-repo>.repo` swap | `el.repo` and `el.handle` for every descendant Component, nested marker inheritance |
+| `<automerge-repo>.repo` swap | `el.repo` and `el.handle` for every descendant View, nested marker inheritance |
 | DOM reparent | scope repo, doc handle |
 | External branch-doc `clones` map update | `BranchedDocHandle.#cloneHandle` selection |
 
@@ -111,10 +110,10 @@ every change, returning an unsubscribe.
 both implement this, hiding *which* underlying signal fired (Automerge
 `change`, repo swap, …) — consumers see only the derived value.
 
-### Mapped onto `ComponentRoot`
+### Mapped onto `ViewRoot`
 
 ```ts
-type ComponentRoot<V = unknown> = HTMLElement & {
+type ViewRoot<V = unknown> = HTMLElement & {
   handle: Subscribable<DocHandle<V> | undefined>;
   repo: Subscribable<BranchableRepo | undefined>;
 };
@@ -249,7 +248,7 @@ Three things make it Just Work:
   current value. The redundant initial call hits Solid's `===` dedup
   and is a no-op.
 - `onCleanup` ties the unsubscribe to the surrounding reactive scope
-  — the same scope that runs the component's mount-fn cleanup.
+  — the same scope that runs the view's mount-fn cleanup.
 - The framework dedups inside the `Subscribable` (e.g. don't fire if
   the value didn't change), so by the time it reaches Solid, redundant
   fires are gone.
@@ -320,7 +319,7 @@ cause.
    attached lazily (only while subscribed). Singleton primitives
    (`MutationObserver`) are eager.
 7. **Async abort discipline.** Per-mount generation counter (closure
-   variable in `mountComponent`), checked after each `await` in
+   variable in `mountView`), checked after each `await` in
    context resolution. No `AbortController`. Internal only; consumers
    don't see it.
 8. **Propagation order.** Single microtask, top-down via Solid's
@@ -341,9 +340,9 @@ Two phases, each landing as one PR.
 
 ### Phase 1 — Plumbing
 
-Adds the reactive substrate without changing `ComponentRoot`'s
-public surface yet. After this lands, the snapshot APIs still work;
-nothing internal is ported.
+Adds the reactive substrate without changing `ViewRoot`'s public
+surface yet. After this lands, the snapshot APIs still work; nothing
+internal is ported.
 
 - **New sibling package `@patchwork-tools/paper-world/solid`.**
   Depends on `solid-js` and the tool package. Exports:
@@ -352,8 +351,8 @@ nothing internal is ported.
   - `toSubscribable<T>(accessor) → Subscribable<T>` (memo →
     subscribable, used by the framework, not consumers)
 - **Long-lived Solid root** owned by `overlock-patchwork` (e.g.
-  `src/components/reactive-root.ts`). Created once at boot, never
-  disposed; hosts every framework-internal memo.
+  `src/reactive-root.ts`). Created once at boot, never disposed;
+  hosts every framework-internal memo.
 
 ### Phase 2 — Subscribable surface (flag day)
 
@@ -365,7 +364,7 @@ callsites and `packages/root/component.js` migrate in the same PR.
     `checkout` / `fork` / `reset`.
   - Nested-marker inheritance becomes a memo derived from the outer
     marker's `repo` plus this marker's own attributes.
-- **`Component` / `ComponentRoot`**
+- **`View` / `ViewRoot`**
   - `handle: Subscribable<DocHandle | undefined>` — memo over
     `(closest marker.repo, doc=)`. Generation-counter guards the
     async `repo.find()`.

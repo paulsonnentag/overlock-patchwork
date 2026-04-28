@@ -1,6 +1,6 @@
 # Documents
 
-Components opt into Automerge documents in two complementary ways: by
+Views opt into Automerge documents in two complementary ways: by
 asking the *repo* itself (e.g. to create a new doc) and by receiving a
 `DocHandle` to an *existing* doc. Both go through the
 `<automerge-repo>` scope marker.
@@ -20,8 +20,8 @@ Wrap any subtree that should resolve doc handles in `<automerge-repo>`:
 
 `<automerge-repo>` is a no-op marker tag. The registry walks the
 subtree on construction (and on every `MutationObserver` insertion)
-and assigns `el.repo = registry.repo` to each one. Components reach
-the repo with:
+and assigns `el.repo = registry.repo` to each one. Views reach the
+repo with:
 
 ```js
 const repo = element.closest("automerge-repo")?.repo;
@@ -35,9 +35,9 @@ for how to fork a repo and walk a branch's handles.
 
 There is exactly one repo wrapper in the page today — the global one
 set up in [`src/main.ts`](../src/main.ts) — so the marker is mostly a
-future-proofing boundary. Component mount fns should read the repo via
-`element.repo`, which the registry stamps on every component element
-from the closest `<automerge-repo>` ancestor:
+future-proofing boundary. View mount fns should read the repo via
+`element.repo`, which the registry stamps on every view element from
+the closest `<automerge-repo>` ancestor:
 
 ```js
 const repo = element.repo;
@@ -46,9 +46,9 @@ if (!repo) {
 }
 ```
 
-`element.repo` is set synchronously when the component element is
+`element.repo` is set synchronously when the view element is
 constructed, so it's available the moment the mount fn runs. Whether
-that maps to a global, per-tree, or per-component repo is the registry's
+that maps to a global, per-tree, or per-view repo is the registry's
 business; mount fns just read the property.
 
 ## `doc=` attribute on `<patchwork-view>`
@@ -97,18 +97,18 @@ framework primitive.
 
 `doc=` is strict: present without an `<automerge-repo>` ancestor, the
 mount is aborted with an error. Absent, `el.handle` stays `undefined`
-and the component runs as before — `clock` does this and just renders
+and the view runs as before — `clock` does this and just renders
 local state.
 
 ## Reactive `doc=`
 
 The `MutationObserver` watches `doc` attribute changes on every
 element in its tree (`{ attributes: true, attributeFilter: ["doc"] }`).
-When the attribute changes on a *mounted* component, the registry
+When the attribute changes on a *mounted* view, the registry
 schedules a rebuild on the next microtask — same teardown + recreate
 dance as HMR (see [`lifecycle.md`](./lifecycle.md)). The new element's
-`el.handle` reflects the new URL; the component's cleanup runs between
-the old and new mount.
+`el.handle` reflects the new URL; the view's cleanup runs between the
+old and new mount.
 
 Rebuilds are **microtask-batched**, so a context-provider that flips
 `doc=` through several intermediate values in one synchronous block
