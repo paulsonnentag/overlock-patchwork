@@ -1,4 +1,5 @@
 import type { BranchableRepo } from "../branchable-repo";
+import { BasicSubscribable, type Subscribable } from "../subscribable";
 import { AUTOMERGE_REPO_TAG } from "./automerge-repo-element";
 import * as componentStore from "./component-store";
 import { PATCHWORK_VIEW_TAG } from "./patchwork-view-element";
@@ -118,6 +119,12 @@ function findChildComponents<T>(
  * synchronously, before any `await` in the registry's mount path so a
  * child mount fn can rely on the methods being present.
  *
+ * Each lookup returns a `Subscribable` initialised with the walker's
+ * stamp-time result. The `Subscribable` does not yet re-fire on
+ * structural or context changes — that wiring is deferred. For now
+ * `value()` always returns the snapshot taken at stamp time, and
+ * `subscribe(fn)` invokes `fn` once with that snapshot and never again.
+ *
  * Methods close over `el` so detached calls
  * (`const f = el.closestComponent`) still resolve against the right
  * element. `el.repo` is read from the closest `<automerge-repo>` ancestor;
@@ -130,26 +137,38 @@ export function stampLookups(el: HTMLElement): void {
   const root = el as ComponentRoot;
   function closestComponent<T>(
     schema: Schema<T>,
-  ): SchemaComponentRoot<T> | null {
-    return findComponent(el, schema);
+  ): Subscribable<SchemaComponentRoot<T> | null> {
+    return new BasicSubscribable<SchemaComponentRoot<T> | null>(
+      findComponent(el, schema),
+    );
   }
-  function ancestorComponent(): ComponentRoot | null;
+  function ancestorComponent(): Subscribable<ComponentRoot | null>;
   function ancestorComponent<T>(
     schema: Schema<T>,
-  ): SchemaComponentRoot<T> | null;
+  ): Subscribable<SchemaComponentRoot<T> | null>;
   function ancestorComponent<T>(
     schema?: Schema<T>,
-  ): ComponentRoot | SchemaComponentRoot<T> | null {
-    return schema
+  ): Subscribable<ComponentRoot | SchemaComponentRoot<T> | null> {
+    const initial = schema
       ? findComponent(el.parentElement, schema)
       : findComponent(el.parentElement);
+    return new BasicSubscribable<ComponentRoot | SchemaComponentRoot<T> | null>(
+      initial,
+    );
   }
-  function componentChildren(): ComponentRoot[];
-  function componentChildren<T>(schema: Schema<T>): SchemaComponentRoot<T>[];
+  function componentChildren(): Subscribable<ComponentRoot[]>;
+  function componentChildren<T>(
+    schema: Schema<T>,
+  ): Subscribable<SchemaComponentRoot<T>[]>;
   function componentChildren<T>(
     schema?: Schema<T>,
-  ): ComponentRoot[] | SchemaComponentRoot<T>[] {
-    return schema ? findChildComponents(el, schema) : findChildComponents(el);
+  ): Subscribable<ComponentRoot[] | SchemaComponentRoot<T>[]> {
+    const initial = schema
+      ? findChildComponents(el, schema)
+      : findChildComponents(el);
+    return new BasicSubscribable<ComponentRoot[] | SchemaComponentRoot<T>[]>(
+      initial,
+    );
   }
   root.closestComponent = closestComponent;
   root.ancestorComponent = ancestorComponent;

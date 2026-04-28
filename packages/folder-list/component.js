@@ -18,7 +18,7 @@ const accountSchema = {
 
 export default function (element) {
   const handle = element.handle;
-  const account = element.closestComponent(accountSchema);
+  const account = element.closestComponent(accountSchema).value();
 
   function Empty() {
     return html`

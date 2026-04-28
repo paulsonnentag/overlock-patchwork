@@ -158,7 +158,8 @@ into its descendants by setting `doc=` on each one. The descendant
 components then consume the new doc through `el.handle` like any other
 doc-bound component.
 
-The provider walks its child components with `componentChildren()`:
+The provider walks its child components with `componentChildren()`,
+which returns a `Subscribable<ComponentRoot[]>`:
 
 ```js
 import { effect } from "https://esm.sh/solid-js@1.9.5";
@@ -174,16 +175,18 @@ const accountSchema = {
 };
 
 export default async function (element) {
-  const account = element.closestComponent(accountSchema);
+  const account$ = element.closestComponent(accountSchema);
+  const account = account$.value();
   if (!account) {
     // Outside an account context — render nothing rather than crash.
     return;
   }
+  const children$ = element.componentChildren();
   const doc = makeDocumentProjection(account.handle);
   effect(() => {
     const url = doc.rootFolderUrl;
     if (!url) return;
-    for (const child of element.componentChildren()) {
+    for (const child of children$.value()) {
       if (child.getAttribute("doc") !== url) {
         child.setAttribute("doc", url);
       }

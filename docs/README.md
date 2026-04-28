@@ -23,6 +23,11 @@ Start with the doc closest to the change you want to make.
 - [`internals.md`](./internals.md) — registry data structures,
   custom-element rationale, module layout, constraints.
 
+For *planned* (not-yet-implemented) work, see
+[`design/`](./design/README.md). Architecture docs above describe
+behavior the code actually has; design notes describe shapes we're
+considering and may not ship.
+
 ## Glossary
 
 - **Component package.** A folder document containing `component.json`
@@ -77,6 +82,7 @@ Start with the doc closest to the change you want to make.
 | [`src/components/automerge-repo-element.ts`](../src/components/automerge-repo-element.ts) | `AutomergeRepoElement` scope marker: `.repo` property, `checkout`/`fork`/`reset` mutators |
 | [`src/components/component.ts`](../src/components/component.ts) | `Component` lifecycle: state enum, teardown set, in-flight race guard |
 | [`src/components/component-store.ts`](../src/components/component-store.ts) | `WeakMap<Element, Component>` lookup |
-| [`src/components/ancestor-lookup.ts`](../src/components/ancestor-lookup.ts) | `closestComponent` / `ancestorComponent` / `componentChildren` walkers, element method stamping (also stamps `el.repo`) |
+| [`src/components/ancestor-lookup.ts`](../src/components/ancestor-lookup.ts) | `closestComponent` / `ancestorComponent` / `componentChildren` walkers, element method stamping (returns `Subscribable<...>`; also stamps `el.repo`) |
+| [`src/subscribable.ts`](../src/subscribable.ts) | `Subscribable<T>` interface + `BasicSubscribable<T>` default impl: framework reactive primitive |
 | [`src/types.ts`](../src/types.ts) | `ComponentManifest`, `MountFn`, `Schema`, `ComponentRoot`, `SchemaComponentRoot` |
 | [`src/components/index.ts`](../src/components/index.ts) | public re-exports |

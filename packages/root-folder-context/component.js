@@ -18,7 +18,7 @@ const accountSchema = {
 };
 
 export default function (element) {
-  const account = element.closestComponent(accountSchema);
+  const account = element.closestComponent(accountSchema).value();
   if (!account) {
     // No account ancestor — render-as-passthrough is the right default;
     // children remain in the DOM but receive no doc context.
@@ -28,13 +28,19 @@ export default function (element) {
     return;
   }
 
+  // Snapshot of current child components. The `Subscribable` will start
+  // re-firing once the framework wires structural triggers; until then
+  // it carries the mount-time list, which matches the pre-existing
+  // "providers don't see children added after mount" semantics.
+  const children$ = element.componentChildren();
+
   return createRoot((dispose) => {
     const accountDoc = makeDocumentProjection(account.handle);
 
     createEffect(() => {
       const url = accountDoc.rootFolderUrl;
       if (!url) return;
-      for (const child of element.componentChildren()) {
+      for (const child of children$.value()) {
         if (child.getAttribute("doc") !== url) {
           child.setAttribute("doc", url);
         }

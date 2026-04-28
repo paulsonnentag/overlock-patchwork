@@ -102,6 +102,9 @@ which is the same answer either way.
 ```
 src/types.ts              ComponentManifest, MountFn, Schema,
                           ComponentRoot, SchemaComponentRoot
+src/subscribable.ts       Subscribable<T> interface +
+                          BasicSubscribable<T> default impl;
+                          framework reactive primitive
 src/components/
   component-registry.ts   ComponentRegistry: DOM observer, manifest
                           fetch, HMR, swapTag, microtask-batched
@@ -155,23 +158,28 @@ through `window.createComponentRegistry(root)`.
   `<patchwork-view>` outside any `<automerge-repo>` ancestor is an
   error; the mount is aborted with a logged exception. Components
   that don't need a doc (e.g. `clock`) work fine with no scope.
-- **Ancestor lookups race `doc=` resolution.** `closestComponent` /
-  `ancestorComponent` are synchronous snapshots of `componentStore`.
-  Tree-order construction guarantees a parent's `Component` is
-  registered before its children construct, but `el.handle` is set
-  asynchronously, so a schema-filtered walk run from a child mount fn
-  can briefly miss a parent that is still resolving. Documented in
-  [`documents.md`](./documents.md#race-against-doc-resolution); call
-  the lookup from a reactive scope when the result must be live.
+- **Lookups return `Subscribable`s.** `closestComponent`,
+  `ancestorComponent`, and `componentChildren` each return a
+  `Subscribable<...>` (`{ value(): T; subscribe(fn): () => void }`).
+  Currently the `Subscribable` is initialised with the walker's
+  stamp-time snapshot and never re-fires; structural and context
+  triggers will be wired up later (see
+  [`design/reactivity.md`](./design/reactivity.md)). Tree-order
+  construction guarantees a parent's `Component` is registered before
+  its children construct, but `el.handle` is set asynchronously, so a
+  schema-filtered walk taken at mount time can miss a parent that is
+  still resolving — until re-fire wiring lands, consumers that depend
+  on a still-resolving ancestor should schedule their read after the
+  relevant async work has settled.
 - **Child-component lookups race bootstrap.** `componentChildren()`
   reports both already-swapped components and still-bootstrapping
   `<patchwork-view>` elements as boundaries, so providers can write
   `doc=` on each immediately and let the registry's bootstrap or
-  rebuild path pick the value up. Children that are added to the DOM
-  *after* the provider runs are not picked up automatically; consumers
-  that need to react to dynamic structural changes must run their own
-  `MutationObserver` or call `componentChildren()` from a reactive
-  scope re-run by their own state updates.
+  rebuild path pick the value up. Children added to the DOM *after*
+  the provider runs aren't reflected until structural triggers are
+  wired up; for now consumers that need to react to dynamic structural
+  changes must run their own `MutationObserver` or re-read
+  `componentChildren().value()` from their own state updates.
 - **`el.repo` stamping.** Every component element has `el.repo` set
   at construction time from `el.closest("automerge-repo")`. Outside
   any `<automerge-repo>` ancestor, `el.repo` is `undefined` and the

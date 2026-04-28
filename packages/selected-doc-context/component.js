@@ -15,13 +15,19 @@ const accountSchema = {
 };
 
 export default function (element) {
-  const account = element.closestComponent(accountSchema);
+  const account = element.closestComponent(accountSchema).value();
   if (!account) {
     console.warn(
       "selected-doc-context: no account ancestor; children will receive no doc context",
     );
     return;
   }
+
+  // Snapshot of current child components. The `Subscribable` will start
+  // re-firing once the framework wires structural triggers; until then
+  // it carries the mount-time list, which matches the pre-existing
+  // "providers don't see children added after mount" semantics.
+  const children$ = element.componentChildren();
 
   return createRoot((dispose) => {
     const accountDoc = makeDocumentProjection(account.handle);
@@ -35,7 +41,7 @@ export default function (element) {
         // nothing on first load also haven't propagated `doc=` yet.
         return;
       }
-      for (const child of element.componentChildren()) {
+      for (const child of children$.value()) {
         if (child.getAttribute("doc") !== url) {
           child.setAttribute("doc", url);
         }

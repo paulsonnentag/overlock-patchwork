@@ -28,8 +28,10 @@ export default function (element) {
   // Propagate `doc=` to component descendants. `componentChildren()`
   // descends through non-component boundaries (the new
   // <automerge-repo>, plus any wrapping `<header>`/`<div>`/etc.) to
-  // find the nearest <patchwork-view>s and component instances.
-  for (const child of element.componentChildren()) {
+  // find the nearest <patchwork-view>s and component instances. The
+  // `.value()` is a stamp-time snapshot — fine here because this
+  // provider only ever pushes `doc=` once per mount.
+  for (const child of element.componentChildren().value()) {
     if (child.getAttribute("doc") !== docUrl) {
       child.setAttribute("doc", docUrl);
     }

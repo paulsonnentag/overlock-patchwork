@@ -1,6 +1,7 @@
 import type { DocHandle } from "@automerge/automerge-repo/slim";
 
 import type { BranchableRepo } from "./branchable-repo";
+import type { Subscribable } from "./subscribable";
 
 export type ComponentManifest = {
   name: string;
@@ -37,45 +38,54 @@ export type Schema<T> = {
  * The element a mount fn receives. A plain `HTMLElement` plus:
  *
  * - `handle?` — the `DocHandle` resolved from the `doc=` attribute
- *   (absent when the host element had no `doc=`).
+ *   (absent when the host element had no `doc=`). The handle has stable
+ *   identity across branch operations; switching branches swaps the
+ *   handle's inner ref under the hood and surfaces as a `change` event,
+ *   so consumers can listen with the standard `handle.on("change", …)`
+ *   and don't need to re-acquire the reference.
  * - `repo?` — the `BranchableRepo` from the closest `<automerge-repo>`
  *   ancestor, stamped at construction time. Absent when the element is
- *   mounted outside any `<automerge-repo>` scope. Off-branch the wrapper
- *   delegates straight to the underlying `Repo` (`element.repo.find` /
- *   `element.repo.create` work as before); call `element.repo.fork()` to
- *   create a branch.
+ *   mounted outside any `<automerge-repo>` scope. The repo is stateful:
+ *   `element.repo.checkout(...)` / `element.repo.fork(...)` /
+ *   `element.repo.reset()` mutate the same instance in place. Call
+ *   `element.repo.copy()` to obtain a fresh instance.
  * - `closestComponent(schema)` — walk self → ancestors; return the first
- *   element whose handle's doc parses under `schema`. Returns `null` if
- *   no ancestor matches.
+ *   element whose handle's doc parses under `schema`. Returns a
+ *   `Subscribable` whose value is the match (or `null` if none).
  * - `ancestorComponent()` — walk parent → ancestors; return the first
- *   registered component, regardless of handle. Returns `null` if none.
+ *   registered component, regardless of handle. Returns a
+ *   `Subscribable` whose value is the match (or `null`).
  * - `ancestorComponent(schema)` — same walk, but apply the parse filter.
  * - `componentChildren()` — walk descendants, stopping at component
- *   boundaries. Returns the nearest component descendants — both
- *   already-swapped components and still-bootstrapping `<patchwork-view>`s.
- *   Used by context-provider components to enumerate their direct child
- *   components without caring whether the registry has finished its
- *   per-element bootstrap.
- * - `componentChildren(schema)` — same walk, with the schema-parse filter
- *   applied to candidates' `handle.doc()`. Pre-swap `<patchwork-view>`s
- *   have no handle yet and are skipped under schema filtering.
+ *   boundaries. Returns a `Subscribable` whose value is the nearest
+ *   component descendants — both already-swapped components and still-
+ *   bootstrapping `<patchwork-view>`s. Used by context-provider
+ *   components to enumerate their direct child components without
+ *   caring whether the registry has finished its per-element bootstrap.
+ * - `componentChildren(schema)` — same walk, with the schema-parse
+ *   filter applied to candidates' `handle.doc()`. Pre-swap
+ *   `<patchwork-view>`s have no handle yet and are skipped under
+ *   schema filtering.
  *
- * Lookups run synchronously against the current state of `componentStore`.
- * Note that `el.handle` is set asynchronously by the registry's
- * `#resolveContext` step, so a child mount fn that races a parent's
- * doc-resolution may briefly see an ancestor with no `handle` and skip it.
- * If you need an ancestor's handle, call the lookup from inside a reactive
- * scope (Solid effect, etc.) and let it re-run, or call it after the
- * relevant async work has settled.
+ * The lookups currently capture a single snapshot at stamp time — the
+ * `Subscribable` fires once on `subscribe` with that snapshot and never
+ * again. Triggers that re-fire on DOM/context changes will be wired up
+ * in a follow-up.
  */
 export type ComponentRoot<V = unknown> = HTMLElement & {
   handle?: DocHandle<V>;
   repo?: BranchableRepo;
-  closestComponent<T>(schema: Schema<T>): SchemaComponentRoot<T> | null;
-  ancestorComponent(): ComponentRoot | null;
-  ancestorComponent<T>(schema: Schema<T>): SchemaComponentRoot<T> | null;
-  componentChildren(): ComponentRoot[];
-  componentChildren<T>(schema: Schema<T>): SchemaComponentRoot<T>[];
+  closestComponent<T>(
+    schema: Schema<T>,
+  ): Subscribable<SchemaComponentRoot<T> | null>;
+  ancestorComponent(): Subscribable<ComponentRoot | null>;
+  ancestorComponent<T>(
+    schema: Schema<T>,
+  ): Subscribable<SchemaComponentRoot<T> | null>;
+  componentChildren(): Subscribable<ComponentRoot[]>;
+  componentChildren<T>(
+    schema: Schema<T>,
+  ): Subscribable<SchemaComponentRoot<T>[]>;
 };
 
 /**

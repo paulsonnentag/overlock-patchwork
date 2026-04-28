@@ -1,15 +1,19 @@
 // BranchableRepo — a `Repo` wrapper that adds git-style branching to
 // Automerge documents.
 //
-// `forkable.fork()` returns a *new* `BranchableRepo` whose document
-// handles are live on the underlying repo until you write to them. The
-// first `change()` triggers a copy-on-write clone of the document; from
-// that point on the wrapped handle is backed by the clone and writes do
-// not disturb the original. The original/clone pairing is recorded in a
-// "branch document" stored on the underlying repo, so a branch can be
-// reopened later with `BranchableRepo.checkout(repo, branchDocUrl)`.
+// The wrapper is stateful: `fork()`, `checkout()`, and `reset()` mutate
+// `this` in place rather than returning a new `BranchableRepo`. Existing
+// `BranchedDocHandle`s are rewired to the new branch state silently so
+// every reference to a wrapped handle continues to point at the right
+// inner doc. Use `copy()` if you need a separate instance.
 //
-// `forkable.fork(urls)` snapshots the listed documents eagerly at fork
+// First `change()` on a wrapped handle triggers a copy-on-write clone of
+// the document; from that point on the wrapper is backed by the clone
+// and writes do not disturb the original. The original/clone pairing is
+// recorded in a "branch document" stored on the underlying repo, so a
+// branch can be reopened later with `repo.checkout(branchDocUrl)`.
+//
+// `repo.fork(urls)` snapshots the listed documents eagerly at fork
 // time. URLs may include a `?heads=` segment to fork at a point in time.
 //
 // Wrapped handles always report the *original* url so the rest of the
@@ -84,13 +88,20 @@ export class BranchableRepo {
   readonly repo: Repo;
 
   // The branch document, or `null` if this repo is not on a branch.
-  readonly branchHandle: DocHandle<BranchDoc> | null;
+  // Mutated in place by `fork`, `checkout`, and `reset`.
+  #branchHandle: DocHandle<BranchDoc> | null;
 
   readonly #wrapped = new Map<AutomergeUrl, BranchedDocHandle<unknown>>();
 
   private constructor(repo: Repo, branchHandle: DocHandle<BranchDoc> | null) {
     this.repo = repo;
-    this.branchHandle = branchHandle;
+    this.#branchHandle = branchHandle;
+  }
+
+  // The branch document, or `null` off-branch. Read-only — drive state
+  // changes through `fork` / `checkout` / `reset`.
+  get branchHandle(): DocHandle<BranchDoc> | null {
+    return this.#branchHandle;
   }
 
   // Wrap an existing `Repo` so it can be forked.
@@ -98,33 +109,18 @@ export class BranchableRepo {
     return new BranchableRepo(repo, null);
   }
 
-  // Reopen an existing branch by its branch-document url. Returns a
-  // `BranchableRepo` whose `find()` calls return handles backed by the
-  // branch's clones (or by the original docs, for entries not yet
-  // COW'd).
-  static async checkout(
-    repo: Repo,
-    branchDocUrl: AutomergeUrl,
-  ): Promise<BranchableRepo> {
-    const branchHandle = await repo.find<BranchDoc>(branchDocUrl);
-    if (!isBranchDoc(branchHandle.doc())) {
-      throw new Error(
-        `branchable-repo: ${branchDocUrl} is not a branch document`,
-      );
-    }
-    return new BranchableRepo(repo, branchHandle);
-  }
-
-  // Create a new branch off of this repo. Returns a *new*
-  // `BranchableRepo`; `this` is unchanged.
+  // Create a new branch and switch to it in place. Throws if already on
+  // a branch — nested branching is not yet supported.
   //
   // Without `urls`, documents are cloned lazily on first write
   // (copy-on-write). With `urls`, the listed documents are cloned
   // eagerly — at the heads encoded in each url, if any. `name` is
   // recorded on the branch document so UI can render a label without
   // separately tracking metadata.
-  async fork(opts: ForkOpts = {}): Promise<BranchableRepo> {
-    if (this.branchHandle) {
+  //
+  // Existing `BranchedDocHandle`s are rewired to the new branch state.
+  async fork(opts: ForkOpts = {}): Promise<void> {
+    if (this.#branchHandle) {
       throw new Error(
         "branchable-repo: nested branching is not yet supported",
       );
@@ -135,17 +131,42 @@ export class BranchableRepo {
       clones: {},
     };
     if (opts.name !== undefined) initial.name = opts.name;
-    const branchHandle = this.repo.create<BranchDoc>(initial);
-    const branched = new BranchableRepo(this.repo, branchHandle);
+    this.#branchHandle = this.repo.create<BranchDoc>(initial);
     if (opts.urls?.length) {
-      await Promise.all(opts.urls.map((u) => branched.#snapshotEager(u)));
+      await Promise.all(opts.urls.map((u) => this.#snapshotEager(u)));
     }
-    return branched;
+    await this.#rewireWrappedHandles();
   }
 
-  // Instance form of {@link BranchableRepo.checkout} reusing the underlying repo.
-  checkout(branchDocUrl: AutomergeUrl): Promise<BranchableRepo> {
-    return BranchableRepo.checkout(this.repo, branchDocUrl);
+  // Switch to an existing branch in place. Existing
+  // `BranchedDocHandle`s are rewired to the branch's clones (or back to
+  // their originals for docs not yet COW'd on this branch).
+  async checkout(branchDocUrl: AutomergeUrl): Promise<void> {
+    const branchHandle = await this.repo.find<BranchDoc>(branchDocUrl);
+    if (!isBranchDoc(branchHandle.doc())) {
+      throw new Error(
+        `branchable-repo: ${branchDocUrl} is not a branch document`,
+      );
+    }
+    this.#branchHandle = branchHandle;
+    await this.#rewireWrappedHandles();
+  }
+
+  // Drop the branch context in place, returning to off-branch mode.
+  // Existing `BranchedDocHandle`s are rewired to their originals.
+  reset(): void {
+    this.#branchHandle = null;
+    for (const wrapped of this.#wrapped.values()) {
+      wrapped._rewire({ cloneHandle: null, forkHeads: null });
+    }
+  }
+
+  // Create a fresh `BranchableRepo` over the same underlying `Repo`,
+  // pointed at the current branch (or off-branch). The two instances
+  // share the underlying repo but maintain independent wrapped-handle
+  // caches and can be navigated independently.
+  copy(): BranchableRepo {
+    return new BranchableRepo(this.repo, this.#branchHandle);
   }
 
   // Create a new document. While on a branch, the new doc lives on the
@@ -159,13 +180,13 @@ export class BranchableRepo {
   async find<T>(id: AnyDocumentId): Promise<DocHandle<T>> {
     const original = anyIdToCanonicalUrl(id);
 
-    if (!this.branchHandle) return this.repo.find<T>(original);
+    if (!this.#branchHandle) return this.repo.find<T>(original);
 
     const cached = this.#wrapped.get(original);
     if (cached) return cached as unknown as DocHandle<T>;
 
     const originalHandle = await this.repo.find<T>(original);
-    const cloneEntry = this.branchHandle.doc()?.clones?.[original];
+    const cloneEntry = this.#branchHandle.doc()?.clones?.[original];
 
     let cloneHandle: DocHandle<T> | null = null;
     let forkHeads: UrlHeads | null = null;
@@ -192,12 +213,39 @@ export class BranchableRepo {
   // document gets the new clone url recorded.
   /** @internal */
   _recordClone(originalUrl: AutomergeUrl, cloneUrl: AutomergeUrl): void {
-    if (!this.branchHandle) {
+    if (!this.#branchHandle) {
       throw new Error("branchable-repo: not on a branch");
     }
-    this.branchHandle.change((d) => {
+    this.#branchHandle.change((d) => {
       d.clones[originalUrl] = cloneUrl;
     });
+  }
+
+  // Re-derive `cloneHandle` / `forkHeads` for every cached
+  // `BranchedDocHandle` against the current branch state, then point
+  // each wrapper at the new pair. No event is fired for the swap
+  // itself — content-driven `change` events keep flowing through the
+  // wrapper's existing forwarders, now bound to the new inner.
+  async #rewireWrappedHandles(): Promise<void> {
+    const tasks: Promise<void>[] = [];
+    for (const [originalUrl, wrapped] of this.#wrapped) {
+      tasks.push(this.#rewireOne(originalUrl, wrapped));
+    }
+    await Promise.all(tasks);
+  }
+
+  async #rewireOne(
+    originalUrl: AutomergeUrl,
+    wrapped: BranchedDocHandle<unknown>,
+  ): Promise<void> {
+    const cloneEntry = this.#branchHandle?.doc()?.clones?.[originalUrl];
+    let cloneHandle: DocHandle<unknown> | null = null;
+    let forkHeads: UrlHeads | null = null;
+    if (cloneEntry) {
+      cloneHandle = await this.repo.find<unknown>(canonicalUrl(cloneEntry));
+      forkHeads = parseAutomergeUrl(cloneEntry).heads ?? null;
+    }
+    wrapped._rewire({ cloneHandle, forkHeads });
   }
 
   async #snapshotEager(url: AutomergeUrl): Promise<void> {
@@ -216,7 +264,14 @@ export class BranchableRepo {
     this._recordClone(original, cloneUrl);
 
     // Pre-populate the wrapper cache so the next find() returns the same
-    // instance, already backed by the clone.
+    // instance, already backed by the clone. If a wrapper for this
+    // original already exists (e.g. created before fork), rewire it
+    // instead of replacing — callers may still hold the old reference.
+    const existing = this.#wrapped.get(original);
+    if (existing) {
+      existing._rewire({ cloneHandle: cloned, forkHeads });
+      return;
+    }
     const wrapped = new BranchedDocHandle({
       branched: this,
       originalUrl: original,
@@ -453,6 +508,26 @@ export class BranchedDocHandle<T> {
     if (!set || set.size === 0) return false;
     for (const fn of [...set]) fn(...args);
     return true;
+  }
+
+  // Re-point this wrapper at a new (cloneHandle, forkHeads) pair. Called
+  // by `BranchableRepo` after a `fork` / `checkout` / `reset` so cached
+  // wrappers track the new branch state without losing identity. Does
+  // not synthesise any events: forwarders are simply moved from the old
+  // active inner to the new one, and listeners observe content changes
+  // through whatever `change` events the new inner naturally emits.
+  /** @internal */
+  _rewire(opts: {
+    cloneHandle: DocHandle<unknown> | null;
+    forkHeads: UrlHeads | null;
+  }): void {
+    const previousActive = this.#active;
+    this.#cloneHandle = opts.cloneHandle as DocHandle<T> | null;
+    this.#forkHeads = opts.forkHeads;
+    const nextActive = this.#active;
+    if (previousActive === nextActive) return;
+    this.#unwireForwarders(previousActive);
+    this.#wireForwarders(nextActive);
   }
 
   // ------ internals ------

@@ -113,33 +113,44 @@ type Schema<T> = {
   parse(value: unknown): T;
 };
 
-el.closestComponent<T>(schema: Schema<T>):    SchemaComponentRoot<T> | null;
-el.ancestorComponent():                       ComponentRoot | null;
-el.ancestorComponent<T>(schema: Schema<T>):   SchemaComponentRoot<T> | null;
-el.componentChildren():                       ComponentRoot[];
-el.componentChildren<T>(schema: Schema<T>):   SchemaComponentRoot<T>[];
+el.closestComponent<T>(schema: Schema<T>):    Subscribable<SchemaComponentRoot<T> | null>;
+el.ancestorComponent():                       Subscribable<ComponentRoot | null>;
+el.ancestorComponent<T>(schema: Schema<T>):   Subscribable<SchemaComponentRoot<T> | null>;
+el.componentChildren():                       Subscribable<ComponentRoot[]>;
+el.componentChildren<T>(schema: Schema<T>):   Subscribable<SchemaComponentRoot<T>[]>;
 ```
+
+Each lookup returns a `Subscribable` (`{ value(): T; subscribe(fn): () =>
+void }`) so consumers can react to context changes without re-running
+the walk. `value()` returns the current answer; `subscribe(fn)` invokes
+`fn` with the current answer immediately and again whenever the answer
+changes. Lookup re-fires aren't yet wired up to all the relevant
+triggers — for now the `Subscribable` returns the snapshot taken at
+mount time. The destination model is documented in
+[`design/reactivity.md`](./design/reactivity.md).
 
 - `closestComponent(schema)` — walks **self → parent → …**. For each
   registered component along the way, calls `schema.parse(handle.doc())`;
-  returns the first hit. Ancestors with no `handle` (no `doc=`) and
-  ancestors whose doc fails to parse are skipped. Returns `null` if
-  nothing matches.
-- `ancestorComponent()` — walks **parent → …** and returns the first
-  registered component, regardless of whether it has a `handle`. The
-  no-schema form is for "give me my enclosing component, whatever it is".
+  the `Subscribable`'s value is the first hit. Ancestors with no
+  `handle` (no `doc=`) and ancestors whose doc fails to parse are
+  skipped. Value is `null` if nothing matches.
+- `ancestorComponent()` — walks **parent → …** and the `Subscribable`'s
+  value is the first registered component, regardless of whether it has
+  a `handle`. The no-schema form is for "give me my enclosing component,
+  whatever it is".
 - `ancestorComponent(schema)` — same walk but applied with the parse
   filter. Skip-self version of `closestComponent`.
 - `componentChildren()` — walks descendants, **stops at every component
-  boundary**, and returns the nearest-component descendants. A child
-  counts as a boundary if it has a registered `Component` (already
-  swapped) or its tag is `<patchwork-view>` (still bootstrapping). Both
-  shapes are reported, so consumers can act on the full set immediately
-  without waiting for in-flight bootstraps. Wrapping non-component
-  elements (a `<div>`, a `<header>`, …) are descended into transparently.
+  boundary**, and the `Subscribable`'s value is the nearest-component
+  descendants. A child counts as a boundary if it has a registered
+  `Component` (already swapped) or its tag is `<patchwork-view>` (still
+  bootstrapping). Both shapes are reported, so consumers can act on the
+  full set immediately without waiting for in-flight bootstraps.
+  Wrapping non-component elements (a `<div>`, a `<header>`, …) are
+  descended into transparently.
 - `componentChildren(schema)` — same walk with the parse filter.
-  Pre-swap `<patchwork-view>`s have no `handle` yet and are skipped under
-  schema filtering.
+  Pre-swap `<patchwork-view>`s have no `handle` yet and are skipped
+  under schema filtering.
 
 `componentChildren` is the building block for **context-provider
 components**: a parent walks its component children once at mount, plus
@@ -175,12 +186,15 @@ A child component reading the count out of a counter ancestor:
 import { counterSchema } from "./schema.js";
 
 export default async function (element) {
-  const counter = element.closestComponent(counterSchema);
+  const counter$ = element.closestComponent(counterSchema);
+  const counter = counter$.value();
   if (!counter) {
     throw new Error("counter-readout requires a counter ancestor");
   }
   const handle = counter.handle; // DocHandle<{ count: number }>
   // … render handle.doc().count, subscribe to handle.on("change"), etc.
+  // Subscribe to counter$ if you also want to react when the closest
+  // matching ancestor changes.
 }
 ```
 
@@ -194,11 +208,11 @@ be set when a child's mount fn first runs. Under schema filtering, a
 parent without a `handle` is skipped, so the lookup may miss a parent
 that's still resolving.
 
-The lookup is a synchronous snapshot, like `el.handle` itself. If the
-ancestor's doc is critical, call the lookup from inside a reactive
-scope (Solid effect, etc.) so it re-runs once the parent's handle
-resolves, or schedule the call after the relevant async work has
-settled.
+The lookup's stamp-time snapshot reflects only what was ready then.
+The `Subscribable`-based model in [`design/reactivity.md`](./design/reactivity.md)
+will re-fire once the ancestor's handle resolves; until that wiring
+lands, a consumer that depends on a still-resolving ancestor should
+schedule its read after the relevant async work has settled.
 
 ## Reactive `doc=`
 
@@ -223,13 +237,15 @@ the rebuild.
 
 ## Branching
 
-`element.repo` is a `BranchableRepo`, which adds three things on top
-of a plain Automerge `Repo`:
+`element.repo` is a `BranchableRepo`, a stateful wrapper over a plain
+Automerge `Repo`:
 
 ```ts
-repo.fork(urls?: AutomergeUrl[]): Promise<BranchableRepo>
-repo.checkout(branchDocUrl: AutomergeUrl): Promise<BranchableRepo>
-repo.branchHandle: DocHandle<BranchDoc> | null
+repo.fork(opts?: { urls?: AutomergeUrl[]; name?: string }): Promise<void>
+repo.checkout(branchDocUrl: AutomergeUrl): Promise<void>
+repo.reset(): void
+repo.copy(): BranchableRepo
+repo.branchHandle: DocHandle<BranchDoc> | null   // read-only
 ```
 
 A *branch* is just another Automerge document that records a map of
@@ -239,15 +255,22 @@ set to the heads of the original at the moment the clone was created
 those heads are valid heads inside the clone too — which is what makes
 diffing cheap.
 
-`fork()` returns a *new* `BranchableRepo`; the receiver is unchanged.
-The new repo's `find()` returns proxy handles that stay live on the
-original document until you write to them. The first
-`handle.change(...)` triggers a copy-on-write clone of the underlying
-doc, and from that point on the proxy is backed by the clone:
+`fork`, `checkout`, and `reset` mutate the repo **in place**: the same
+`BranchableRepo` instance is navigated to a new branch (or back
+off-branch). Existing wrapped handles obtained through `repo.find(...)`
+keep their identity and rewire to the new branch state silently — no
+synthetic event is fired for the swap, but content-driven `change`
+events keep flowing through the wrapper as the underlying inner
+document changes. Use `copy()` to obtain an independent
+`BranchableRepo` over the same underlying `Repo`.
+
+The first `handle.change(...)` on a branched repo triggers a
+copy-on-write clone of the underlying doc, and from that point on the
+proxy is backed by the clone:
 
 ```js
-const branched = await element.repo.fork();
-const handle = await branched.find(originalUrl);
+await element.repo.fork();             // mutates element.repo in place
+const handle = await element.repo.find(originalUrl);
 
 handle.url;                        // still the *original* url
 handle.doc();                      // reads from the original
@@ -255,31 +278,34 @@ handle.change(d => d.title = "x"); // first write — clones, branch doc updated
 handle.diff();                     // patches from forkHeads → current
 ```
 
-Pass urls to `fork(urls)` to clone them eagerly at fork time. URLs
-may include a `?heads=` segment to fork at a point in time:
+Pass `urls` to `fork({ urls })` to clone them eagerly at fork time.
+URLs may include a `?heads=` segment to fork at a point in time:
 
 ```js
-const branched = await element.repo.fork([
-  "automerge:abc...",                  // current heads
-  "automerge:def...?heads=g1,g2",      // historical heads
-]);
+await element.repo.fork({
+  urls: [
+    "automerge:abc...",                // current heads
+    "automerge:def...?heads=g1,g2",    // historical heads
+  ],
+  name: "experiment",
+});
 ```
 
-`branched.branchHandle` is a `DocHandle<BranchDoc>` whose url you can
-hand to `BranchableRepo.checkout(repo, branchDocUrl)` later to reopen
-the branch.
+`element.repo.branchHandle` is a `DocHandle<BranchDoc>` whose url you
+can pass to `repo.checkout(branchDocUrl)` later to reopen the branch.
 
 `handle.diff()` (no args) returns the patches between the fork point
 and the branch's current heads, or `[]` before the first COW or
 off-branch. The two-arg form delegates to the underlying
 `DocHandle.diff(first, second?)`.
 
-Branch-native documents — those created via `branched.create({...})`
-on a branched repo — live on the underlying repo and are not tracked
+Branch-native documents — those created via `element.repo.create({...})`
+while on a branch — live on the underlying repo and are not tracked
 in the branch's `clones` map; they have no original to fork from.
 
-Forking a branched repo (`branched.fork()`) currently throws —
-nested branching will be added later.
+Forking from an already-branched repo (`fork()` while
+`branchHandle !== null`) currently throws — nested branching will be
+added later.
 
 See [`src/branchable-repo.ts`](../src/branchable-repo.ts) for the
 implementation.
