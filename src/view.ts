@@ -330,20 +330,34 @@ function stampLookups(el: HTMLElement): void {
         s ? (scopeToElement.get(s) as SchemaViewElement<T>) ?? null : null,
       );
     }
-    return mapHandle(parent.closest(MATCH_ANY), (s) =>
-      s ? (scopeToElement.get(s) as ViewElement) ?? null : null,
+    // No schema: the immediate parent scope is, by construction, a
+    // mounted view. Hand it back directly without filtering through
+    // the schema-keyed lookup (which would skip handle-less ancestors).
+    return new Handle<ViewElement | null>(
+      (scopeToElement.get(parent) as ViewElement) ?? null,
     );
   }) as ViewElement["ancestorView"];
   ve.childViews = (<T>(schema?: Schema<T>) => {
-    const target = schema ?? MATCH_ANY;
+    if (schema) {
+      return mapHandle(
+        getScope(el).findChildren(schema),
+        (list) =>
+          list
+            .map((s) => scopeToElement.get(s))
+            .filter((e): e is HTMLElement => e !== undefined) as
+            SchemaViewElement<T>[],
+        shallowArrayEqualsAny,
+      );
+    }
+    // No schema: every direct child view, including handle-less ones.
+    // Context-providers set `doc=` on their children *before* the
+    // handles attach, so filtering by `#ownMatches` would be a deadlock.
     return mapHandle(
-      getScope(el).findChildren(target),
+      getScope(el).findAllChildren(),
       (list) =>
         list
           .map((s) => scopeToElement.get(s))
-          .filter((e): e is HTMLElement => e !== undefined) as
-          | ViewElement[]
-          | SchemaViewElement<T>[],
+          .filter((e): e is HTMLElement => e !== undefined) as ViewElement[],
       shallowArrayEqualsAny,
     );
   }) as ViewElement["childViews"];
@@ -358,22 +372,6 @@ function getScope(el: Element): Scope {
   }
   return entry.scope;
 }
-
-/**
- * Schema that matches any non-empty handle. Used by `ancestorView()`
- * and `childViews()` (no-schema overloads) to select "any view that
- * has resolved a handle." Pre-bootstrap or doc-less views have no
- * handle and are skipped, matching the documented behavior that
- * lookups only see views with a `handle` source.
- */
-const MATCH_ANY: Schema = {
-  parse: (value) => {
-    if (value === undefined || value === null) {
-      throw new Error("no handle");
-    }
-    return value;
-  },
-};
 
 /**
  * Local helper instead of importing `shallowArrayEquals` for `unknown[]`

@@ -42,6 +42,7 @@ export class Scope {
 
   #closestViews = new Map<Schema, Handle<Scope | null>>();
   #findChildrenViews = new Map<Schema, Handle<readonly Scope[]>>();
+  #findAllChildrenView: Handle<readonly Scope[]> | null = null;
 
   constructor() {
     this.#engine = { schemas: new Set(), scopes: new Set() };
@@ -105,6 +106,7 @@ export class Scope {
       Scope.#invalidateClosestSubtree(child, s);
       Scope.#invalidateFindChildren(this, s);
     }
+    Scope.#invalidateFindAllChildren(this);
     return child;
   }
 
@@ -128,6 +130,8 @@ export class Scope {
       if (oldParent) Scope.#invalidateFindChildren(oldParent, s);
       Scope.#invalidateFindChildren(newParent, s);
     }
+    if (oldParent) Scope.#invalidateFindAllChildren(oldParent);
+    Scope.#invalidateFindAllChildren(newParent);
   }
 
   /** `Element.remove()` analog. No-op at the root. */
@@ -141,6 +145,7 @@ export class Scope {
       Scope.#invalidateClosestSubtree(this, s);
       Scope.#invalidateFindChildren(oldParent, s);
     }
+    Scope.#invalidateFindAllChildren(oldParent);
   }
 
   closest<T>(schema: Schema<T>): Handle<Scope | null> {
@@ -162,6 +167,27 @@ export class Scope {
     );
     this.#findChildrenViews.set(schema, view);
     return view;
+  }
+
+  /**
+   * Like `findChildren` but un-filtered: returns every direct child
+   * scope, regardless of whether it carries a handle. Used by the
+   * no-schema `childViews()` overload, which a context-provider
+   * relies on to set `doc=` on its children *before* they have a
+   * handle attached. Filtering through `#ownMatches` would create a
+   * chicken-and-egg deadlock — children only get a handle once the
+   * provider sets `doc=`, but the provider can't see them until they
+   * have one.
+   *
+   * Materialized once and invalidated on `create` / `moveTo` / `remove`.
+   */
+  findAllChildren(): Handle<readonly Scope[]> {
+    if (this.#findAllChildrenView) return this.#findAllChildrenView;
+    this.#findAllChildrenView = new Handle<readonly Scope[]>(
+      this.#children.slice(),
+      shallowArrayEquals,
+    );
+    return this.#findAllChildrenView;
   }
 
   /**
@@ -235,6 +261,15 @@ export class Scope {
   static #invalidateFindChildren(parent: Scope, schema: Schema): void {
     const view = parent.#findChildrenViews.get(schema);
     if (view) view.change(Scope.#computeFindChildren(parent, schema));
+  }
+
+  /**
+   * Recompute `parent`'s materialised `findAllChildren` view, if any.
+   * Mirrors `#invalidateFindChildren` but un-filtered.
+   */
+  static #invalidateFindAllChildren(parent: Scope): void {
+    const view = parent.#findAllChildrenView;
+    if (view) view.change(parent.#children.slice());
   }
 
   static #computeClosest(scope: Scope, schema: Schema): Scope | null {
