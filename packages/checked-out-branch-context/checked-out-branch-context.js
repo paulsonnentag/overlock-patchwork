@@ -155,7 +155,7 @@ export default function (element) {
   };
 }
 
-// Walk descendants of `root`, setting `doc=url` on every
+// Walk `root` and its descendants, setting `doc=url` on every
 // `<patchwork-view>` and on every other custom element except
 // `<patchwork-context>`. Plain elements (`<header>`, `<div>`, …) are
 // transparent — we recurse into their children. `<patchwork-context>`
@@ -164,19 +164,21 @@ export default function (element) {
 // `<patchwork-view>`s underneath.
 //
 // Stops at view-like nodes (custom-element tag): their internals are
-// the view's private DOM, not part of the doc-context tree.
+// the view's private DOM, not part of the doc-context tree. The
+// caller may pass either a transparent wrapper (the inner context on
+// first mount) or a view-like top-level child (the markdown-editor
+// branch on `refreshDescendants`); both shapes need to land doc= on
+// the right element.
 function applyDocUrl(root, url) {
-  for (const child of root.children) {
-    const tag = child.localName;
-    if (tag === "patchwork-context") {
-      applyDocUrl(child, url);
-    } else if (tag === "patchwork-view" || tag.includes("-")) {
-      if (child.getAttribute("doc") !== url) {
-        child.setAttribute("doc", url);
-      }
-    } else {
-      applyDocUrl(child, url);
+  const tag = root.localName;
+  if (tag !== "patchwork-context" && tag.includes("-")) {
+    if (root.getAttribute("doc") !== url) {
+      root.setAttribute("doc", url);
     }
+    return;
+  }
+  for (const child of root.children) {
+    applyDocUrl(child, url);
   }
 }
 
