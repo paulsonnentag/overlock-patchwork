@@ -91,8 +91,8 @@ export default function (element) {
     });
 
     // Always include the current branch in the options, even before
-    // the index doc loads — otherwise the <select> would briefly
-    // fall back to "main" while our own branch entry is in flight.
+    // the index doc loads — otherwise no <option> would carry
+    // `selected` and the browser would render the first one ("main").
     const branchOptions = createMemo(() => {
       const list = branches().slice();
       if (
@@ -161,14 +161,11 @@ export default function (element) {
         }
         branch-picker button:hover { background: #f3f4f6; }
       </style>
-      <select
-        value=${() => currentBranchUrl ?? "main"}
-        onChange=${onSelectChange}
-      >
-        <option value="main">main</option>
+      <select onChange=${onSelectChange}>
+        <option value="main" selected=${!currentBranchUrl}>main</option>
         <${For} each=${branchOptions}>
           ${(b) => html`
-            <option value=${() => b.url}>
+            <option value=${() => b.url} selected=${b.url === currentBranchUrl}>
               ${() => b.doc.name ?? "Untitled"}
             </option>
           `}
