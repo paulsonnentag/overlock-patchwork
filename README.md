@@ -21,13 +21,12 @@ Open `index.html` in a browser — no static host required.
 
 ## Quick demo
 
-`packages/` ships a small markdown-notes app composed of a dozen
-single-file views: `app-frame` find-or-creates an account doc and
-renders `root` inside it; `root` composes the rest
-(`folder-list`, `doc-title`, `markdown-editor`, `branch-picker`, …)
-and uses `root-folder-context` / `selected-doc-context` to push
-`doc=` down through the tree. `solid-helpers` is a tiny library
-package shared by the Solid-flavored views.
+`packages/` ships a minimal `app-frame` view: a counter that stores
+its `count` in an Automerge doc. The doc URL is persisted in
+`localStorage` so the value survives reloads. The other packages
+under `packages/` (`root`, `folder-list`, `branch-picker`,
+`*-context`, …) depend on a contextual lookup API that has been
+removed, and don't currently mount.
 
 Push the packages to the configured Subduction backend with:
 
@@ -44,16 +43,12 @@ This calls [`pushwork`](../pushwork) for each subfolder and writes
    `rootDirectoryUrl` into the `<patchwork-view src="...">`
    placeholder in [`index.html`](./index.html), keeping the
    `/app-frame.json` path component (the manifest filename).
-3. Copy `packages/solid-helpers/.pushwork/snapshot.json`'s
-   `rootDirectoryUrl` into the `automerge:REPLACE_WITH_SOLID_HELPERS_URL`
-   placeholder in every view that imports `fromHandle` (grep for the
-   placeholder). Re-run `pnpm push packages`.
-4. Open `index.html` in a browser.
+3. Open `index.html` in a browser.
 
-Cross-package URLs and the `solid-helpers` URL stay stable across
-subsequent pushes — pushwork preserves each package's
-`rootDirectoryUrl`. Editing any `packages/<name>/<name>.js` and
-re-running `pnpm push packages` hot-reloads the live page.
+Cross-package URLs stay stable across subsequent pushes — pushwork
+preserves each package's `rootDirectoryUrl`. Editing
+`packages/app-frame/app-frame.js` and re-running `pnpm push packages`
+hot-reloads the live page.
 
 ## Architecture
 
@@ -65,8 +60,8 @@ Documentation lives in [`docs/`](./docs):
 - [`docs/components.md`](./docs/components.md) — package layout,
   manifest schema, mount-fn contract, embedding `<patchwork-view>`,
   composition.
-- [`docs/documents.md`](./docs/documents.md) — `<automerge-repo>`
-  scope, `doc=` attribute, `el.handle`, reactive doc rebuilds.
+- [`docs/documents.md`](./docs/documents.md) — `window.repo`, `doc=`
+  attribute, `el.handle`, reactive doc rebuilds.
 - [`docs/lifecycle.md`](./docs/lifecycle.md) — mount/unmount sequence
   diagram, HMR semantics, generation guard, race handling.
 - [`docs/internals.md`](./docs/internals.md) — registry data

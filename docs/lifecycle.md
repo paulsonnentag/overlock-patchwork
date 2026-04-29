@@ -15,7 +15,7 @@ sequenceDiagram
   participant Reg as ViewRegistry
   participant Plug as PluginRegistry
   participant MV as mountView
-  participant Repo as Automerge Repo
+  participant Repo as window.repo
   participant Mod as &lt;name&gt;.js
 
   DOM->>MO: <patchwork-view src=X doc=Y?> inserted
@@ -35,9 +35,9 @@ sequenceDiagram
   Reg->>DOM: swapTag <patchwork-view> -> <name>
   Reg->>MV: mountView(newEl, mountFn)
   MV->>MV: claim newEl in cleanups map (sync)
-  MV->>MV: stamp newEl.repo from closest <automerge-repo> (sync)
-  MV->>MV: resolveContext(newEl) — read doc=, find <automerge-repo>
-  MV->>Repo: repo.find(Y) (only if doc= set)
+  MV->>MV: stamp newEl.repo = window.repo (sync)
+  MV->>MV: resolveContext(newEl) — read doc=
+  MV->>Repo: window.repo.find(Y) (only if doc= set)
   Repo-->>MV: DocHandle
   MV->>DOM: stamp newEl.handle = DocHandle
   MV->>Mod: mountFn(newEl)
@@ -121,7 +121,7 @@ Concretely, `mountView` looks like:
 
 ```
 claim el in cleanups map         (sync)
-stamp el.repo                    (sync)
+stamp el.repo = window.repo      (sync)
 await resolveContext(el)
   if el disconnected → drop claim, return
 await mountFn(el)

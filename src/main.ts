@@ -67,7 +67,6 @@ async function initPatchwork () {
 
   new ViewRegistry({
     root: document.body,
-    repo: window.repo,
     pluginRegistry,
   });
 }

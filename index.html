@@ -29,15 +29,10 @@
       package's manifest filename — by convention named after the
       package, not `component.json`, so the URL self-describes.
 
-      `<app-frame>` is the demo's entry point: it find-or-creates an
-      account doc and renders `<app-root>` inside it, which in turn
-      composes the rest of the views (`folder-list`, `doc-title`,
-      `markdown-editor`, etc.). `<app-root>` requires an account
-      ancestor, so it can't be bootstrapped directly — wire `app-frame`
-      here.
+      `<app-frame>` is the demo's entry point: a minimal counter that
+      stores its state in an Automerge doc. Views read `window.repo`
+      directly — there is no `<automerge-repo>` scope marker.
     -->
-    <automerge-repo>
-      <patchwork-view src="automerge:36YizWjLr5TWC2deWD8n6uU7g3er/app-frame.json"/>
-    </automerge-repo>
+    <patchwork-view src="automerge:36YizWjLr5TWC2deWD8n6uU7g3er/app-frame.json"/>
   </body>
 </html>

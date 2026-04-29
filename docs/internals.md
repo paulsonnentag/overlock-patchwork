@@ -6,12 +6,11 @@ the per-element lifecycle. Read this before changing
 [`src/plugin-registry.ts`](../src/plugin-registry.ts), or
 [`src/view.ts`](../src/view.ts).
 
-## Why `<patchwork-view>` and `<automerge-repo>` are custom elements
+## Why `<patchwork-view>` is a custom element
 
-Two registrations live in their own files —
-[`src/patchwork-view-element.ts`](../src/patchwork-view-element.ts) and
-[`src/automerge-repo-element.ts`](../src/automerge-repo-element.ts) —
-and run as side-effect `customElements.define` calls on module load:
+One registration lives in its own file —
+[`src/patchwork-view-element.ts`](../src/patchwork-view-element.ts) —
+and runs as a side-effect `customElements.define` call on module load:
 
 ```ts
 class PatchworkView extends HTMLElement {
@@ -19,10 +18,6 @@ class PatchworkView extends HTMLElement {
   set src(v: string | null | undefined) { reflectAttribute(this, "src", v); }
   get doc(): string { return this.getAttribute("doc") ?? ""; }
   set doc(v: string | null | undefined) { reflectAttribute(this, "doc", v); }
-  connectedMoveCallback(): void {}
-}
-class AutomergeRepoElement extends HTMLElement {
-  repo: BranchableRepo | null = null;
   connectedMoveCallback(): void {}
 }
 ```
@@ -47,29 +42,18 @@ a `<template>` (Solid does this), dynamic attribute writes happen
 land as own data properties. Reading + deleting + re-assigning forces
 the value back through the setter so the attribute shows up.
 
-The empty `connectedMoveCallback() {}` on both classes opts the
-elements into the `Element.moveBefore()` lifecycle: when the platform
-moves a node via `moveBefore`, it fires `connectedMoveCallback`
-*instead of* `disconnectedCallback` + `connectedCallback`. Solid's
-`<For>` reorders use `moveBefore` on browsers that support it; the
-no-op declaration is what tells the platform "this element survives
-moves intact."
+The empty `connectedMoveCallback() {}` opts the element into the
+`Element.moveBefore()` lifecycle: when the platform moves a node via
+`moveBefore`, it fires `connectedMoveCallback` *instead of*
+`disconnectedCallback` + `connectedCallback`. Solid's `<For>` reorders
+use `moveBefore` on browsers that support it; the no-op declaration
+is what tells the platform "this element survives moves intact."
 
-`AutomergeRepoElement` doesn't reflect anything — `repo` is a typed
-*property* slot for the registry to write into and for views to read
-out of. Putting it on a registered class instead of a plain expando
-just means TypeScript / DevTools recognize it. The class also exposes
-`checkout` / `fork` / `reset` mutators and a `_rebuildDescendants`
-internal hook the registry installs on first sight; the mutators call
-through to the hook to rebuild every view descendant whose nearest
-`<automerge-repo>` ancestor is this element.
-
-These are the *only* two places in the system that use
-`customElements`. User views stay plain `document.createElement(name)`
-elements and are never registered globally — `customElements.define`
-is a one-shot ratchet that would block HMR. View identity is the
-element itself, with mount state tracked in `view.ts`'s `cleanups`
-map (see below).
+This is the *only* place in the system that uses `customElements`.
+User views stay plain `document.createElement(name)` elements and are
+never registered globally — `customElements.define` is a one-shot
+ratchet that would block HMR. View identity is the element itself,
+with mount state tracked in `view.ts`'s `cleanups` map (see below).
 
 ## Registry data structures
 
@@ -182,53 +166,10 @@ instances over disjoint subtrees never see each other's elements. On
 overlapping subtrees they would conflict — which is the same answer
 either way.
 
-## Scope tree
-
-Alongside `cleanups`, [`view.ts`](../src/view.ts) maintains a second
-`WeakMap<Element, ViewScope>` (`scopes`) and a reverse
-`WeakMap<Scope, HTMLElement>` (`scopeToElement`). Together they back
-the `closestView` / `ancestorView` / `childViews` lookups exposed on
-every `ViewElement`.
-
-Lifecycle:
-
-- **Stamp.** `mountView` calls `stampScope(el)` *synchronously*, before
-  any `await`. It walks `el.parentElement` looking for an ancestor
-  view's scope; with one, calls `parentScope.create()` to allocate a
-  child of the same engine; without one (the topmost view in this
-  tree), `new Scope()` becomes its own engine root. The `scopes`
-  WeakMap and the reverse `scopeToElement` are populated together.
-- **Attach handle.** Once `resolveContext` resolves a `DocHandle`,
-  `attachHandleToScope` wraps it in a `Handle<unknown>` adapter
-  (forwarding `change` events) and assigns it to `scope.handle`. The
-  setter fires the initial schema parse manually since `Handle.on`
-  doesn't auto-fire (mirroring `DocHandle`). Doc-less views skip this
-  step and keep `scope.handle = null` — they exist as transparent
-  pass-throughs but never match any schema.
-- **Install lookups.** `stampLookups(el)` writes `closestView` /
-  `ancestorView` / `childViews` onto the element. Each method bottoms
-  out in the scope's `closest` / `findChildren` view (a `Handle`) and
-  maps the scope-typed result back to a view element via
-  `scopeToElement` so consumers see element-shaped results.
-- **Tear down.** `unmountView` calls `releaseScope(el)`, which removes
-  the doc-handle adapter listener (`disposeHandle`), clears the scope's
-  handle, and detaches the scope from its parent (`scope.remove()`).
-  Detachment fans out structural invalidations to surviving ancestors'
-  `findChildren` views and to descendants' `closest` views.
-
-Two top-level views with no shared ancestor view become separate
-trees with separate engines — so schema registration and `findChildren`
-visibility are scoped to whichever subtree the topmost view roots. In
-practice every page roots at one top-level component, so this is a
-non-issue.
-
 Move semantics today: a DOM move that the registry observes as
 `removedNodes` + `addedNodes` runs `unmountView` then `mountView`,
-which destroys and recreates the scope. That's "destroy + insert"
-semantics — fine for now, and consistent with the `_rebuildDescendants`
-path on `<automerge-repo>` swaps. The structural information is
-preserved because the new mount finds the right parent scope through
-its `parentElement` walk.
+which is "destroy + insert" semantics. The new mount re-runs the
+full lifecycle (re-stamp `el.repo`, re-resolve `doc=`).
 
 ## Module layout
 
@@ -239,10 +180,12 @@ src/loader.ts             importFromAutomerge entry point, URL helpers
 src/handle.ts             Handle<T>: framework reactive primitive —
                           extends EventEmitter, value()/change(next),
                           fires "change". Plus shallowArrayEquals.
-src/scope.ts              Scope: per-view node in the schema-indexed
-                          lookup tree. Owns engine state, registered
-                          schemas, per-scope closest/findChildren
-                          Handles. No DOM dependency.
+                          Currently unused by the runtime; kept for a
+                          future re-introduction of context lookups.
+src/branchable-repo.ts    BranchableRepo / BranchedDocHandle: forkable
+                          wrapper over Repo with copy-on-write per
+                          doc. Currently inert — no UI calls
+                          fork/checkout/reset.
 src/plugin-registry.ts    PluginRegistry: pluginUrl -> LoadedPlugin
                           load cache, per-URL folder subscription,
                           eventemitter3 events (loaded/updated/
@@ -255,18 +198,12 @@ src/patchwork-view-element.ts
                           PatchworkView class +
                           customElements.define; src/doc reflection,
                           lazy property upgrade, connectedMoveCallback
-src/automerge-repo-element.ts
-                          AutomergeRepoElement class +
-                          customElements.define; .repo property,
-                          checkout/fork/reset mutators
 src/view.ts               mountView / unmountView / isView:
-                          per-element lifecycle, doc-context
-                          resolution, el.repo + scope stamping,
-                          closestView/ancestorView/childViews install,
+                          per-element lifecycle, stamps el.repo from
+                          window.repo, resolves el.handle from doc=,
                           in-flight race guard via el.isConnected.
-                          Owns the WeakMap<Element, cleanup | null>
-                          and the WeakMap<Element, ViewScope>. Exports
-                          ViewElement, SchemaViewElement, MountFn.
+                          Owns the WeakMap<Element, cleanup | null>.
+                          Exports ViewElement and MountFn.
 ```
 
 `PluginRegistry` depends on the loader half of overlock for two things:
@@ -281,8 +218,8 @@ src/view.ts               mountView / unmountView / isView:
   resolution is never affected by branches.
 
 `ViewRegistry` depends on `PluginRegistry` (for plugin loading + HMR)
-and `BranchableRepo` (for the `<automerge-repo>` marker fallback). It
-does *not* see the loader directly.
+only — `window.repo` is read directly in `view.ts` rather than passed
+through the registry.
 
 Both registries are wired up in [`src/main.ts`](../src/main.ts).
 
@@ -297,15 +234,11 @@ Both registries are wired up in [`src/main.ts`](../src/main.ts).
   as its manifest.
 - **No namespaces yet.** View name collisions throw immediately,
   both on initial load and on HMR rename.
-- **`doc=` requires `<automerge-repo>`.** Setting `doc=` on a
-  `<patchwork-view>` outside any `<automerge-repo>` ancestor is an
-  error; the mount is aborted with a logged exception. Views that
-  don't need a doc (e.g. `clock`) work fine with no scope.
+- **`doc=` requires a valid automerge URL.** An invalid URL aborts
+  the mount with a logged exception. Absent, `el.handle` stays
+  `undefined` and the view runs without a doc.
 - **`el.repo` stamping.** Every view element has `el.repo` set
-  synchronously inside `mountView` from
-  `el.closest("automerge-repo")`. Outside any `<automerge-repo>`
-  ancestor, `el.repo` is `undefined` and the view is responsible for
-  handling that gracefully. The `<automerge-repo>` marker's `repo`
-  property is stamped by the registry's tree-order initial walk
-  before any descendant `<patchwork-view>` bootstraps, so the lookup
-  is always populated by the time a view reads `el.repo`.
+  synchronously inside `mountView` from `window.repo`. Since
+  `window.repo` is set in `src/main.ts` before the view registry
+  starts scanning the tree, the lookup is always populated by the
+  time a view reads `el.repo`.

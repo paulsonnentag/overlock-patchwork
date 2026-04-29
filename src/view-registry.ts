@@ -1,12 +1,9 @@
-import { BranchableRepo } from "./branchable-repo";
-import { AutomergeRepoElement, AUTOMERGE_REPO_TAG } from "./automerge-repo-element";
 import { PATCHWORK_VIEW_TAG } from "./patchwork-view-element";
 import { isView, mountView, unmountView, type MountFn } from "./view";
 import type { LoadedPlugin, PluginRegistry } from "./plugin-registry";
 
 export type ViewRegistryOptions = {
   root: HTMLElement;
-  repo: BranchableRepo;
   pluginRegistry: PluginRegistry;
 };
 
@@ -38,7 +35,6 @@ export type ViewRegistryOptions = {
  */
 export class ViewRegistry {
   readonly #root: HTMLElement;
-  readonly #repo: BranchableRepo;
   readonly #pluginRegistry: PluginRegistry;
 
   // tag name -> mount fn. Throws on collision.
@@ -63,7 +59,6 @@ export class ViewRegistry {
 
   constructor(options: ViewRegistryOptions) {
     this.#root = options.root;
-    this.#repo = options.repo;
     this.#pluginRegistry = options.pluginRegistry;
 
     this.#subscribeToPluginRegistry();
@@ -130,29 +125,6 @@ export class ViewRegistry {
   }
 
   #handleElement(el: Element): void {
-    if (el.localName === AUTOMERGE_REPO_TAG) {
-      // Inject the repo onto the marker element so descendants can do
-      // `el.closest("automerge-repo").repo`. Tree order from the initial
-      // walk and from MO addedNodes guarantees this runs before any
-      // descendant <patchwork-view> bootstrap.
-      //
-      // Nested <automerge-repo>s inherit from the nearest enclosing
-      // <automerge-repo>; only the outermost one falls back to the
-      // registry's root repo. A repo already set on the element (e.g.
-      // by user code that wants to seed a forked repo) is preserved.
-      const repoEl = el as AutomergeRepoElement;
-      if (!repoEl.repo) {
-        const ancestor = el.parentElement?.closest(
-          AUTOMERGE_REPO_TAG,
-        ) as AutomergeRepoElement | null;
-        repoEl.repo = ancestor?.repo ?? this.#repo;
-      }
-      if (!repoEl._rebuildDescendants) {
-        repoEl._rebuildDescendants = () =>
-          this.#rebuildDescendantsOfRepoEl(repoEl);
-      }
-      return;
-    }
     if (el.localName === PATCHWORK_VIEW_TAG) {
       const src = el.getAttribute("src");
       if (!src) return;
@@ -361,31 +333,6 @@ export class ViewRegistry {
     parent.replaceChild(newEl, oldEl);
 
     mountView(newEl, mountFn);
-  }
-
-  /**
-   * Called when an `<automerge-repo>` element's `.repo` was swapped (via
-   * its `checkout` / `fork` / `reset` methods). Rebuilds every view
-   * descendant whose nearest enclosing `<automerge-repo>` is `repoEl`,
-   * so each descendant's `doc=` is re-resolved against the new repo and
-   * `el.repo` is re-stamped on the fresh element.
-   *
-   * Views inside a *nested* `<automerge-repo>` are skipped — their
-   * scope hasn't changed.
-   */
-  #rebuildDescendantsOfRepoEl(repoEl: HTMLElement): void {
-    const targets: HTMLElement[] = [];
-    walkSubtree(repoEl, (el) => {
-      if (!(el instanceof HTMLElement)) return;
-      if (!isView(el)) return;
-      if (el.closest(AUTOMERGE_REPO_TAG) !== repoEl) return;
-      targets.push(el);
-    });
-    for (const el of targets) {
-      const mountFn = this.#viewsByTag.get(el.localName);
-      if (!mountFn) continue;
-      this.#rebuildInstance(el, el.localName, mountFn);
-    }
   }
 
   #mountIfRegistered(el: Element): void {

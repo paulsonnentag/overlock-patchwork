@@ -2,54 +2,35 @@
 
 Views opt into Automerge documents in two complementary ways: by
 asking the *repo* itself (e.g. to create a new doc) and by receiving a
-`DocHandle` to an *existing* doc. Both go through the
-`<automerge-repo>` scope marker.
+`DocHandle` to an *existing* doc. Both go through `window.repo` —
+there is no per-subtree repo scope.
 
 For the lifecycle around `el.handle` resolution and the rebuild on
 attribute change see [`lifecycle.md`](./lifecycle.md).
 
-## `<automerge-repo>` — repo scope
+## `window.repo` — the page repo
 
-Wrap any subtree that should resolve doc handles in `<automerge-repo>`:
-
-```html
-<automerge-repo>
-  <patchwork-view src="automerge:.../my-app.json"></patchwork-view>
-</automerge-repo>
-```
-
-`<automerge-repo>` is a no-op marker tag. The registry walks the
-subtree on construction (and on every `MutationObserver` insertion)
-and assigns `el.repo = registry.repo` to each one. Views reach the
-repo with:
+[`src/main.ts`](../src/main.ts) constructs a single `BranchableRepo`
+and assigns it to `window.repo` before the view registry starts. The
+registry stamps the same instance onto every mounted view as
+`el.repo`:
 
 ```js
-const repo = element.closest("automerge-repo")?.repo;
-```
-
-The repo is a `BranchableRepo` — a thin forkable wrapper around an
-Automerge `Repo`. While unbranched, every method delegates straight
-to the underlying repo, so `repo.find(...)` / `repo.create(...)` work
-exactly as if you had a raw `Repo`. See [Branching](#branching) below
-for how to fork a repo and walk a branch's handles.
-
-There is exactly one repo wrapper in the page today — the global one
-set up in [`src/main.ts`](../src/main.ts) — so the marker is mostly a
-future-proofing boundary. View mount fns should read the repo via
-`element.repo`, which the registry stamps on every view element from
-the closest `<automerge-repo>` ancestor:
-
-```js
-const repo = element.repo;
-if (!repo) {
-  // Outside any <automerge-repo> ancestor — handle gracefully.
+export default function (element) {
+  const repo = element.repo;             // === window.repo
+  const handle = repo.create({ count: 0 });
+  // ...
 }
 ```
 
-`element.repo` is set synchronously when the view element is
-constructed, so it's available the moment the mount fn runs. Whether
-that maps to a global, per-tree, or per-view repo is the registry's
-business; mount fns just read the property.
+`BranchableRepo` is a thin forkable wrapper around an Automerge
+`Repo`. While unbranched, every method delegates straight to the
+underlying repo, so `repo.find(...)` / `repo.create(...)` work exactly
+as if you had a raw `Repo`. See [Branching](#branching) below for how
+to fork the repo and walk a branch's handles.
+
+`element.repo` is set synchronously inside `mountView`, so it's
+available the moment the mount fn runs.
 
 ## `doc=` attribute on `<patchwork-view>`
 
@@ -57,18 +38,15 @@ Set `doc=` to an `automerge:...` URL to ask the registry for a
 `DocHandle` to that document before your mount fn runs:
 
 ```html
-<automerge-repo>
-  <patchwork-view
-    doc="automerge:..."
-    src="automerge:.../counter.json"
-  ></patchwork-view>
-</automerge-repo>
+<patchwork-view
+  doc="automerge:..."
+  src="automerge:.../counter.json"
+></patchwork-view>
 ```
 
-The registry resolves the URL against the closest `<automerge-repo>`,
-awaits `repo.find(url)`, and stamps the resulting handle onto the
-swapped element as a JS property (`el.handle`). The mount fn picks it
-up directly:
+The registry awaits `window.repo.find(url)` and stamps the resulting
+handle onto the swapped element as a JS property (`el.handle`). The
+mount fn picks it up directly:
 
 ```js
 import { makeDocumentProjection } from
@@ -95,18 +73,9 @@ incoming patch. Component authors can also drop down to plain
 `handle.doc()` and `handle.on("change", ...)` if they don't want a
 framework primitive.
 
-A view that wants to read context from an *ancestor* view's doc — say,
-an `account` ancestor — uses `closestView(schema)` rather than
-re-resolving the URL itself. The lookup walks the scope tree (not the
-DOM) and returns a `Handle<SchemaViewElement<T> | null>`; the matched
-element's `.handle` is a typed `DocHandle<T>` ready to project. See
-[`components.md`](./components.md#contextual-lookups) for the full
-contextual API.
-
-`doc=` is strict: present without an `<automerge-repo>` ancestor, the
-mount is aborted with an error. Absent, `el.handle` stays `undefined`
-and the view runs as before — `clock` does this and just renders
-local state.
+`doc=` is strict: an invalid URL aborts the mount with an error.
+Absent, `el.handle` stays `undefined` and the view just renders
+without one.
 
 ## Reactive `doc=`
 
@@ -142,6 +111,13 @@ repo.copy(): BranchableRepo
 repo.branchHandle: DocHandle<BranchDoc> | null   // read-only
 ```
 
+> **Status.** The wrapper is shipped, but there is currently **no UI
+> mechanism wired up that calls `fork`/`checkout`/`reset`**. The page
+> always runs against the un-branched root. The API is documented
+> here so the wrapper's contract is preserved while a branching UI is
+> rebuilt; views that *call* it today will mutate `window.repo` for
+> the whole page (see the warning below).
+
 A *branch* is just another Automerge document that records a map of
 `{ originalUrl → cloneUrl }`. The clone url carries the heads of the
 original at the moment the clone was created (the *fork point*).
@@ -156,6 +132,12 @@ synthetic event is fired for the swap, but content-driven `change`
 events keep flowing through the wrapper as the underlying inner
 document changes. Use `copy()` to obtain an independent
 `BranchableRepo` over the same underlying `Repo`.
+
+Because `element.repo === window.repo` for every view, mutating it
+affects every mounted view at once. There is no hook for the registry
+to selectively rebuild a subtree on a branch swap; consumers that
+need to react to a branch change have to wire it themselves (e.g.
+by listening on `branchHandle`).
 
 The first `handle.change(...)` on a branched repo triggers a
 copy-on-write clone of the underlying doc, and from that point on the

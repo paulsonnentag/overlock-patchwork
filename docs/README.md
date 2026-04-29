@@ -15,8 +15,8 @@ Start with the doc closest to the change you want to make.
   exports, heads pinning, wasm bootstrap.
 - [`components.md`](./components.md) — package layout, manifest
   schema, mount-fn contract, embedding `<patchwork-view>`, composition.
-- [`documents.md`](./documents.md) — `<automerge-repo>` scope, `doc=`
-  attribute, `el.handle`, reactive doc rebuilds.
+- [`documents.md`](./documents.md) — `window.repo`, `doc=` attribute,
+  `el.handle`, reactive doc rebuilds.
 - [`lifecycle.md`](./lifecycle.md) — mount/unmount sequence diagram,
   HMR semantics, state-machine race handling, microtask-batched
   `doc=` rebuilds.
@@ -50,18 +50,17 @@ Start with the doc closest to the change you want to make.
   function that gets the host element and returns an optional
   cleanup — equivalent to
   `(element: ViewElement) => Promise<(() => void) | void>`.
-  `ViewElement` is `HTMLElement` plus an optional `handle` and `repo`,
-  and the contextual `closestView` / `ancestorView` / `childViews`
-  lookups. See [`documents.md`](./documents.md).
+  `ViewElement` is `HTMLElement` plus an optional `handle` (the
+  `DocHandle` for `doc=`, when set) and `repo` (the page's single
+  `BranchableRepo`, stamped on every view from `window.repo`). See
+  [`documents.md`](./documents.md).
 - **Bootstrap tag.** `<patchwork-view src="automerge:.../<name>.json">`.
   The registry's only hard-coded mount tag. See
   [`components.md`](./components.md).
-- **Repo scope.** `<automerge-repo>` is a marker tag. The registry
-  stamps a `BranchableRepo` reference onto every `<automerge-repo>` it
-  discovers; descendant `<patchwork-view doc=...>` elements look it up
-  via `closest("automerge-repo").repo`. `BranchableRepo` is a thin
-  forkable wrapper around the underlying Automerge `Repo` (see
-  [`documents.md`](./documents.md#branching) and
+- **Repo.** A single `BranchableRepo` lives at `window.repo` (set up
+  in [`src/main.ts`](../src/main.ts)). Every mounted view receives the
+  same instance as `el.repo`. `BranchableRepo` is a thin forkable
+  wrapper around the underlying Automerge `Repo` (see
   [`src/branchable-repo.ts`](../src/branchable-repo.ts)).
 - **Plugin registry.** A pluginUrl → `LoadedPlugin` cache with one
   folder subscription per URL driving HMR. Extends `EventEmitter`
@@ -92,7 +91,5 @@ Start with the doc closest to the change you want to make.
 | [`src/plugin-registry.ts`](../src/plugin-registry.ts) | `PluginRegistry`: pluginUrl → manifest + module load cache, per-URL folder subscription for HMR, `loaded`/`updated`/`removed`/`changed` events |
 | [`src/view-registry.ts`](../src/view-registry.ts) | `ViewRegistry`: DOM observer, tag-name table, `<patchwork-view>` bootstrap, `swapTag`, microtask-batched `doc=` rebuild, HMR rebuild via `pluginRegistry.on("updated", ...)` |
 | [`src/patchwork-view-element.ts`](../src/patchwork-view-element.ts) | `PatchworkView` autonomous custom element: `src`/`doc` reflection, lazy property upgrade |
-| [`src/automerge-repo-element.ts`](../src/automerge-repo-element.ts) | `AutomergeRepoElement` scope marker: `.repo` property, `checkout`/`fork`/`reset` mutators |
-| [`src/view.ts`](../src/view.ts) | `mountView` / `unmountView` / `isView`: per-element lifecycle, doc-context resolution, race guard via `isConnected`, `el.repo` + scope stamping, `closestView`/`ancestorView`/`childViews` install. Owns the `WeakMap<Element, cleanup \| null>`. Exports the `ViewElement`, `SchemaViewElement`, and `MountFn` types. |
-| [`src/scope.ts`](../src/scope.ts) | `Scope`: per-view node in the schema-indexed lookup tree backing `closestView` / `ancestorView` / `childViews`. Owns the engine state, registered-schema set, and per-scope `closest`/`findChildren` `Handle`s. |
+| [`src/view.ts`](../src/view.ts) | `mountView` / `unmountView` / `isView`: per-element lifecycle, doc-context resolution, race guard via `isConnected`, stamps `el.repo` from `window.repo`. Owns the `WeakMap<Element, cleanup \| null>`. Exports the `ViewElement` and `MountFn` types. |
 | [`src/handle.ts`](../src/handle.ts) | `Handle<T>`: framework reactive primitive — extends `EventEmitter`, `value()` reader, `change(next)` writer, fires `change` events. Plus `shallowArrayEquals` for list-shaped views. |

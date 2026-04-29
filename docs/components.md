@@ -122,61 +122,6 @@ Each `<patchwork-view>` carries exactly one `src`, plus an optional
 [`documents.md`](./documents.md)). Multiple `<patchwork-view>` siblings
 = multiple bootstrapped views.
 
-## Contextual lookups
-
-Every mounted view element carries three lookup methods that walk a
-schema-indexed scope tree (`src/scope.ts`) which mirrors the *view*
-tree — plain DOM (a wrapping `<div>`, a `<header>`, the
-`<automerge-repo>` marker) is transparent. The methods all return a
-`Handle` (`src/handle.ts`) — same shape as `DocHandle`: `value()` for
-the current state, `on("change", fn)` for updates.
-
-| method                  | walks                          | result                                         |
-| ----------------------- | ------------------------------ | ---------------------------------------------- |
-| `closestView(schema)`   | self → ancestors               | `Handle<SchemaViewElement<T> \| null>`         |
-| `ancestorView()`        | parent → ancestors             | `Handle<ViewElement \| null>`                  |
-| `ancestorView(schema)`  | parent → ancestors with parse  | `Handle<SchemaViewElement<T> \| null>`         |
-| `childViews()`          | direct view-children           | `Handle<ViewElement[]>`                        |
-| `childViews(schema)`    | direct view-children with parse| `Handle<SchemaViewElement<T>[]>`               |
-
-`SchemaViewElement<T>` is `ViewElement<T>` with `handle` made
-non-optional, so consumers can use the result as both an element
-reference (e.g. `child.setAttribute("doc", url)`) and a typed
-`DocHandle<T>` source (e.g. `makeDocumentProjection(account.handle)`).
-
-Schemas are duck-typed (`{ parse(value): T; init?(): T }`) — pick any
-validation library; the framework only ever calls `parse(handle.doc())`
-and treats a thrown error as "no match." Schema registration is lazy
-on first lookup and tree-wide.
-
-```js
-const accountSchema = {
-  parse(value) {
-    if (value?.["@patchwork"]?.type !== "account") {
-      throw new Error("not an account doc");
-    }
-    return value;
-  },
-};
-
-export default function (element) {
-  const account$ = element.closestView(accountSchema);
-  const apply = (account) => render(account, element);
-  apply(account$.value());
-  account$.on("change", apply);
-  return () => account$.off("change", apply);
-}
-```
-
-`childViews()` stops at the first view-element boundary in each branch
-of the DOM, so a non-matching child does *not* shadow its grandchildren
-— but those grandchildren also don't show up at the parent. Use
-`closestView` from the leaves if you need cross-boundary visibility.
-
-Views without a `doc=` still get a scope: they participate as
-structural pass-throughs (descendants reach grandparents through them)
-but never match any schema, so `closestView` skips them.
-
 Sibling URLs are stable across re-pushes because each subpackage's
 `.pushwork/` snapshot pins its own `rootDirectoryUrl`. Copy them out
 of `packages/<name>/.pushwork/snapshot.json`.
@@ -191,10 +136,12 @@ and behave sensibly without bespoke wiring. That means:
   in the doc the view is bound to. Resist the urge to grow
   `<patchwork-view>`'s attribute surface; that's an escape hatch out
   of the composition model, not a feature.
-- **Optional context, gracefully handled.** Views that *use*
-  ancestor context (`el.handle`, `el.repo`) must tolerate it being
+- **Optional `el.handle`, gracefully handled.** Views that *use*
+  `el.handle` (set when `doc=` is on the host) must tolerate it being
   absent. Render a neutral placeholder, throw a clear error with a
-  useful message, or no-op — but don't crash the page.
+  useful message, or no-op — but don't crash the page. `el.repo` is
+  always present (stamped from `window.repo`), so views can rely on
+  it.
 - **No globals as inputs.** A view reaches state through its element
   (`el.handle`, `el.repo`, attributes, children) — never through
   `window.*` or module-level singletons. That's what makes "stick
