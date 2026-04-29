@@ -1,95 +1,70 @@
 # Architecture
 
-overlock-patchwork is two layers stacked:
+Two layers stacked, both in `src/`:
 
-1. **Loader.** Resolve `automerge:` URLs against the in-page Repo,
-   rewrite every import in the source, and `import()` the rewritten
-   module as a blob URL. Lives in `src/`.
-2. **View runtime.** A `<patchwork-view>` bootstrap tag, a registry
-   that watches the DOM, and a per-element mount/unmount lifecycle
-   with HMR. Lives in `src/`.
+1. **Loader** — resolve `automerge:` URLs against the in-page Repo,
+   rewrite imports, `import()` as a blob URL.
+2. **View runtime** — `<patchwork-view>` bootstrap, DOM observer, and
+   per-element mount/unmount with HMR.
 
-Start with the doc closest to the change you want to make.
+Each doc below is a short pointer into the relevant source files.
+Read the source for the full picture; these pages just orient you.
 
-- [`loader.md`](./loader.md) — `importFromAutomerge`, blob URLs, package
-  exports, heads pinning, wasm bootstrap.
-- [`components.md`](./components.md) — package layout, manifest
-  schema, mount-fn contract, embedding `<patchwork-view>`, composition.
-- [`documents.md`](./documents.md) — `window.repo`, `doc=` attribute,
-  `el.handle`, reactive doc rebuilds.
-- [`lifecycle.md`](./lifecycle.md) — mount/unmount sequence diagram,
-  HMR semantics, state-machine race handling, microtask-batched
-  `doc=` rebuilds.
-- [`internals.md`](./internals.md) — registry data structures,
-  custom-element rationale, module layout, constraints.
+- [`loader.md`](./loader.md) — `src/loader.ts`, `src/main.ts` (wasm).
+- [`components.md`](./components.md) — package layout, manifest,
+  mount-fn contract, embedding `<patchwork-view>`.
+- [`documents.md`](./documents.md) — `window.repo`, `doc=`,
+  `el.handle`, branching.
+- [`context.md`](./context.md) — `<patchwork-context>` provider /
+  consumer.
+- [`lifecycle.md`](./lifecycle.md) — top-down mount sequence, HMR,
+  race handling.
+- [`internals.md`](./internals.md) — registry internals, module
+  layout, constraints.
 
 ## Glossary
 
-- **Component package.** A folder document containing a JSON manifest
-  and the file the manifest's `importUrl` points at. Both files are
-  named after the package by convention (`folder-list.json` +
-  `folder-list.js`, not `component.json` + `component.js`) so that
-  cross-package URLs of the form `automerge:<rootDirectoryUrl>/<file>`
-  self-describe their target — the names are not required by the
-  loader. Pushed independently with `pushwork`, so each package has
-  a stable `rootDirectoryUrl` that can be referenced from other
-  packages or pages. The on-disk artifact is called a *component
-  package* even though the runtime mounts it as a *view*.
-- **Library package.** A package without a manifest — just a folder of
-  JS files imported by other packages via
-  `import … from "automerge:<rootDirectoryUrl>/<file>"`. Manifests are
-  only needed for views that get bootstrapped through
-  `<patchwork-view src=>`. `packages/solid-helpers` is the example.
-- **Manifest.** A JSON document. The plugin registry only requires
-  `{ name, importUrl }`; arbitrary additional fields are passed
-  through opaquely. `name` is the custom tag name the view will mount
-  under (must contain a hyphen, per HTML custom-element rules).
-  `importUrl` is a `./`-relative path to the JS module; the registry
-  resolves it to an absolute automerge URL at load time.
-- **Mount fn.** The default export of the package's JS module. An async
-  function that gets the host element and returns an optional
-  cleanup — equivalent to
-  `(element: ViewElement) => Promise<(() => void) | void>`.
-  `ViewElement` is `HTMLElement` plus an optional `handle` (the
-  `DocHandle` for `doc=`, when set) and `repo` (the page's single
-  `BranchableRepo`, stamped on every view from `window.repo`). See
-  [`documents.md`](./documents.md).
-- **Bootstrap tag.** `<patchwork-view src="automerge:.../<name>.json">`.
-  The registry's only hard-coded mount tag. See
-  [`components.md`](./components.md).
-- **Repo.** A single `BranchableRepo` lives at `window.repo` (set up
-  in [`src/main.ts`](../src/main.ts)). Every mounted view receives the
-  same instance as `el.repo`. `BranchableRepo` is a thin forkable
-  wrapper around the underlying Automerge `Repo` (see
-  [`src/branchable-repo.ts`](../src/branchable-repo.ts)).
-- **Plugin registry.** A pluginUrl → `LoadedPlugin` cache with one
-  folder subscription per URL driving HMR. Extends `EventEmitter`
-  (`eventemitter3`) and emits `loaded` / `updated` / `removed` /
-  `changed` events. The view registry consumes `load(url)` and
-  `on("updated", ...)`; the plugin registry knows nothing about the
-  DOM or about the view-specific shape. See
-  [`internals.md`](./internals.md).
-- **View registry.** A per-root orchestrator owning a
-  `MutationObserver` and the tag-name table. Delegates plugin loading
-  + HMR to the plugin registry. Per-element instance state lives in
-  `view.ts`'s module-private `cleanups` map, not on the registry.
-  See [`internals.md`](./internals.md).
-- **Race guarantee for in-flight mounts.** `mountView` reads
-  `el.isConnected` after each `await`. If the element disconnected
-  while the mount fn was in flight, the returned cleanup runs
-  immediately and is discarded rather than installed. The element is
-  the identity carrier — there is no separate View instance to
-  signal. See [`lifecycle.md`](./lifecycle.md).
+- **Component package.** Folder doc with a JSON manifest + JS module.
+  Pushed independently by `pushwork`; each gets a stable
+  `rootDirectoryUrl`. Files are named after the package by convention
+  so cross-package URLs self-describe.
+- **Library package.** Same shape, no manifest — imported by other
+  packages via `automerge:` URLs.
+- **Manifest.** `{ name, importUrl }` plus arbitrary opaque fields.
+  `name` is the custom tag (must contain a hyphen). `importUrl` is
+  `./`-relative.
+- **Mount fn.** Default export of the JS module:
+  `(el: ViewElement) => Promise<(() => void) | void>`. `ViewElement`
+  is `HTMLElement` plus optional `el.handle` and `el.repo`. See
+  `src/view.ts`.
+- **Bootstrap tag.** `<patchwork-view src=...>`. The only hard-coded
+  mount tag. Carries `src` and `doc` only.
+- **Repo.** A single `BranchableRepo` at `window.repo`, stamped onto
+  every view as `el.repo`. See `src/branchable-repo.ts`.
+- **Plugin registry.** pluginUrl → `LoadedPlugin` cache + folder
+  subscription for HMR. `EventTarget`, dispatches
+  `loaded`/`updated`/`removed`/`changed`. See `src/plugin-registry.ts`.
+- **View registry.** Per-root DOM observer + tag-name table.
+  Delegates plugin loading to the plugin registry. See
+  `src/view-registry.ts`. Per-element state lives in `src/view.ts`.
+- **Top-down mounting.** A view's mount fn awaits its closest
+  ancestor view's `mounted` promise before resolving `doc=` or
+  running. The post-mount cascade walks the now-static children.
+  See [`lifecycle.md`](./lifecycle.md).
+- **`<patchwork-context>`.** Built-in custom element exposing a
+  subscribable `value` set via `source`. Descendants reach it with
+  `closest("patchwork-context")`.
 
 ## File map
 
 | Path | Role |
 | --- | --- |
-| [`src/main.ts`](../src/main.ts) | bootstrap: base64-inline wasm init, Repo, `BranchableRepo` wrap, `PluginRegistry` + `ViewRegistry` mount on `document.body` |
-| [`src/branchable-repo.ts`](../src/branchable-repo.ts) | `BranchableRepo` / `BranchedDocHandle`: forkable wrapper over `Repo` with copy-on-write per doc |
-| [`src/loader.ts`](../src/loader.ts) | `importFromAutomerge`: resolve → parse → rewrite → blob URL → `import()`. Also exports `parseAutomergeUrlWithPath`, `pinUrl`, `splitPath`. |
-| [`src/plugin-registry.ts`](../src/plugin-registry.ts) | `PluginRegistry`: pluginUrl → manifest + module load cache, per-URL folder subscription for HMR, `loaded`/`updated`/`removed`/`changed` events |
-| [`src/view-registry.ts`](../src/view-registry.ts) | `ViewRegistry`: DOM observer, tag-name table, `<patchwork-view>` bootstrap, `swapTag`, microtask-batched `doc=` rebuild, HMR rebuild via `pluginRegistry.on("updated", ...)` |
-| [`src/patchwork-view-element.ts`](../src/patchwork-view-element.ts) | `PatchworkView` autonomous custom element: `src`/`doc` reflection, lazy property upgrade |
-| [`src/view.ts`](../src/view.ts) | `mountView` / `unmountView` / `isView`: per-element lifecycle, doc-context resolution, race guard via `isConnected`, stamps `el.repo` from `window.repo`. Owns the `WeakMap<Element, cleanup \| null>`. Exports the `ViewElement` and `MountFn` types. |
-| [`src/handle.ts`](../src/handle.ts) | `Handle<T>`: framework reactive primitive — extends `EventEmitter`, `value()` reader, `change(next)` writer, fires `change` events. Plus `shallowArrayEquals` for list-shaped views. |
+| [`src/main.ts`](../src/main.ts) | bootstrap: wasm init, Repo, registries on `document.body` |
+| [`src/branchable-repo.ts`](../src/branchable-repo.ts) | `BranchableRepo` — forkable wrapper over `Repo` with copy-on-write |
+| [`src/loader.ts`](../src/loader.ts) | `importFromAutomerge` + URL helpers (`parseAutomergeUrlWithPath`, `pinUrl`, `splitPath`) |
+| [`src/plugin-registry.ts`](../src/plugin-registry.ts) | pluginUrl → manifest+module cache, HMR via folder subscription |
+| [`src/view-registry.ts`](../src/view-registry.ts) | DOM observer, tag-name table, `<patchwork-view>` bootstrap, top-down walk + cascade, `doc=` rebuild |
+| [`src/patchwork-view-element.ts`](../src/patchwork-view-element.ts) | `<patchwork-view>` custom element: `src`/`doc` reflection, lazy upgrade |
+| [`src/patchwork-context-element.ts`](../src/patchwork-context-element.ts) | `<patchwork-context>` custom element: `source` setter, `value` getter, `change` events |
+| [`src/view.ts`](../src/view.ts) | `mountView`/`unmountView`/`isView`/`viewMounted`: per-element lifecycle, ancestor barrier, race guard. Owns `WeakMap<Element, ViewState>`. |
+| [`src/handle.ts`](../src/handle.ts) | `Handle<T>` reactive primitive — `EventTarget`, `value` getter, `change(next)` writer |

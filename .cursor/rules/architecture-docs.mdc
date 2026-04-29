@@ -5,37 +5,60 @@ alwaysApply: true
 
 # Architecture docs
 
-Architecture lives in [`docs/`](../../docs). Read the relevant file
-before changing code in that area, and update the matching doc in the
-same commit when behavior changes.
+Architecture lives in [`docs/`](../../docs). The docs are short,
+high-level pointers into the source — not standalone tutorials. Read
+the relevant file before changing code in that area, and update the
+matching doc in the same commit when behavior changes.
 
 ## Before editing
 
-1. Open [`docs/README.md`](../../docs/README.md) and follow the link to
-   the file that covers the area you are touching.
-2. Skim that file before changing the code it documents. The docs are
-   the source of truth for *intended* behavior; if the code disagrees,
-   that's a bug to flag, not a license to skip the doc.
+1. Open [`docs/README.md`](../../docs/README.md) and follow the link
+   to the file that covers the area you are touching.
+2. Skim that doc and the source files it points at. The docs describe
+   *intended* behavior; if the code disagrees, that's a bug to flag,
+   not a license to skip the doc.
 
 ## When updating
 
 A change must update the matching doc whenever it affects:
 
-- public surface (mount-fn signature, manifest schema, `<patchwork-view>`
-  or `<automerge-repo>` attributes, `el.handle` contract);
+- public surface (mount-fn signature, manifest schema,
+  `<patchwork-view>` or `<patchwork-context>` attributes, `el.handle`
+  / `el.repo` contract);
 - lifecycle, HMR, or race-handling semantics;
 - the loader pipeline (`automerge:` resolution, import rewriting,
   package exports, heads pinning, wasm bootstrap);
-- module layout / file responsibilities — also update the file map in
-  `docs/README.md`.
+- module layout / file responsibilities — also update the file map
+  in `docs/README.md`.
 
 If a change introduces a new aspect with no obvious home, add a new
-file under `docs/` and link it from `docs/README.md`.
+file under `docs/` and link it from `docs/README.md`. Keep the new
+file in the same slim style as the existing ones.
 
 ## Style
 
-- Match the existing voice: prose first, code samples second, headings
-  short, link to specific files when explaining behavior.
-- Don't duplicate prose across docs — link instead.
-- Update mermaid diagrams (e.g. the lifecycle sequence) when the steps
-  they show change.
+The docs are deliberately slim — a reader should be able to scan a
+page in under a minute and know which source file to open next. Do
+not turn them back into tutorials.
+
+- **Lead with a one-sentence orientation and a pointer to the source
+  file(s) the doc covers.** Every page already starts this way; keep
+  it that way.
+- **Prefer prose and short bullet lists** over long expository
+  sections. Each bullet should fit on one or two lines.
+- **Don't duplicate prose across docs** — link instead. The file map
+  in `docs/README.md` is the single source of truth for "what lives
+  where"; don't restate it elsewhere.
+- **Keep code samples minimal.** Show only the smallest snippet that
+  illustrates the public shape (a manifest, a mount-fn signature, a
+  consumer subscription). Tutorial-length walkthroughs belong in the
+  README's quick-demo section, not in `docs/`.
+- **No diagrams or ASCII art.** No mermaid, no box-drawing, no
+  column-aligned pseudo-tables, no flowchart-style pseudo-code with
+  arrow glyphs and indentation. If a sequence is hard to convey in
+  prose, use a numbered list. Inline `→` glyphs in a sentence are
+  fine; multi-line aligned arrow blocks are not.
+- **No headings deeper than `##`.** A page with `###` subsections has
+  usually outgrown the slim format and should be split or trimmed.
+
+When in doubt, cut prose and add a link to the source instead.

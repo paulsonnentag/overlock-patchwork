@@ -1,146 +1,108 @@
 # Lifecycle
 
-Mount/unmount sequence, hot module reload, and race handling for the
-view registry. Reads the source it documents:
-[`src/view-registry.ts`](../src/view-registry.ts),
+Mount/unmount sequence, HMR, and race handling. Documents the source
+in [`src/view-registry.ts`](../src/view-registry.ts),
 [`src/plugin-registry.ts`](../src/plugin-registry.ts), and
 [`src/view.ts`](../src/view.ts).
 
+## Top-down mounting
+
+The DOM walk stops at view boundaries — `<patchwork-view>`s waiting to
+bootstrap, or any element already claimed by `mountView`.
+`walkStoppingAtViews` (`view-registry.ts`) is used by the initial
+scan, every `addedNodes` MO record, and the post-mount cascade.
+
+Inside `mountView`, each new view awaits its closest ancestor view's
+`mounted` promise before resolving `doc=` or running the user mount
+fn. Two consequences:
+
+- Ancestor mount fns see their template children unmodified — they
+  can imperatively set `doc=`, wrap in `<patchwork-context>`,
+  reorder, etc., and the children's mount fns observe the final
+  state.
+- Descendants always observe a fully-settled ancestor.
+
+After a mount fn returns successfully, the registry cascades into
+the now-static children using the same stop-at-view walk.
+
+If `resolveContext` or the mount fn throws, the `mounted` promise
+rejects, descendants awaiting it bail, and the cascade does nothing.
+Subtree stays empty rather than partially populated.
+
 ## Mount sequence
 
-```mermaid
-sequenceDiagram
-  participant DOM
-  participant MO as MutationObserver
-  participant Reg as ViewRegistry
-  participant Plug as PluginRegistry
-  participant MV as mountView
-  participant Repo as window.repo
-  participant Mod as &lt;name&gt;.js
+When `<patchwork-view src=X doc=Y?>` is inserted, the
+`MutationObserver` calls `#handleElement` (which stops descending at
+that boundary). The view registry calls `pluginRegistry.load(X)`,
+which dedupes parallel calls, finds the folder + manifest, resolves
+`importUrl` + pins to current heads, runs the loader for the module,
+and on first load subscribes to the parent folder for HMR. The
+returned `LoadedPlugin` lets the view registry extract a mount fn,
+register the tag, and `swapTag` the `<patchwork-view>` to the user's
+tag (copying only `doc=`).
 
-  DOM->>MO: <patchwork-view src=X doc=Y?> inserted
-  MO->>Reg: #handleElement(el)
-  Reg->>Plug: load(X) (dedupes parallel calls)
-  Plug->>Repo: find folder + manifest doc
-  Repo-->>Plug: { name, importUrl, ... }
-  Plug->>Plug: resolve importUrl to absolute URL
-  Plug->>Repo: pinUrl(absolute) -> URL with current heads
-  Plug->>Mod: loader(pinned) -> module
-  Mod-->>Plug: module
-  Plug->>Plug: subscribe parent folder for HMR (first load only)
-  Plug-->>Reg: LoadedPlugin { name, importUrl, module, ... }
-  Plug->>Plug: emit "loaded" + "changed"
-  Reg->>Reg: extract mount fn from module.default
-  Reg->>Reg: #registerView(name, mountFn) (collision -> throw)
-  Reg->>DOM: swapTag <patchwork-view> -> <name>
-  Reg->>MV: mountView(newEl, mountFn)
-  MV->>MV: claim newEl in cleanups map (sync)
-  MV->>MV: stamp newEl.repo = window.repo (sync)
-  MV->>MV: resolveContext(newEl) — read doc=
-  MV->>Repo: window.repo.find(Y) (only if doc= set)
-  Repo-->>MV: DocHandle
-  MV->>DOM: stamp newEl.handle = DocHandle
-  MV->>Mod: mountFn(newEl)
-  Mod->>DOM: build content (reads element.handle / element.repo if needed)
-  Mod-->>MV: cleanup fn
-  MV->>MV: install cleanup in cleanups map
-```
+`mountView(newEl, mountFn)` then claims `newEl` synchronously, stamps
+`newEl.repo = window.repo`, awaits the closest ancestor view's
+`mounted`, calls `resolveContext(newEl)` to read `doc=` and
+`repo.find(Y)`, stamps `newEl.handle`, runs the user mount fn, and
+installs the returned cleanup in the views map. The view registry's
+post-mount cascade then walks `newEl`'s children with the same
+stop-at-view rule.
 
-The view registry installs a single `pluginRegistry.on("updated", ...)`
-listener in its constructor so subsequent folder changes flow back
-to `#onPluginUpdate` (see below). The listener is an arrow-function
-field detached via `pluginRegistry.off(...)` in `destroy()`. One
-global listener fans out updates for every plugin URL — there's no
-per-URL subscription.
-
-When `<name>` is later removed from the DOM, the observer fires for
-the removal and the registry calls `unmountView(el)`, which runs
-the installed cleanup and forgets the element.
+When the element is later removed, `unmountView(el)` runs the
+installed cleanup and forgets the element.
 
 ## Hot module reload
 
-The plugin registry subscribes to the manifest's *parent folder*
-document on first load. Pushwork propagates child writes upward, so
-any change inside the view's package — manifest, JS, anything —
-fires a `change` event on the parent folder handle.
+The plugin registry subscribes to the manifest's *parent folder* on
+first load. Pushwork bubbles writes upward, so any change inside the
+package fires `change`.
 
-On change, the **plugin registry**:
+On change, the **plugin registry** re-fetches the manifest and
+re-imports the JS (heads-pinned URL → loader produces a fresh
+module), splices the new `LoadedPlugin` into its cache, and
+dispatches `updated` + `changed`.
 
-1. Re-fetches the manifest and re-imports the JS (with a heads-pinned
-   URL so the loader's blob cache produces a fresh module).
-2. Splices the fresh `LoadedPlugin` into its cached record.
-3. Emits `updated(pluginUrl, previous, next)` and `changed()`.
+The **view registry**'s `#onPluginUpdate` handler:
 
-The **view registry**'s `#onPluginUpdate` handler then:
+1. No-op if `name` and `module` reference are both unchanged.
+2. Bails if the previous load wasn't view-shaped.
+3. Extracts a fresh mount fn. If extraction fails, tears down every
+   instance under the previous tag and removes those elements.
+4. If `name` changed, drops the old name and throws on collisions.
+5. For every element under the previous tag: `unmountView`, create
+   fresh element under new tag (carrying attrs + children), insert
+   in place, `mountView` against the new element. Top-down barrier
+   still applies.
 
-1. No-ops if both `name` and the `module` reference are unchanged
-   (defends against spurious change events; the plugin registry
-   doesn't pre-dedup).
-2. Bails if the previous load wasn't view-shaped — there's nothing in
-   the name table to update.
-3. Tries to extract a fresh mount fn from `next.module.default`.
-   If extraction fails (the new module isn't view-shaped), tears
-   down every existing instance under the previous tag name and
-   removes those elements from the DOM. Otherwise:
-4. If `name` changed, drops the old name from the name table and
-   throws if the new name collides with an existing entry.
-5. Sets the new name → mountFn entry.
-6. For every element currently mounted under the previous tag name
-   (found by walking the registry's root looking for the tag, filtered
-   by `isView`): tears it down via `unmountView` (runs the installed
-   cleanup), creates a fresh element under the new tag name (carrying
-   the current attrs and children), inserts it in place, and calls
-   `mountView` against the new element.
-
-Element identity is intentionally lost on reload — the chosen
-semantics is "teardown + remount", not "patch in place". That keeps
-the cleanup contract honest: every reload runs the previous cleanup
-before the new mount fn touches anything.
+Element identity is intentionally lost on reload — "teardown +
+remount", not "patch in place" — so the cleanup contract stays
+honest.
 
 ## Race handling
 
 `mountView` is async. Three things can race it:
 
-1. The element is removed from the DOM before the mount fn resolves.
-2. The view is hot-reloaded before the mount fn resolves.
-3. The `doc=` attribute changes before the mount fn resolves.
+1. Element removed before the mount fn resolves.
+2. View hot-reloaded before the mount fn resolves.
+3. `doc=` attribute changes before the mount fn resolves.
 
-Cases 2 and 3 both go through `#rebuildInstance`, which detaches the
-old element (running `unmountView` on it first) and creates a fresh
-one. The element is the identity carrier for a mounted view; there is
-no separate `View` instance to signal. The race guarantee falls out
-of two facts:
+(2) and (3) both go through `#rebuildInstance` (detach + remount).
+The element is the identity carrier; there is no separate `View`
+instance to signal. `mountView` reads `el.isConnected` after every
+`await`; a detached element short-circuits, and a returned cleanup
+is run-and-discarded rather than installed.
 
-- `mountView` reads `el.isConnected` after every `await`. A
-  detached element short-circuits the post-await branch.
-- The user's returned cleanup is run-and-discarded (rather than
-  installed) when the post-`await mountFn` `isConnected` check is
-  false.
+The mount pipeline claims `el` and stamps `el.repo` synchronously,
+then awaits the closest ancestor's `mounted`. If that rejects (an
+ancestor failed) or `el` disconnected meanwhile, the claim is dropped
+and the function returns. It then awaits `resolveContext(el)`; on
+disconnect it drops the claim, on throw it re-throws so descendants
+observe the failure. Finally it awaits the user mount fn; on
+disconnect it runs-and-discards the returned cleanup, on throw it
+re-throws. Only after all three awaits succeed does it install the
+cleanup in the views map.
 
-Concretely, `mountView` looks like:
-
-```
-claim el in cleanups map         (sync)
-stamp el.repo = window.repo      (sync)
-await resolveContext(el)
-  if el disconnected → drop claim, return
-await mountFn(el)
-  if el disconnected → run-and-discard cleanup, drop claim, return
-install cleanup in cleanups map
-```
-
-The `cleanups` map (in `view.ts`) is the only persistent per-view
-state in the system. There is no four-state enum, no teardown set,
-no `View.unmount()` method — just an element that has or hasn't been
-claimed, and (after a successful mount) an optional cleanup keyed by
-that element.
-
-`doc=` rebuilds are **microtask-batched**: a series of synchronous
-writes in the same tick (e.g. a context-provider walking through
-several intermediate URLs in one Solid effect) coalesce into a single
-rebuild that reads the final attribute value. Without batching, the
-descendant would tear down and re-mount once per write.
-
-That preserves the "for every successful mount, exactly one cleanup
-runs" invariant even when the user's mount fn is doing something
-slow.
+`doc=` rebuilds are microtask-batched: synchronous writes in the
+same tick coalesce into a single rebuild that reads the final
+attribute value.
