@@ -8,24 +8,11 @@ import { makeDocumentProjection } from "https://esm.sh/@automerge/automerge-repo
 // `packages/solid-helpers/.pushwork/snapshot.json` and paste it in
 // place of the placeholder below, then re-run `pnpm push packages`.
 // The URL stays stable across subsequent pushes.
-import { fromHandle } from "automerge:2aqfwfd7XjcbAHBGFB27WqGnoWB7/solid-helpers.js";
-
-const accountSchema = {
-  init: () => ({ "@patchwork": { type: "account" } }),
-  parse: (value) => {
-    if (!value || typeof value !== "object") {
-      throw new Error("folder-list: not an account doc");
-    }
-    if (value["@patchwork"]?.type !== "account") {
-      throw new Error("folder-list: doc is not type=account");
-    }
-    return value;
-  },
-};
+import { findHandleByPatchworkType } from "automerge:2aqfwfd7XjcbAHBGFB27WqGnoWB7/solid-helpers.js";
 
 export default function (element) {
   const handle = element.handle;
-  const account$ = element.closestView(accountSchema);
+  const accountHandle = findHandleByPatchworkType(element, "account");
 
   function Empty() {
     return html`
@@ -38,12 +25,8 @@ export default function (element) {
 
   function List() {
     const doc = makeDocumentProjection(handle);
-    const account = fromHandle(account$);
-    const accountDoc = () => {
-      const a = account();
-      return a ? makeDocumentProjection(a.handle) : null;
-    };
-    const isSelected = (url) => accountDoc()?.selectedDocUrl === url;
+    const accountDoc = accountHandle ? makeDocumentProjection(accountHandle) : null;
+    const isSelected = (url) => accountDoc?.selectedDocUrl === url;
     const onOpen = (url) => {
       element.dispatchEvent(
         new CustomEvent("patchwork:open-document", {

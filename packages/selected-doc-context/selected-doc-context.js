@@ -6,48 +6,30 @@ import { makeDocumentProjection } from "https://esm.sh/@automerge/automerge-repo
 // `packages/solid-helpers/.pushwork/snapshot.json` and paste it in
 // place of the placeholder below, then re-run `pnpm push packages`.
 // The URL stays stable across subsequent pushes.
-import { fromHandle } from "automerge:2aqfwfd7XjcbAHBGFB27WqGnoWB7/solid-helpers.js";
-
-const accountSchema = {
-  init: () => ({ "@patchwork": { type: "account" } }),
-  parse: (value) => {
-    if (!value || typeof value !== "object") {
-      throw new Error("selected-doc-context: not an account doc");
-    }
-    if (value["@patchwork"]?.type !== "account") {
-      throw new Error("selected-doc-context: doc is not type=account");
-    }
-    return value;
-  },
-};
+import { findHandleByPatchworkType } from "automerge:2aqfwfd7XjcbAHBGFB27WqGnoWB7/solid-helpers.js";
 
 export default function (element) {
-  const account = element.closestView(accountSchema).value();
-  if (!account) {
+  const accountHandle = findHandleByPatchworkType(element, "account");
+  if (!accountHandle) {
     console.warn(
-      "selected-doc-context: no account ancestor; children will receive no doc context",
+      "selected-doc-context: no <patchwork-context> with an account doc handle; children will receive no doc context",
     );
     return;
   }
 
   return createRoot((dispose) => {
-    const accountDoc = makeDocumentProjection(account.handle);
-
-    // Bridge `childViews()` into a Solid signal so the effect re-fires
-    // on both inputs: the account doc's `selectedDocUrl` *and* late-
-    // mounting child views.
-    const children = fromHandle(element.childViews());
+    const accountDoc = makeDocumentProjection(accountHandle);
 
     createEffect(() => {
       const url = accountDoc.selectedDocUrl;
       if (!url) {
         // Nothing selected — leave existing children alone. We could
-        // explicitly clear `doc=` here, but rebuilding child components
-        // back to a "no doc" state is wasteful: most pages selecting
-        // nothing on first load also haven't propagated `doc=` yet.
+        // explicitly clear `doc=` here, but rebuilding child views back
+        // to a "no doc" state is wasteful: most pages selecting nothing
+        // on first load also haven't propagated `doc=` yet.
         return;
       }
-      for (const child of children()) {
+      for (const child of element.children) {
         if (child.getAttribute("doc") !== url) {
           child.setAttribute("doc", url);
         }

@@ -10,39 +10,32 @@ import { render } from "https://esm.sh/solid-js@1.9.5/web";
 import html from "https://esm.sh/solid-js@1.9.5/html";
 import { makeDocumentProjection } from "https://esm.sh/@automerge/automerge-repo-solid-primitives@2.5.5?deps=solid-js@1.9.5";
 
-// Drop any heads from a clone url so the result identifies the
-// *document*, which is what `repo.find` resolves against.
-function canonicalUrl(url) {
-  const { documentId } = window.AutomergeRepo.parseAutomergeUrl(url);
-  return window.AutomergeRepo.stringifyAutomergeUrl({ documentId });
-}
+// Pure UI. Reads `el.handle` (the selected doc) and `el.repo` (the
+// currently-checked-out `BranchableRepo`, supplied by an enclosing
+// `<checked-out-branch-context>`'s inner `<patchwork-context>`),
+// renders the dropdown / buttons, and dispatches intent events:
+//
+//   patchwork:checkout-branch  { detail: { url } }
+//   patchwork:fork-branch      { detail: { name } }
+//   patchwork:reset-branch     no detail
+//
+// `<checked-out-branch-context>` is the only element that mutates
+// branch state. Reads of the branch-index doc go through `el.repo`:
+// pure reads on a `BranchedDocHandle` don't COW, and on the demo's
+// off-nested branching there's no risk of an unwanted clone — index
+// writes happen in the context element via the parent repo.
 
 export default function (element) {
   const handle = element.handle;
   const repo = element.repo;
-  // The enclosing <automerge-repo> is what we mutate to switch / create
-  // / merge branches; its `.repo` is the same as `element.repo` here.
-  const repoEl = element.closest("automerge-repo");
-  if (!handle || !repo || !repoEl) {
-    console.warn(
-      "branch-picker: requires a doc handle, repo, and <automerge-repo> ancestor",
-    );
+  if (!handle || !repo) {
+    console.warn("branch-picker: requires el.handle and el.repo");
     return;
   }
 
-  // Branch metadata lives "above" branching: the index doc and the
-  // back-pointer on the original doc must be readable/writable from any
-  // branch, so we always go through the underlying raw `Repo`. Going
-  // through the wrapped repo would COW the index onto whichever branch
-  // happens to be checked out.
-  const rawRepo = repo.repo;
-  // Stable across branching — `BranchedDocHandle.url` always reports the
-  // original document url.
-  const originalUrl = handle.url;
-  // Snapshot the currently checked-out branch. The framework rebuilds
-  // this component when `repoEl.checkout/fork/reset` swaps the inner
-  // `.repo`, so a fresh snapshot is correct for the lifetime of this
-  // mount.
+  // Snapshot the currently-checked-out branch. `<checked-out-branch-context>`
+  // rebuilds this view when it swaps the inner repo, so a fresh
+  // snapshot is correct for the lifetime of this mount.
   const currentBranchUrl = repo.branchHandle?.url ?? null;
   const currentBranchName = repo.branchHandle?.doc()?.name ?? null;
 
@@ -52,8 +45,6 @@ export default function (element) {
     const doc = makeDocumentProjection(handle);
     const [indexHandle, setIndexHandle] = createSignal(null);
 
-    // Track the lifetime of async finds so a stale resolution can't
-    // overwrite a fresher selection or run after unmount.
     let cancelled = false;
     onCleanup(() => {
       cancelled = true;
@@ -68,7 +59,7 @@ export default function (element) {
         setIndexHandle(null);
         return;
       }
-      rawRepo.find(url).then((h) => {
+      repo.find(url).then((h) => {
         if (cancelled || lastIndexUrl !== url) return;
         setIndexHandle(h);
       });
@@ -81,8 +72,6 @@ export default function (element) {
 
     const branchUrls = createMemo(() => indexDoc()?.branches ?? []);
 
-    // Resolve each branchDoc URL into a {url, doc} pair so the dropdown
-    // can render names reactively.
     const [branches, setBranches] = createSignal([]);
     createEffect(() => {
       const urls = [...branchUrls()];
@@ -90,7 +79,7 @@ export default function (element) {
       onCleanup(() => {
         alive = false;
       });
-      Promise.all(urls.map((u) => rawRepo.find(u))).then((handles) => {
+      Promise.all(urls.map((u) => repo.find(u))).then((handles) => {
         if (!alive || cancelled) return;
         setBranches(
           handles.map((h) => ({
@@ -101,9 +90,9 @@ export default function (element) {
       });
     });
 
-    // Always include the current branch in the options, even before the
-    // index doc loads — otherwise the <select> would briefly fall back
-    // to "main" while our own branch entry is in flight.
+    // Always include the current branch in the options, even before
+    // the index doc loads — otherwise the <select> would briefly
+    // fall back to "main" while our own branch entry is in flight.
     const branchOptions = createMemo(() => {
       const list = branches().slice();
       if (
@@ -118,68 +107,30 @@ export default function (element) {
       return list;
     });
 
-    const onSelectChange = async (event) => {
+    const fire = (type, detail) => {
+      element.dispatchEvent(
+        new CustomEvent(type, {
+          detail,
+          bubbles: true,
+          composed: true,
+        }),
+      );
+    };
+
+    const onSelectChange = (event) => {
       const value = event.currentTarget.value;
       if (value === "main") {
-        if (currentBranchUrl) repoEl.reset();
+        if (currentBranchUrl) fire("patchwork:reset-branch");
       } else if (value !== currentBranchUrl) {
-        await repoEl.checkout(value);
+        fire("patchwork:checkout-branch", { url: value });
       }
     };
 
-    const onCreateBranch = async () => {
+    const onCreateBranch = () => {
       if (currentBranchUrl) return;
       const name = window.prompt("Branch name?");
       if (!name) return;
-
-      // Lazily create the branch-index doc and link it from the
-      // original doc. After this, every later branch just appends to
-      // the existing index.
-      let idxHandle = indexHandle();
-      if (!idxHandle) {
-        idxHandle = rawRepo.create({
-          "@patchwork": { type: "branch-index" },
-          branches: [],
-        });
-        const original = await rawRepo.find(originalUrl);
-        original.change((d) => {
-          if (!d["@patchwork"]) d["@patchwork"] = {};
-          d["@patchwork"].branchIndexUrl = idxHandle.url;
-        });
-      }
-
-      // Fork via the enclosing <automerge-repo> so the swap rebuilds
-      // descendants. Eagerly clone the doc so the first edit on the
-      // branch is fast.
-      const forked = await repoEl.fork({ urls: [originalUrl], name });
-
-      // Record the new branch in the index. By now we've been rebuilt
-      // by the framework, but the captured `idxHandle` still writes to
-      // the underlying raw repo — the rebuilt picker picks the new
-      // entry up via its own subscription.
-      idxHandle.change((d) => {
-        if (!Array.isArray(d.branches)) d.branches = [];
-        d.branches.push(forked.branchHandle.url);
-      });
-    };
-
-    const onMerge = async () => {
-      const branchHandle = repo.branchHandle;
-      if (!branchHandle) return;
-      const cloneUrlWithHeads = branchHandle.doc()?.clones?.[originalUrl];
-      if (!cloneUrlWithHeads) {
-        console.warn(
-          "branch-picker: branch has no clone for the original doc",
-        );
-        return;
-      }
-      // Both handles come from the raw repo so the merge writes go
-      // straight to the original document — not through any
-      // copy-on-write wrapper.
-      const cloneHandle = await rawRepo.find(canonicalUrl(cloneUrlWithHeads));
-      const original = await rawRepo.find(originalUrl);
-      original.merge(cloneHandle);
-      repoEl.reset();
+      fire("patchwork:fork-branch", { name });
     };
 
     return html`
@@ -225,9 +176,6 @@ export default function (element) {
       </select>
       <${Show} when=${() => !currentBranchUrl}>
         <button type="button" onClick=${onCreateBranch}>+ branch</button>
-      <//>
-      <${Show} when=${() => currentBranchUrl}>
-        <button type="button" onClick=${onMerge}>merge into main</button>
       <//>
     `;
   }

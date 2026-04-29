@@ -52,6 +52,28 @@ Top-down mounting (see [`lifecycle.md`](./lifecycle.md)) guarantees
 ancestor wrappings are already in place when the descendant mount
 fn calls `closest("patchwork-context")`.
 
+## Stacked contexts
+
+Multiple `<patchwork-context>` ancestors compose by carrying
+different value shapes — an account doc handle here, a folder doc
+handle one level deeper, the page-level `BranchableRepo` at the
+top. Consumers walk past contexts whose value doesn't match what
+they're looking for:
+
+```js
+let cur = element;
+while (cur) {
+  const ctx = cur.closest("patchwork-context");
+  if (!ctx) break;
+  if (predicate(ctx.value)) return ctx.value;
+  cur = ctx.parentElement;
+}
+```
+
+`findRepo` in [`src/view.ts`](../src/view.ts) does this for the
+`BranchableRepo` lookup that stamps `el.repo`; package authors do
+the same for doc-handle lookups (e.g. "nearest account doc").
+
 ## When to reach for it
 
 Use it for shared subtree state (account, branch handle, selection)

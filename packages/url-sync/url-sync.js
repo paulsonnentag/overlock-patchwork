@@ -8,51 +8,23 @@
 // URL persisted on the account doc would lock every future session to a
 // snapshot.
 
-const accountSchema = {
-  init: () => ({ "@patchwork": { type: "account" } }),
-  parse: (value) => {
-    if (!value || typeof value !== "object") {
-      throw new Error("url-sync: not an account doc");
-    }
-    if (value["@patchwork"]?.type !== "account") {
-      throw new Error("url-sync: doc is not type=account");
-    }
-    return value;
-  },
-};
-
-function hashToDocUrl() {
-  const seg = location.hash.slice(1);
-  if (!window.AutomergeRepo.isValidAutomergeUrl(seg)) return null;
-  // Round-trip through the native helpers so any heads in the hash get
-  // dropped before they can land in `selectedDocUrl`.
-  const { documentId } = window.AutomergeRepo.parseAutomergeUrl(seg);
-  return window.AutomergeRepo.stringifyAutomergeUrl({ documentId });
-}
+// ─── Sibling library URL ────────────────────────────────────────────────
+//
+// After `pnpm push packages` runs, copy `rootDirectoryUrl` from
+// `packages/solid-helpers/.pushwork/snapshot.json` and paste it in
+// place of the placeholder below, then re-run `pnpm push packages`.
+// The URL stays stable across subsequent pushes.
+import { findHandleByPatchworkType } from "automerge:2aqfwfd7XjcbAHBGFB27WqGnoWB7/solid-helpers.js";
 
 export default function (element) {
-  const account$ = element.closestView(accountSchema);
-
-  // The account ancestor is stable in the current page layout, but
-  // re-binding via `change` keeps the view safe if a future host loads
-  // its account asynchronously or swaps the account doc at runtime.
-  let attached = null;
-  const apply = (account) => {
-    attached?.dispose();
-    attached = null;
-    if (!account) {
-      console.warn("url-sync: no account ancestor; not syncing");
-      return;
-    }
-    attached = bind(account.handle);
-  };
-  apply(account$.value());
-  account$.on("change", apply);
-
-  return () => {
-    account$.off("change", apply);
-    attached?.dispose();
-  };
+  const accountHandle = findHandleByPatchworkType(element, "account");
+  if (!accountHandle) {
+    console.warn(
+      "url-sync: no <patchwork-context> with an account doc handle; not syncing",
+    );
+    return;
+  }
+  return bind(accountHandle);
 }
 
 function bind(handle) {
@@ -93,10 +65,17 @@ function bind(handle) {
     writeHashFromDoc();
   }
 
-  return {
-    dispose() {
-      window.removeEventListener("hashchange", writeDocFromHash);
-      handle.off("change", writeHashFromDoc);
-    },
+  return () => {
+    window.removeEventListener("hashchange", writeDocFromHash);
+    handle.off("change", writeHashFromDoc);
   };
+}
+
+function hashToDocUrl() {
+  const seg = location.hash.slice(1);
+  if (!window.AutomergeRepo.isValidAutomergeUrl(seg)) return null;
+  // Round-trip through the native helpers so any heads in the hash get
+  // dropped before they can land in `selectedDocUrl`.
+  const { documentId } = window.AutomergeRepo.parseAutomergeUrl(seg);
+  return window.AutomergeRepo.stringifyAutomergeUrl({ documentId });
 }

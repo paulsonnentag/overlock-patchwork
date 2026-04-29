@@ -21,12 +21,17 @@ Open `index.html` in a browser — no static host required.
 
 ## Quick demo
 
-`packages/` ships a minimal `app-frame` view: a counter that stores
-its `count` in an Automerge doc. The doc URL is persisted in
-`localStorage` so the value survives reloads. The other packages
-under `packages/` (`root`, `folder-list`, `branch-picker`,
-`*-context`, …) depend on a contextual lookup API that has been
-removed, and don't currently mount.
+`packages/` ships two demos:
+
+- `app-frame` — minimal counter, single doc, single view. Storage of
+  `count` survives reloads via the Automerge doc URL persisted in
+  `localStorage`.
+- `root` — markdown editor with a folder-list sidebar and per-doc
+  branching. Composes a dozen sibling packages (`folder-list`,
+  `selected-doc-context`, `checked-out-branch-context`,
+  `branch-picker`, `markdown-editor`, …) by URL, propagating doc
+  context through `<patchwork-context>` and `doc=` rewrites and
+  routing branch operations through bubbling intent events.
 
 Push the packages to the configured Subduction backend with:
 
@@ -39,16 +44,20 @@ This calls [`pushwork`](../pushwork) for each subfolder and writes
 `rootDirectoryUrl`. To run the demo end-to-end:
 
 1. Run `pnpm push packages` once.
-2. Copy `packages/app-frame/.pushwork/snapshot.json`'s
-   `rootDirectoryUrl` into the `<patchwork-view src="...">`
-   placeholder in [`index.html`](./index.html), keeping the
-   `/app-frame.json` path component (the manifest filename).
-3. Open `index.html` in a browser.
+2. Copy `packages/root/.pushwork/snapshot.json`'s `rootDirectoryUrl`
+   into the `<patchwork-view src="...">` placeholder in
+   [`index.html`](./index.html), keeping the `/root.json` path
+   component (the manifest filename).
+3. For each sibling package URL hard-coded inside `packages/root/root.js`,
+   replace the placeholder with the matching `rootDirectoryUrl` from
+   that package's `snapshot.json`. Re-run `pnpm push packages` so
+   root's edits land in its own doc.
+4. Open `index.html` in a browser.
 
 Cross-package URLs stay stable across subsequent pushes — pushwork
 preserves each package's `rootDirectoryUrl`. Editing
-`packages/app-frame/app-frame.js` and re-running `pnpm push packages`
-hot-reloads the live page.
+`packages/root/root.js` (or any sibling) and re-running
+`pnpm push packages` hot-reloads the live page.
 
 ## Architecture
 

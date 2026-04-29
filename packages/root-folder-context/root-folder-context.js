@@ -6,47 +6,46 @@ import { makeDocumentProjection } from "https://esm.sh/@automerge/automerge-repo
 // `packages/solid-helpers/.pushwork/snapshot.json` and paste it in
 // place of the placeholder below, then re-run `pnpm push packages`.
 // The URL stays stable across subsequent pushes.
-import { fromHandle } from "automerge:2aqfwfd7XjcbAHBGFB27WqGnoWB7/solid-helpers.js";
-
-// Account schema kept inline so the package is self-contained — see the
-// reusability design goal in docs/components.md. Only the fields this
-// component reads are validated; everything else is passed through.
-const accountSchema = {
-  init: () => ({ "@patchwork": { type: "account" } }),
-  parse: (value) => {
-    if (!value || typeof value !== "object") {
-      throw new Error("root-folder-context: not an account doc");
-    }
-    if (value["@patchwork"]?.type !== "account") {
-      throw new Error("root-folder-context: doc is not type=account");
-    }
-    return value;
-  },
-};
+import { findHandleByPatchworkType } from "automerge:2aqfwfd7XjcbAHBGFB27WqGnoWB7/solid-helpers.js";
 
 export default function (element) {
-  const account = element.closestView(accountSchema).value();
-  if (!account) {
-    // No account ancestor — render-as-passthrough is the right default;
-    // children remain in the DOM but receive no doc context.
+  const repo = element.repo;
+  const accountHandle = findHandleByPatchworkType(element, "account");
+  if (!accountHandle) {
+    // No account ancestor — render-as-passthrough is the right
+    // default; children remain in the DOM but receive no folder
+    // context. Mirrors the old behavior when `closestView(accountSchema)`
+    // returned no match.
     console.warn(
-      "root-folder-context: no account ancestor; children will receive no doc context",
+      "root-folder-context: no <patchwork-context> with an account doc handle; children will receive no doc context",
     );
     return;
   }
 
   return createRoot((dispose) => {
-    const accountDoc = makeDocumentProjection(account.handle);
-
-    // Bridge `childViews()` into a Solid signal so the effect re-fires
-    // on both inputs: the account doc's `rootFolderUrl` *and* late-
-    // mounting child views.
-    const children = fromHandle(element.childViews());
+    const accountDoc = makeDocumentProjection(accountHandle);
 
     createEffect(() => {
-      const url = accountDoc.rootFolderUrl;
-      if (!url) return;
-      for (const child of children()) {
+      let url = accountDoc.rootFolderUrl;
+      if (!url) {
+        // First-run bootstrap: create the root folder doc and link it
+        // from the account. The write re-fires this effect, which then
+        // takes the propagation branch with the now-set url.
+        const folder = repo.create({
+          "@patchwork": { type: "folder" },
+          title: "Root",
+          docs: [],
+        });
+        accountHandle.change((d) => {
+          d.rootFolderUrl = folder.url;
+        });
+        return;
+      }
+      // Propagate to direct children regardless of whether they're
+      // still un-bootstrapped <patchwork-view> elements (the framework
+      // carries `doc=` over on the swap) or already-mounted views (the
+      // registry's MutationObserver schedules a rebuild).
+      for (const child of element.children) {
         if (child.getAttribute("doc") !== url) {
           child.setAttribute("doc", url);
         }

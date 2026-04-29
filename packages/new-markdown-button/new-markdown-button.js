@@ -1,50 +1,22 @@
 import { render } from "https://esm.sh/solid-js@1.9.5/web";
 import html from "https://esm.sh/solid-js@1.9.5/html";
-// ─── Sibling library URL ────────────────────────────────────────────────
-//
-// After `pnpm push packages` runs, copy `rootDirectoryUrl` from
-// `packages/solid-helpers/.pushwork/snapshot.json` and paste it in
-// place of the placeholder below, then re-run `pnpm push packages`.
-// The URL stays stable across subsequent pushes.
-import { fromHandle } from "automerge:2aqfwfd7XjcbAHBGFB27WqGnoWB7/solid-helpers.js";
-
-const folderSchema = {
-  init: () => ({ "@patchwork": { type: "folder" }, title: "", docs: [] }),
-  parse: (value) => {
-    if (!value || typeof value !== "object") {
-      throw new Error("new-markdown-button: not a folder doc");
-    }
-    if (value["@patchwork"]?.type !== "folder") {
-      throw new Error("new-markdown-button: doc is not type=folder");
-    }
-    if (!Array.isArray(value.docs)) {
-      throw new Error("new-markdown-button: folder.docs is not an array");
-    }
-    return value;
-  },
-};
-
-function newMarkdown() {
-  return {
-    "@patchwork": { type: "markdown" },
-    title: "Untitled",
-    content: "",
-  };
-}
 
 export default function (element) {
   const repo = element.repo;
-  const folder$ = element.closestView(folderSchema);
+  // The button sits as a direct child of `<root-folder-context>`, which
+  // propagates the folder URL via `doc=`, so `el.handle` resolves to
+  // the folder doc by the time we mount. No upward schema lookup
+  // needed.
+  const folderHandle = element.handle;
 
   function Button() {
-    const folder = fromHandle(folder$);
-    const disabled = () => !repo || !folder();
+    const disabled = () => !repo || !folderHandle;
 
     const onClick = () => {
-      const f = folder();
-      if (!repo || !f) return;
+      if (!repo || !folderHandle) return;
       const newDoc = repo.create(newMarkdown());
-      f.handle.change((d) => {
+      folderHandle.change((d) => {
+        if (!Array.isArray(d.docs)) d.docs = [];
         d.docs.push({
           name: "Untitled",
           type: "markdown",
@@ -91,4 +63,12 @@ export default function (element) {
   }
 
   return render(() => Button(), element);
+}
+
+function newMarkdown() {
+  return {
+    "@patchwork": { type: "markdown" },
+    title: "Untitled",
+    content: "",
+  };
 }
