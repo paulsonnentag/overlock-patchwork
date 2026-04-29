@@ -1,4 +1,3 @@
-import type { BranchableRepo } from "./branchable-repo";
 import type {
   isValidAutomergeUrl,
   parseAutomergeUrl,
@@ -7,7 +6,6 @@ import type {
 
 declare global {
   interface Window {
-    repo: BranchableRepo;
     AutomergeRepo: {
       isValidAutomergeUrl: typeof isValidAutomergeUrl;
       parseAutomergeUrl: typeof parseAutomergeUrl;

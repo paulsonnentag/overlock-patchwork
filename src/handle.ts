@@ -1,28 +1,28 @@
-import EventEmitter from "eventemitter3";
-
 /**
- * Framework reactive primitive. Shaped like Automerge's `DocHandle`:
- * extends `EventEmitter`, exposes a synchronous `value()` accessor, and
- * fires a `change` event whenever `change(next)` lands a new value.
+ * Framework reactive primitive. Shaped to match the subscribable surface
+ * used by the rest of the runtime: extends `EventTarget`, exposes a
+ * synchronous `value` getter, and dispatches a `change` event whenever
+ * `change(next)` lands a new value.
  *
  * `Handle` does *not* fire on subscribe — consumers wire up the same
- * way they would for a `DocHandle` (`h.on("change", fn)`) and read the
- * initial value with `h.value()` if they care about it. That mirrors
- * the rest of the framework's listener idiom and matches Solid's
- * `createSignal(h.value()); h.on("change", setSignal)` pattern with no
- * special-case glue.
+ * way they would for any `EventTarget` (`h.addEventListener("change",
+ * fn)`) and read the initial value with `h.value` if they care about
+ * it. For batch teardown, pair `addEventListener` with an
+ * `AbortSignal`: `h.addEventListener("change", fn, { signal })` — one
+ * `controller.abort()` then unwires every listener registered with
+ * that signal.
  *
  * The `equals` callback dedups `change(next)` against the current
  * value. Defaults to `Object.is` for scalars and references; pass
  * `shallowArrayEquals` for list-shaped views so structural rebuilds
  * that produce a new but element-wise-equal array don't fan out a
  * spurious notification.
+ *
+ * The event payload is empty — listeners read `e.target.value` (or
+ * close over the handle reference). That matches `<patchwork-context>`
+ * and any other source/sink in the framework.
  */
-export type HandleEvents<T> = {
-  change: (value: T) => void;
-};
-
-export class Handle<T> extends EventEmitter<HandleEvents<T>> {
+export class Handle<T> extends EventTarget {
   #current: T;
   readonly #equals: (a: T, b: T) => boolean;
 
@@ -32,14 +32,14 @@ export class Handle<T> extends EventEmitter<HandleEvents<T>> {
     this.#equals = equals;
   }
 
-  value(): T {
+  get value(): T {
     return this.#current;
   }
 
   change(next: T): void {
     if (this.#equals(next, this.#current)) return;
     this.#current = next;
-    this.emit("change", next);
+    this.dispatchEvent(new Event("change"));
   }
 }
 

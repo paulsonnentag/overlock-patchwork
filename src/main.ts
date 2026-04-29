@@ -22,6 +22,10 @@ import { importFromAutomerge, setPackagesRoot } from "./loader";
 import { BranchableRepo } from "./branchable-repo";
 import { PluginRegistry } from "./plugin-registry";
 import { ViewRegistry } from "./view-registry";
+import {
+  PATCHWORK_CONTEXT_TAG,
+  type PatchworkContext,
+} from "./patchwork-context-element";
 
 import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
 
@@ -51,7 +55,7 @@ async function initPatchwork () {
     subductionWebsocketEndpoints: [SUBDUCTION_ENDPOINT],
   });
 
-  window.repo = BranchableRepo.wrap(repo);
+  const branchableRepo = new BranchableRepo(repo);
 
   const packagesRoot = document
     .querySelector<HTMLMetaElement>('meta[name="overlock-packages-root"]')
@@ -60,8 +64,20 @@ async function initPatchwork () {
     setPackagesRoot(repo, packagesRoot as AutomergeUrl);
   }
 
+  // Wrap whatever is already in <body> in a <patchwork-context> whose
+  // value is the repo. Every view walks up to the nearest
+  // <patchwork-context> with a `BranchableRepo` value to obtain
+  // `el.repo`. The provider must be installed before the registry
+  // starts scanning so the first mount sees it.
+  const ctx = document.createElement(
+    PATCHWORK_CONTEXT_TAG,
+  ) as PatchworkContext;
+  while (document.body.firstChild) ctx.appendChild(document.body.firstChild);
+  document.body.appendChild(ctx);
+  ctx.source = branchableRepo;
+
   const pluginRegistry = new PluginRegistry({
-    repo: window.repo,
+    repo: branchableRepo,
     import: (url) => importFromAutomerge(repo, url),
   });
 

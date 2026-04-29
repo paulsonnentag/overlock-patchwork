@@ -10,11 +10,11 @@ export type ViewRegistryOptions = {
 /**
  * One mount root. Owns the view tag-name table and a `MutationObserver`
  * over the root element. Per-element instance state lives in
- * `view.ts`'s module-private `cleanups` map; the registry doesn't track
+ * `view.ts`'s module-private `views` map; the registry doesn't track
  * View instances itself — the element is the identity carrier.
  *
  * Plugin loading and HMR live in `PluginRegistry`. This class consumes
- * its `load(url)` API for bootstrap and subscribes to the `updated`
+ * its `load(url)` API for bootstrap and listens on the `updated`
  * event for HMR. It validates that loaded plugins are view-shaped
  * (`module.default` is the mount fn) — that's the kind-specific layer
  * on top of the generic plugin runtime.
@@ -22,13 +22,22 @@ export type ViewRegistryOptions = {
  * `<patchwork-view src="automerge:.../<name>.json">` is the bootstrap
  * tag: the registry recognizes it, asks the plugin registry for the
  * referenced plugin, registers `plugin.name` as a view, replaces the
- * `<patchwork-view>` element with `<plugin.name>` (carrying over
- * non-`src` attributes and children), and calls `mountView` against
- * the new element.
+ * `<patchwork-view>` element with `<plugin.name>` (carrying over `doc`
+ * only and the children), and calls `mountView` against the new
+ * element.
  *
- * On HMR (delivered via `pluginRegistry.on("updated", ...)`) the
- * registry updates the name table — handling rename + collision —
- * and rebuilds every mounted instance under the previous tag name.
+ * Mounting is **top-down**: the registry walks subtrees stopping at
+ * view boundaries (`<patchwork-view>` or any claimed view). Each view
+ * waits for its closest ancestor view's `mounted` promise before
+ * resolving its own context. After a view's mount fn completes
+ * successfully the registry cascades into its now-static children and
+ * processes them the same way, so descendants always observe a
+ * fully-settled ancestor.
+ *
+ * On HMR (delivered via `pluginRegistry.addEventListener("updated",
+ * …)`) the registry updates the name table — handling rename +
+ * collision — and rebuilds every mounted instance under the previous
+ * tag name.
  *
  * No namespaces yet: a name collision throws. Tears everything down
  * on `destroy()`.
@@ -55,13 +64,20 @@ export class ViewRegistry {
   readonly #pendingRebuilds = new Set<HTMLElement>();
   #rebuildScheduled = false;
 
+  // One AbortController for every external listener the registry
+  // installs (currently the plugin-registry "updated" subscription).
+  // `destroy()` aborts it once.
+  readonly #abort = new AbortController();
+
   #observer: MutationObserver | null = null;
 
   constructor(options: ViewRegistryOptions) {
     this.#root = options.root;
     this.#pluginRegistry = options.pluginRegistry;
 
-    this.#subscribeToPluginRegistry();
+    this.#pluginRegistry.addEventListener("updated", this.#onPluginUpdate, {
+      signal: this.#abort.signal,
+    });
     this.#scanInitialTree();
     this.#observer = this.#startMutationObserver();
   }
@@ -71,20 +87,16 @@ export class ViewRegistry {
     this.#observer.disconnect();
     this.#observer = null;
     this.#pendingRebuilds.clear();
+    this.#abort.abort();
     // Walk the root subtree and tear down every claimed element. The
-    // element-keyed `cleanups` map is the source of truth; `unmountView`
+    // element-keyed `views` map is the source of truth; `unmountView`
     // is a no-op on anything we walk that isn't a view.
     walkSubtree(this.#root, (el) => unmountView(el));
-    this.#pluginRegistry.off("updated", this.#onPluginUpdate);
     this.#viewsByTag.clear();
   }
 
-  #subscribeToPluginRegistry(): void {
-    this.#pluginRegistry.on("updated", this.#onPluginUpdate);
-  }
-
   #scanInitialTree(): void {
-    walkSubtree(this.#root, (el) => this.#handleElement(el));
+    walkStoppingAtViews(this.#root, (el) => this.#handleElement(el));
   }
 
   #startMutationObserver(): MutationObserver {
@@ -110,7 +122,7 @@ export class ViewRegistry {
     }
     for (const node of record.addedNodes) {
       if (node instanceof Element) {
-        walkSelfAndDescendants(node, (el) => this.#handleElement(el));
+        walkStoppingAtViews(node, (el) => this.#handleElement(el));
       }
     }
     for (const node of record.removedNodes) {
@@ -176,13 +188,13 @@ export class ViewRegistry {
   }
 
   /**
-   * The 4-step `<patchwork-view>` handoff:
+   * The 5-step `<patchwork-view>` handoff:
    *   1. ask the plugin registry to load the URL
    *   2. extract the mount fn from the loaded module
    *   3. register `plugin.name` → mountFn (throw on collision)
-   *   4. replace `<patchwork-view>` with `<plugin.name>` (keep non-src
-   *      attrs + children)
-   *   5. call `mountView` against the new element
+   *   4. replace `<patchwork-view>` with `<plugin.name>` (keep `doc=`
+   *      and children only)
+   *   5. mount and cascade
    *
    * The mount fn's per-element doc context (read `doc=`, await
    * `repo.find(url)`, stamp `el.handle`) is resolved inside `mountView`
@@ -210,7 +222,7 @@ export class ViewRegistry {
     this.#registerView(loaded.name, mountFn);
 
     const newEl = swapTag(viewEl, loaded.name);
-    mountView(newEl, mountFn);
+    this.#mountAndCascade(newEl, mountFn);
   }
 
   /**
@@ -229,11 +241,14 @@ export class ViewRegistry {
    * Element identity is intentionally lost on reload — see
    * [`docs/lifecycle.md`](../docs/lifecycle.md).
    */
-  #onPluginUpdate = (
-    _pluginUrl: string,
-    previous: LoadedPlugin,
-    next: LoadedPlugin,
-  ): void => {
+  #onPluginUpdate = (event: Event): void => {
+    const { previous, next } = (
+      event as CustomEvent<{
+        pluginUrl: string;
+        previous: LoadedPlugin;
+        next: LoadedPlugin;
+      }>
+    ).detail;
     if (previous.name === next.name && previous.module === next.module) {
       return;
     }
@@ -314,7 +329,7 @@ export class ViewRegistry {
    * starts the next lifecycle, so cleanup-before-new-mount ordering is
    * preserved. The MO will later see `removedNodes: [oldEl]` and call
    * `unmountView(oldEl)` again — that's a no-op because the entry is
-   * already gone from the cleanups map.
+   * already gone from the views map.
    */
   #rebuildInstance(
     oldEl: HTMLElement,
@@ -332,14 +347,46 @@ export class ViewRegistry {
     while (oldEl.firstChild) newEl.appendChild(oldEl.firstChild);
     parent.replaceChild(newEl, oldEl);
 
-    mountView(newEl, mountFn);
+    this.#mountAndCascade(newEl, mountFn);
   }
 
   #mountIfRegistered(el: Element): void {
     if (isView(el)) return;
     const mountFn = this.#viewsByTag.get(el.localName);
     if (!mountFn) return;
-    mountView(el as HTMLElement, mountFn);
+    this.#mountAndCascade(el as HTMLElement, mountFn);
+  }
+
+  /**
+   * Mount `el` and, once its mount fn resolves successfully, walk its
+   * (now-static) children and process each through `#handleElement`.
+   * The walk uses the same stop-at-view-boundary rule as the initial
+   * scan so descendant views go through their own deferred-cascade
+   * path. Failure suppresses the cascade — descendants in this subtree
+   * stay un-mounted and the failure is already logged inside
+   * `mount()`.
+   */
+  #mountAndCascade(el: HTMLElement, mountFn: MountFn): void {
+    const promise = mountView(el, mountFn);
+    promise.then(
+      () => {
+        if (!el.isConnected) return;
+        if (!isView(el)) return;
+        this.#cascadeChildren(el);
+      },
+      () => {
+        // Failure already logged in mount(); descendants stay dormant.
+      },
+    );
+  }
+
+  #cascadeChildren(el: HTMLElement): void {
+    let child = el.firstElementChild;
+    while (child) {
+      const next = child.nextElementSibling;
+      walkStoppingAtViews(child, (c) => this.#handleElement(c));
+      child = next;
+    }
   }
 
   /**
@@ -359,13 +406,20 @@ export class ViewRegistry {
   }
 }
 
+/**
+ * Replace `oldEl` with a fresh element of `newTag`, copying only
+ * `doc=` and the children. The view contract documents `<patchwork-view>`
+ * as carrying just `src` and `doc`; `src` is consumed by the
+ * bootstrap and `doc` is handed off to the swapped element so
+ * `resolveContext` picks it up. Anything else on `<patchwork-view>` is
+ * not part of the contract and would silently leak through to the
+ * user's tag if forwarded.
+ */
 function swapTag(oldEl: HTMLElement, newTag: string): HTMLElement {
   const parent = oldEl.parentNode;
   const newEl = oldEl.ownerDocument.createElement(newTag);
-  for (const attr of Array.from(oldEl.attributes)) {
-    if (attr.name === "src") continue;
-    newEl.setAttribute(attr.name, attr.value);
-  }
+  const doc = oldEl.getAttribute("doc");
+  if (doc !== null) newEl.setAttribute("doc", doc);
   while (oldEl.firstChild) newEl.appendChild(oldEl.firstChild);
   if (parent) parent.replaceChild(newEl, oldEl);
   return newEl;
@@ -398,6 +452,29 @@ function extractMountFn(plugin: LoadedPlugin): MountFn {
     );
   }
   return (mod as { default: MountFn }).default;
+}
+
+/**
+ * Walk `root` and call `fn` on every element, stopping at view
+ * boundaries: `<patchwork-view>` (any state) and any element claimed
+ * by `mountView`. Descendants of view boundaries are *not* visited —
+ * they're left to the deferred cascade that runs after the view's
+ * mount fn settles, so the parent always observes its children in
+ * their pristine pre-mount state.
+ */
+function walkStoppingAtViews(root: Element, fn: (el: Element) => void): void {
+  fn(root);
+  if (isViewBoundary(root)) return;
+  let child = root.firstElementChild;
+  while (child) {
+    const next = child.nextElementSibling;
+    walkStoppingAtViews(child, fn);
+    child = next;
+  }
+}
+
+function isViewBoundary(el: Element): boolean {
+  return el.localName === PATCHWORK_VIEW_TAG || isView(el);
 }
 
 function walkSelfAndDescendants(

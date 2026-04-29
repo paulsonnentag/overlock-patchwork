@@ -62,7 +62,10 @@ Documentation lives in [`docs/`](./docs):
   composition.
 - [`docs/documents.md`](./docs/documents.md) — `window.repo`, `doc=`
   attribute, `el.handle`, reactive doc rebuilds.
-- [`docs/lifecycle.md`](./docs/lifecycle.md) — mount/unmount sequence
-  diagram, HMR semantics, generation guard, race handling.
+- [`docs/context.md`](./docs/context.md) — `<patchwork-context>` for
+  sharing values down a subtree.
+- [`docs/lifecycle.md`](./docs/lifecycle.md) — top-down mount/unmount
+  sequence diagram, ancestor-await barrier, HMR semantics, race
+  handling.
 - [`docs/internals.md`](./docs/internals.md) — registry data
   structures, custom-element rationale, module layout, constraints.

@@ -1,4 +1,3 @@
-import EventEmitter from "eventemitter3";
 import { type DocHandle } from "@automerge/automerge-repo/slim";
 import {
   findHandleInFolderHandle,
@@ -31,32 +30,35 @@ export type LoadedPlugin = {
 };
 
 /**
- * Events emitted by `PluginRegistry`. Mirrors patchwork-next's
- * `PluginRegistryEvents` where the lifecycle aligns:
+ * Event detail payloads. The registry extends `EventTarget` and
+ * dispatches `CustomEvent`s; consumers pull args off `event.detail`:
  *
- * - `loaded`   — first successful resolution of a plugin URL; the
- *                cached entry is now available.
+ *   reg.addEventListener("updated", e => {
+ *     const { pluginUrl, previous, next } = e.detail;
+ *   });
+ *
+ * - `loaded`   — first successful resolution of a plugin URL.
  * - `updated`  — HMR re-fetch produced a new manifest or module.
  *                Carries `previous` and `next` snapshots so consumers
  *                can diff without keeping their own copy.
  * - `removed`  — `remove(pluginUrl)` evicted a cached entry.
  * - `changed`  — fires alongside every other event. Convenience for
  *                consumers (UI mirrors, dev tools) that only care
- *                that something moved.
+ *                that something moved. Empty detail.
  *
- * Patchwork-next's `registered` event has no analog — there's no
- * description-only state in our model. `load(pluginUrl)` does both
- * registration and loading in one step.
+ * `addEventListener` accepts `{ signal }` for batch unsubscription;
+ * one `AbortController.abort()` tears down every listener registered
+ * with that signal.
  */
-export type PluginRegistryEvents = {
-  loaded: (pluginUrl: string, plugin: LoadedPlugin) => void;
-  updated: (
-    pluginUrl: string,
-    previous: LoadedPlugin,
-    next: LoadedPlugin,
-  ) => void;
-  removed: (pluginUrl: string) => void;
-  changed: () => void;
+export type PluginRegistryEventMap = {
+  loaded: CustomEvent<{ pluginUrl: string; plugin: LoadedPlugin }>;
+  updated: CustomEvent<{
+    pluginUrl: string;
+    previous: LoadedPlugin;
+    next: LoadedPlugin;
+  }>;
+  removed: CustomEvent<{ pluginUrl: string }>;
+  changed: Event;
 };
 
 export type PluginRegistryOptions = {
@@ -72,9 +74,9 @@ type PluginRecord = {
 
 /**
  * Owns the plugin URL → `LoadedPlugin` load pipeline and the HMR
- * subscription that drives reloads. Extends `EventEmitter` from
- * `eventemitter3`; consumers subscribe via the standard
- * `on(event, fn)` / `off(event, fn)` pair.
+ * subscription that drives reloads. Extends `EventTarget`; consumers
+ * subscribe via the standard `addEventListener(name, fn)` /
+ * `removeEventListener(name, fn)` pair.
  *
  * One folder subscription per unique plugin URL: the manifest's parent
  * folder document is watched, and any change there triggers a re-fetch
@@ -89,7 +91,7 @@ type PluginRecord = {
  * kinds with different "observable change" semantics can layer their
  * own dedup on top.
  */
-export class PluginRegistry extends EventEmitter<PluginRegistryEvents> {
+export class PluginRegistry extends EventTarget {
   readonly #repo: BranchableRepo;
   readonly #import: Loader;
 
@@ -126,8 +128,8 @@ export class PluginRegistry extends EventEmitter<PluginRegistryEvents> {
       .then((record) => {
         this.#loaded.set(url, record);
         this.#loading.delete(url);
-        this.emit("loaded", url, record.plugin);
-        this.emit("changed");
+        this.#emit("loaded", { pluginUrl: url, plugin: record.plugin });
+        this.#emit("changed", undefined);
         return record;
       })
       .catch((err) => {
@@ -150,15 +152,16 @@ export class PluginRegistry extends EventEmitter<PluginRegistryEvents> {
     record.unsubscribe();
     this.#loaded.delete(url);
     this.#loading.delete(url);
-    this.emit("removed", url);
-    this.emit("changed");
+    this.#emit("removed", { pluginUrl: url });
+    this.#emit("changed", undefined);
     return true;
   }
 
   /**
-   * Drop every folder subscription, clear the cache, and remove all
-   * listeners. After `destroy`, `load` rejects and registered
-   * listeners never fire again.
+   * Drop every folder subscription and clear the cache. After
+   * `destroy`, `load` rejects. Existing `addEventListener` registrations
+   * are *not* removed automatically — consumers should pair
+   * registrations with an `AbortSignal` if they need batch cleanup.
    */
   destroy(): void {
     if (this.#destroyed) return;
@@ -166,7 +169,17 @@ export class PluginRegistry extends EventEmitter<PluginRegistryEvents> {
     for (const record of this.#loaded.values()) record.unsubscribe();
     this.#loaded.clear();
     this.#loading.clear();
-    this.removeAllListeners();
+  }
+
+  #emit<K extends keyof PluginRegistryEventMap>(
+    name: K,
+    detail: PluginRegistryEventMap[K] extends CustomEvent<infer D> ? D : undefined,
+  ): void {
+    if (detail === undefined) {
+      this.dispatchEvent(new Event(name));
+    } else {
+      this.dispatchEvent(new CustomEvent(name, { detail }));
+    }
   }
 
   async #loadFresh(url: string): Promise<PluginRecord> {
@@ -199,6 +212,9 @@ export class PluginRegistry extends EventEmitter<PluginRegistryEvents> {
 
     const plugin = await this.#fetchPlugin(url, parentFolderHandle, manifestName);
 
+    // The folder doc handle is an automerge-repo `DocHandle` (still
+    // EventEmitter-shaped upstream), so subscribe via `.on/.off`
+    // rather than `addEventListener`.
     const onChange = (): void => {
       void this.#reload(url);
     };
@@ -241,8 +257,8 @@ export class PluginRegistry extends EventEmitter<PluginRegistryEvents> {
     const previous = old.plugin;
     old.plugin = next;
 
-    this.emit("updated", url, previous, next);
-    this.emit("changed");
+    this.#emit("updated", { pluginUrl: url, previous, next });
+    this.#emit("changed", undefined);
   }
 
   /**

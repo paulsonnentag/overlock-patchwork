@@ -3,20 +3,25 @@ import {
   type DocHandle,
 } from "@automerge/automerge-repo/slim";
 
-import type { BranchableRepo } from "./branchable-repo";
+import { BranchableRepo } from "./branchable-repo";
+import {
+  PATCHWORK_CONTEXT_TAG,
+  type PatchworkContext,
+} from "./patchwork-context-element";
 
 /**
  * The element a mount fn receives. A plain `HTMLElement` plus:
  *
  * - `handle?` — the `DocHandle` resolved from the `doc=` attribute
  *   (absent when the host element had no `doc=`).
- * - `repo` — the page's single `BranchableRepo` (`window.repo`),
- *   stamped onto every mounted view for convenience. There is no
- *   per-subtree repo scope; every view sees the same instance.
- *   `BranchableRepo` exposes `fork`/`checkout`/`reset` for git-style
- *   branching, but there is currently no UI mechanism wired up that
- *   actually invokes them — the page always runs against the
- *   un-branched root.
+ * - `repo` — the `BranchableRepo` carried by the nearest ancestor
+ *   `<patchwork-context>` whose value is a `BranchableRepo`. The
+ *   bootstrap installs one such provider wrapping `<body>`, so every
+ *   view that doesn't sit inside a more specific repo provider ends
+ *   up with the page-level repo. `BranchableRepo` exposes
+ *   `fork`/`checkout`/`reset` (each returns a new instance over the
+ *   same underlying `Repo`); there is currently no UI wired up that
+ *   invokes them.
  */
 export type ViewElement<V = unknown> = HTMLElement & {
   handle?: DocHandle<V>;
@@ -39,51 +44,55 @@ export type MountFn = (
 ) => Promise<(() => void) | void> | ((() => void) | void);
 
 /**
- * `WeakMap<Element, cleanup | null>` keyed by every element that has
- * been claimed by `mountView` and not yet unmounted. Three states:
+ * Per-view state. The `mounted` promise is the synchronisation point
+ * for top-down mounting: each view awaits the closest ancestor view's
+ * `mounted` before resolving its own context and running the user
+ * mount fn. It resolves on success (or clean disconnect) and rejects
+ * on error so descendants stay un-mounted when an ancestor fails.
  *
- * - not in the map: `el` is not a mounted view.
- * - value `null`: `el` is in flight (resolving doc context or running
- *   the user's mount fn), or has finished mounting with no user
- *   cleanup to install.
- * - value `() => void`: mounted with a user cleanup ready to run.
- *
- * The element is the identity carrier for a mounted view; there is no
- * View instance. The map is the only persistent per-view state in the
- * system.
- *
- * Entries are claimed *synchronously* at the top of `mountView`. That
- * matters because the registry's `MutationObserver` may fire on the
- * same microtask for a freshly inserted element; without the
- * synchronous claim, the registry's `mountIfRegistered` would see the
- * element as un-claimed and start a duplicate mount.
+ * `cleanup` is null while the user mount fn is in flight or if the
+ * fn returned no cleanup; otherwise it's the function `unmountView`
+ * runs at teardown.
  */
-const cleanups = new WeakMap<Element, (() => void) | null>();
+type ViewState = {
+  mounted: Promise<void>;
+  cleanup: (() => void) | null;
+};
 
 /**
- * Mount a view on `el` against `mountFn`. Synchronously claims the
- * element (so the registry sees it as already-mounted on the next
- * MutationObserver microtask), stamps `window.repo` as `el.repo`, then
- * runs the async lifecycle:
+ * `WeakMap<Element, ViewState>` keyed by every element claimed by
+ * `mountView`. Entries are claimed *synchronously* at the top of
+ * `mountView` (before any await) so the registry's `MutationObserver`
+ * microtask sees the element as already-claimed and dedups.
  *
- * 1. Resolve doc context — read `doc=`, await `window.repo.find(url)`,
- *    stamp the resulting handle as `el.handle`. No `doc=` is fine and
- *    leaves `el.handle` untouched.
- * 2. If the element was disconnected during step 1, drop the claim and
- *    exit. The user's mount fn never runs.
- * 3. Run the user's `mountFn(el)`. If it throws, log and exit; the
- *    element stays claimed with no cleanup so a later removal is a
- *    safe no-op.
- * 4. If the element was disconnected while `mountFn` was awaiting,
- *    run the returned cleanup immediately and discard it instead of
- *    installing it. That's the race guarantee for in-flight mounts.
- * 5. Otherwise install the cleanup so a later `unmountView(el)`
- *    (or rebuild) runs it.
+ * The element is the identity carrier for a mounted view; there is
+ * no separate `View` instance.
  */
-export function mountView(el: HTMLElement, mountFn: MountFn): void {
-  cleanups.set(el, null);
-  (el as ViewElement).repo = window.repo;
-  void runLifecycle(el, mountFn);
+const views = new WeakMap<Element, ViewState>();
+
+/**
+ * Claim `el` as a view backed by `mountFn`. Synchronously records the
+ * claim, walks up to the nearest `<patchwork-context>` whose value is
+ * a `BranchableRepo` to stamp `el.repo`, and starts the async mount
+ * pipeline. Returns the promise that resolves once the user mount fn
+ * has settled (or rejects if it threw); callers that need to cascade
+ * into descendants after a successful mount listen on the resolution.
+ *
+ * Top-down sequencing is enforced inside the pipeline: before
+ * resolving `doc=` or running the user mount fn, the new view awaits
+ * the closest ancestor view's `mounted`. That guarantees ancestor
+ * `el.handle`, `<patchwork-context>` `source`, and any imperative
+ * descendant mutations the ancestor performs are all visible by the
+ * time a descendant runs.
+ */
+export function mountView(el: HTMLElement, mountFn: MountFn): Promise<void> {
+  const existing = views.get(el);
+  if (existing) return existing.mounted;
+  const state: ViewState = { mounted: undefined!, cleanup: null };
+  views.set(el, state);
+  (el as ViewElement).repo = findRepo(el);
+  state.mounted = mount(el, mountFn);
+  return state.mounted;
 }
 
 /**
@@ -94,33 +103,57 @@ export function mountView(el: HTMLElement, mountFn: MountFn): void {
  * already-unmounted elements.
  */
 export function unmountView(el: Element): void {
-  const cleanup = cleanups.get(el);
-  if (cleanup === undefined) return;
-  cleanups.delete(el);
-  if (cleanup) runCleanup(cleanup);
+  const state = views.get(el);
+  if (!state) return;
+  views.delete(el);
+  if (state.cleanup) runCleanup(state.cleanup);
 }
 
 /**
  * Whether `el` is currently claimed by `mountView` (in flight or
- * fully mounted). Used by the registry's `mountIfRegistered` to dedup.
+ * fully mounted). Used by the registry's mount path to dedup and by
+ * the descendant walk to stop at view boundaries.
  */
 export function isView(el: Element): boolean {
-  return cleanups.has(el);
+  return views.has(el);
 }
 
-async function runLifecycle(
-  el: HTMLElement,
-  mountFn: MountFn,
-): Promise<void> {
+/**
+ * The mounted-promise for `el`, or null if `el` is not a claimed view.
+ * Exposed for tests and tooling; the runtime itself reads ancestor
+ * promises through the WeakMap directly.
+ */
+export function viewMounted(el: Element): Promise<void> | null {
+  return views.get(el)?.mounted ?? null;
+}
+
+async function mount(el: HTMLElement, mountFn: MountFn): Promise<void> {
+  // Top-down barrier: wait for the closest ancestor view to finish
+  // mounting before this view does anything observable. Ancestor
+  // failure propagates as the promise rejection — descendants stay
+  // un-mounted in that subtree.
+  const ancestor = findAncestorMounted(el);
+  if (ancestor) {
+    try {
+      await ancestor;
+    } catch {
+      views.delete(el);
+      return;
+    }
+  }
+  if (!el.isConnected) {
+    views.delete(el);
+    return;
+  }
+
   try {
     await resolveContext(el);
   } catch (err) {
     console.error("[overlock-patchwork] doc context resolution failed:", err);
-    cleanups.delete(el);
-    return;
+    throw err;
   }
   if (!el.isConnected) {
-    cleanups.delete(el);
+    views.delete(el);
     return;
   }
 
@@ -132,22 +165,34 @@ async function runLifecycle(
       `[overlock-patchwork] mount threw on <${el.localName}>:`,
       err,
     );
-    return;
+    throw err;
   }
 
   const cleanup = typeof result === "function" ? result : null;
   if (!el.isConnected) {
     if (cleanup) runCleanup(cleanup);
-    cleanups.delete(el);
+    views.delete(el);
     return;
   }
-  cleanups.set(el, cleanup);
+  const state = views.get(el);
+  if (state) state.cleanup = cleanup;
+}
+
+function findAncestorMounted(el: HTMLElement): Promise<void> | null {
+  let cur = el.parentElement;
+  while (cur) {
+    const state = views.get(cur);
+    if (state) return state.mounted;
+    cur = cur.parentElement;
+  }
+  return null;
 }
 
 /**
- * Read `doc=` off `el` and stamp `window.repo.find(url)` onto the
- * element as `el.handle`. No `doc=` is fine and leaves `el.handle`
- * untouched.
+ * Read `doc=` off `el` and stamp `el.repo.find(url)` onto the element
+ * as `el.handle`. No `doc=` is fine and leaves `el.handle` untouched.
+ * `el.repo` is already stamped by `mountView` from the nearest
+ * `<patchwork-context>` provider.
  */
 async function resolveContext(el: HTMLElement): Promise<void> {
   const docUrl = el.getAttribute("doc");
@@ -158,15 +203,32 @@ async function resolveContext(el: HTMLElement): Promise<void> {
       `[overlock-patchwork] doc attribute is not a valid automerge URL: "${docUrl}"`,
     );
   }
-  const repo = window.repo;
-  if (!repo) {
-    throw new Error(
-      `[overlock-patchwork] <${el.localName} doc="${docUrl}"> resolved before window.repo was set`,
-    );
-  }
 
-  const handle = await repo.find(docUrl);
+  const handle = await (el as ViewElement).repo.find(docUrl);
   (el as ViewElement).handle = handle as DocHandle<unknown>;
+}
+
+/**
+ * Walk up from `el` looking for the nearest `<patchwork-context>`
+ * whose `value` is a `BranchableRepo`. `closest()` matches the
+ * element itself; if the matched context carries a non-repo value,
+ * we step past it via `parentElement` and keep walking. Throws if
+ * no provider is in scope — the bootstrap in `main.ts` installs one
+ * wrapping `<body>` so this is only reachable on a misconfigured
+ * page.
+ */
+function findRepo(el: Element): BranchableRepo {
+  let cur: Element | null = el;
+  while (cur) {
+    const ctx = cur.closest(PATCHWORK_CONTEXT_TAG) as PatchworkContext | null;
+    if (!ctx) break;
+    const value = ctx.value;
+    if (value instanceof BranchableRepo) return value;
+    cur = ctx.parentElement;
+  }
+  throw new Error(
+    `[overlock-patchwork] <${el.localName}>: no <patchwork-context> with a BranchableRepo value in scope`,
+  );
 }
 
 function runCleanup(fn: () => void): void {
