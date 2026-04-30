@@ -11,7 +11,7 @@ export default defineConfig({
       fileName: () => "root.js",
     },
     rollupOptions: {
-      external: ["solid-js", "solid-js/web"],
+      external: ["solid-js", "solid-js/web", "@automerge/automerge-repo"],
       output: {
         paths: {
           "solid-js": "https://esm.sh/solid-js@1.9.5",

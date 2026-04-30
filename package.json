@@ -6,7 +6,6 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "vite build",
-    "test": "vitest run",
     "push": "node scripts/push.js packages"
   },
   "dependencies": {
@@ -23,7 +22,6 @@
     "@automerge/automerge-repo-storage-nodefs": "2.6.0-subduction.13",
     "@types/node": "^25.6.0",
     "typescript": "^5.6.3",
-    "vite": "^5.4.10",
-    "vitest": "^2.1.9"
+    "vite": "^5.4.10"
   }
 }

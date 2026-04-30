@@ -7,6 +7,8 @@ import { markdown } from "@codemirror/lang-markdown";
 import { parseAutomergeUrl } from "@automerge/automerge-repo";
 import type { DocHandle } from "@automerge/automerge-repo";
 
+import type { ViewElement } from "patchwork-types";
+
 import { CodeMirror } from "./codemirror";
 import { markdownTheme } from "./markdown-theme";
 // `vite-plugin-css-injected-by-js` rewrites this side-effect import at
@@ -17,13 +19,9 @@ import "./styles.css";
 
 type TextDoc = { content?: string };
 
-type ViewElement = HTMLElement & {
-  handle?: DocHandle<TextDoc>;
-};
-
 const PATH = ["content"] as const;
 
-export default function (element: ViewElement) {
+export default function (element: ViewElement<TextDoc>) {
   const handle = element.handle;
   if (!handle) {
     return renderPlaceholder(element);
@@ -61,7 +59,7 @@ function Editor(props: {
   );
 }
 
-function renderPlaceholder(element: ViewElement): () => void {
+function renderPlaceholder(element: ViewElement<TextDoc>): () => void {
   const placeholder = document.createElement("textarea");
   placeholder.disabled = true;
   placeholder.placeholder = "Select a document";
