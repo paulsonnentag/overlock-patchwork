@@ -22,10 +22,17 @@ import {
  *   `fork`/`checkout`/`reset` (each returns a new instance over the
  *   same underlying `Repo`); there is currently no UI wired up that
  *   invokes them.
+ * - `context(predicate)` — walk up stacked `<patchwork-context>`
+ *   ancestors (innermost first) and return the `value` of the first
+ *   match, or `null`. Stamped at mount; `el.repo` is itself derived
+ *   through this walk against `BranchableRepo`. Snapshot lookup —
+ *   subscribe to the matched context's `change` event for reactive
+ *   reads.
  */
 export type ViewElement<V = unknown> = HTMLElement & {
   handle?: DocHandle<V>;
   repo: BranchableRepo;
+  context: <T>(predicate: (value: unknown) => value is T) => T | null;
 };
 
 /**
@@ -72,11 +79,12 @@ const views = new WeakMap<Element, ViewState>();
 
 /**
  * Claim `el` as a view backed by `mountFn`. Synchronously records the
- * claim, walks up to the nearest `<patchwork-context>` whose value is
- * a `BranchableRepo` to stamp `el.repo`, and starts the async mount
- * pipeline. Returns the promise that resolves once the user mount fn
- * has settled (or rejects if it threw); callers that need to cascade
- * into descendants after a successful mount listen on the resolution.
+ * claim, stamps `el.context` (the stacked-context walk) and `el.repo`
+ * (derived via `el.context` against `BranchableRepo`), then starts
+ * the async mount pipeline. Returns the promise that resolves once
+ * the user mount fn has settled (or rejects if it threw); callers
+ * that need to cascade into descendants after a successful mount
+ * listen on the resolution.
  *
  * Top-down sequencing is enforced inside the pipeline: before
  * resolving `doc=` or running the user mount fn, the new view awaits
@@ -90,7 +98,10 @@ export function mountView(el: HTMLElement, mountFn: MountFn): Promise<void> {
   if (existing) return existing.mounted;
   const state: ViewState = { mounted: undefined!, cleanup: null };
   views.set(el, state);
-  (el as ViewElement).repo = findRepo(el);
+  const viewEl = el as ViewElement;
+  viewEl.context = <T>(predicate: (v: unknown) => v is T): T | null =>
+    walkContexts(el, predicate);
+  viewEl.repo = resolveRepo(viewEl);
   state.mounted = mount(el, mountFn);
   return state.mounted;
 }
@@ -209,26 +220,44 @@ async function resolveContext(el: HTMLElement): Promise<void> {
 }
 
 /**
- * Walk up from `el` looking for the nearest `<patchwork-context>`
- * whose `value` is a `BranchableRepo`. `closest()` matches the
- * element itself; if the matched context carries a non-repo value,
- * we step past it via `parentElement` and keep walking. Throws if
- * no provider is in scope — the bootstrap in `main.ts` installs one
- * wrapping `<body>` so this is only reachable on a misconfigured
- * page.
+ * Walk up stacked `<patchwork-context>` ancestors from `start`,
+ * returning the `value` of the innermost context that satisfies
+ * `predicate`. Returns `null` if no matching context is in scope.
+ *
+ * Private to the view runtime — exposed to user code only as
+ * `el.context(predicate)`, the per-element closure stamped in
+ * `mountView`.
  */
-function findRepo(el: Element): BranchableRepo {
-  let cur: Element | null = el;
+function walkContexts<T>(
+  start: Element,
+  predicate: (value: unknown) => value is T,
+): T | null {
+  let cur: Element | null = start;
   while (cur) {
     const ctx = cur.closest(PATCHWORK_CONTEXT_TAG) as PatchworkContext | null;
-    if (!ctx) break;
-    const value = ctx.value;
-    if (value instanceof BranchableRepo) return value;
+    if (!ctx) return null;
+    if (predicate(ctx.value)) return ctx.value;
     cur = ctx.parentElement;
   }
-  throw new Error(
-    `[overlock-patchwork] <${el.localName}>: no <patchwork-context> with a BranchableRepo value in scope`,
+  return null;
+}
+
+/**
+ * Stamp `el.repo` by routing through `el.context`. Throws if no
+ * provider is in scope — the bootstrap in `main.ts` installs one
+ * wrapping `<body>`, so this is only reachable on a misconfigured
+ * page.
+ */
+function resolveRepo(el: ViewElement): BranchableRepo {
+  const repo = el.context(
+    (v): v is BranchableRepo => v instanceof BranchableRepo,
   );
+  if (repo === null) {
+    throw new Error(
+      `[overlock-patchwork] <${el.localName}>: no <patchwork-context> with a BranchableRepo value in scope`,
+    );
+  }
+  return repo;
 }
 
 function runCleanup(fn: () => void): void {

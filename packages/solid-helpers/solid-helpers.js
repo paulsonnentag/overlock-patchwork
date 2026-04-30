@@ -20,36 +20,14 @@ export function fromHandle(handle) {
 }
 
 /**
- * Walk up `<patchwork-context>` ancestors looking for the first one
- * whose `value` satisfies `predicate`. Returns the value, or `null`
- * if no matching context is in scope. Stops walking at any context
- * that doesn't match — callers wrap their lookups in stacked
- * contexts and rely on the walk to skip irrelevant ones (same shape
- * the framework uses for `el.repo` resolution in `src/view.ts`).
- *
- * Snapshot lookup. The matched value's *reference* doesn't refresh
- * later; for reactive reads on a doc handle's content, subscribe
- * with `makeDocumentProjection(handle)` once you've found it. Not
- * Solid-specific despite living next to `fromHandle`.
- */
-export function findContextValue(element, predicate) {
-  let cur = element;
-  while (cur) {
-    const ctx = cur.closest("patchwork-context");
-    if (!ctx) return null;
-    if (predicate(ctx.value)) return ctx.value;
-    cur = ctx.parentElement;
-  }
-  return null;
-}
-
-/**
- * Convenience over `findContextValue` for the common case: a doc
+ * Convenience over `element.context` for the common case: a doc
  * handle whose doc carries `@patchwork.type === type`. Account,
- * folder, etc. are all keyed this way.
+ * folder, etc. are all keyed this way. Snapshot lookup — for
+ * reactive reads on the doc's content, wrap the returned handle
+ * with `makeDocumentProjection`.
  */
 export function findHandleByPatchworkType(element, type) {
-  return findContextValue(element, (v) => {
+  return element.context((v) => {
     if (!v || typeof v.doc !== "function") return false;
     return v.doc()?.["@patchwork"]?.type === type;
   });

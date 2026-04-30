@@ -35,7 +35,8 @@ Read the source for the full picture; these pages just orient you.
   `./`-relative.
 - **Mount fn.** Default export of the JS module:
   `(el: ViewElement) => Promise<(() => void) | void>`. `ViewElement`
-  is `HTMLElement` plus optional `el.handle` and `el.repo`. See
+  is `HTMLElement` plus optional `el.handle`, `el.repo`, and
+  `el.context(predicate)` for stacked-context lookup. See
   `src/view.ts`.
 - **Bootstrap tag.** `<patchwork-view src=...>`. The only hard-coded
   mount tag. Carries `src` and `doc` only.
@@ -66,5 +67,5 @@ Read the source for the full picture; these pages just orient you.
 | [`src/view-registry.ts`](../src/view-registry.ts) | DOM observer, tag-name table, `<patchwork-view>` bootstrap, top-down walk + cascade, `doc=` rebuild |
 | [`src/patchwork-view-element.ts`](../src/patchwork-view-element.ts) | `<patchwork-view>` custom element: `src`/`doc` reflection, lazy upgrade |
 | [`src/patchwork-context-element.ts`](../src/patchwork-context-element.ts) | `<patchwork-context>` custom element: `source` setter, `value` getter, `change` events |
-| [`src/view.ts`](../src/view.ts) | `mountView`/`unmountView`/`isView`/`viewMounted`: per-element lifecycle, ancestor barrier, race guard. Owns `WeakMap<Element, ViewState>`. |
+| [`src/view.ts`](../src/view.ts) | `mountView`/`unmountView`/`isView`/`viewMounted`: per-element lifecycle, ancestor barrier, race guard. Stamps `el.repo` and `el.context` (stacked-context walk). Owns `WeakMap<Element, ViewState>`. |
 | [`src/handle.ts`](../src/handle.ts) | `Handle<T>` reactive primitive — `EventTarget`, `value` getter, `change(next)` writer |

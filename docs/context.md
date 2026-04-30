@@ -36,11 +36,31 @@ upgrade (Solid `<template>` clone path) flow through the setter on
 
 ## Consumer
 
+Inside a mount fn, walk up stacked contexts via `el.context`
+(stamped onto every `ViewElement` — see [`src/view.ts`](../src/view.ts)):
+
+```js
+const account = element.context(
+  v => typeof v?.doc === "function" && v.doc()?.["@patchwork"]?.type === "account",
+);
+```
+
+`el.context(predicate)` returns the `value` of the innermost
+`<patchwork-context>` whose value satisfies `predicate`, or `null`
+if no match is in scope. Snapshot lookup — for reactive reads
+subscribe to the matched context's `change` event, or wrap a
+returned doc handle with `makeDocumentProjection`.
+
+Top-down mounting (see [`lifecycle.md`](./lifecycle.md)) guarantees
+ancestor wrappings are already in place when the descendant mount
+fn runs, so `el.context` always sees the final ancestor stack.
+
+For consumers that need to subscribe to a single known context (not
+walk past unrelated ones), use the standard DOM idiom directly:
+
 ```js
 const ctx = element.closest("patchwork-context");
 if (!ctx) return;
-
-const initial = ctx.value;
 const controller = new AbortController();
 ctx.addEventListener("change", e => render(e.target.value), {
   signal: controller.signal,
@@ -48,31 +68,14 @@ ctx.addEventListener("change", e => render(e.target.value), {
 return () => controller.abort();
 ```
 
-Top-down mounting (see [`lifecycle.md`](./lifecycle.md)) guarantees
-ancestor wrappings are already in place when the descendant mount
-fn calls `closest("patchwork-context")`.
-
 ## Stacked contexts
 
 Multiple `<patchwork-context>` ancestors compose by carrying
 different value shapes — an account doc handle here, a folder doc
 handle one level deeper, the page-level `BranchableRepo` at the
-top. Consumers walk past contexts whose value doesn't match what
-they're looking for:
-
-```js
-let cur = element;
-while (cur) {
-  const ctx = cur.closest("patchwork-context");
-  if (!ctx) break;
-  if (predicate(ctx.value)) return ctx.value;
-  cur = ctx.parentElement;
-}
-```
-
-`findRepo` in [`src/view.ts`](../src/view.ts) does this for the
-`BranchableRepo` lookup that stamps `el.repo`; package authors do
-the same for doc-handle lookups (e.g. "nearest account doc").
+top. `el.context(predicate)` walks past any context whose value
+doesn't match. `el.repo` is stamped this way against
+`v instanceof BranchableRepo`.
 
 ## When to reach for it
 
