@@ -8,6 +8,12 @@ import { parseAutomergeUrl } from "@automerge/automerge-repo";
 import type { DocHandle } from "@automerge/automerge-repo";
 
 import { CodeMirror } from "./codemirror";
+import { markdownTheme } from "./markdown-theme";
+// `vite-plugin-css-injected-by-js` rewrites this side-effect import at
+// build time: the CSS is bundled into `markdown-editor.js` and a
+// `<style>` tag is inserted on first import. Keeps the package a
+// single self-contained JS file for the loader to fetch.
+import "./styles.css";
 
 type TextDoc = { content?: string };
 
@@ -26,9 +32,7 @@ export default function (element: ViewElement) {
   const isReadOnly = !!parseAutomergeUrl(handle.url).heads;
 
   const dispose = render(
-    () => (
-      <Editor handle={handle} isReadOnly={isReadOnly} />
-    ),
+    () => <Editor handle={handle} isReadOnly={isReadOnly} />,
     element,
   );
 
@@ -44,58 +48,25 @@ function Editor(props: {
     history(),
     keymap.of([...defaultKeymap, ...historyKeymap]),
     EditorView.lineWrapping,
-    EditorView.theme({
-      "&": { height: "100%" },
-      ".cm-scroller": {
-        font: '14px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-      },
-      ".cm-content": { padding: "1rem 1.25rem" },
-    }),
+    ...markdownTheme("sans"),
   ];
 
   return (
-    <>
-      <style>{STYLES}</style>
-      <CodeMirror
-        handle={props.handle}
-        path={[...PATH]}
-        extensions={baseExtensions}
-        readOnly={props.isReadOnly}
-      />
-    </>
+    <CodeMirror
+      handle={props.handle}
+      path={[...PATH]}
+      extensions={baseExtensions}
+      readOnly={props.isReadOnly}
+    />
   );
 }
 
 function renderPlaceholder(element: ViewElement): () => void {
-  const style = document.createElement("style");
-  style.textContent = STYLES;
   const placeholder = document.createElement("textarea");
   placeholder.disabled = true;
   placeholder.placeholder = "Select a document";
-  element.append(style, placeholder);
+  element.append(placeholder);
   return () => {
-    style.remove();
     placeholder.remove();
   };
 }
-
-const STYLES = `
-  markdown-editor { display: flex; flex: 1 1 auto; min-height: 0; }
-  markdown-editor textarea {
-    flex: 1 1 auto;
-    width: 100%;
-    height: 100%;
-    box-sizing: border-box;
-    padding: 1rem 1.25rem;
-    margin: 0;
-    font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    color: inherit;
-    background: transparent;
-    border: 0;
-    resize: none;
-    outline: none;
-  }
-  markdown-editor textarea:disabled { color: #9ca3af; }
-  markdown-editor .cm-editor { flex: 1 1 auto; min-height: 0; height: 100%; }
-  markdown-editor .cm-editor.cm-focused { outline: none; }
-`;

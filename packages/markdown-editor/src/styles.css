@@ -1,0 +1,38 @@
+/* Host element + placeholder styles. Theming for the CodeMirror editor
+   itself lives in `themes/markdown.ts` (uses `EditorView.theme()` so
+   styles stay scoped to the editor). */
+
+markdown-editor {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+
+  --color-base-content: #1f2937;
+  --color-secondary: #6366f1;
+  --max-text-line-width: 60rem;
+}
+
+markdown-editor textarea {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 1rem 1.25rem;
+  margin: 0;
+  font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  resize: none;
+  outline: none;
+}
+
+markdown-editor textarea:disabled {
+  color: #9ca3af;
+}
+
+markdown-editor .cm-editor {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+}
