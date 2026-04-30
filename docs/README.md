@@ -10,6 +10,8 @@ Two layers stacked, both in `src/`:
 Each doc below is a short pointer into the relevant source files.
 Read the source for the full picture; these pages just orient you.
 
+- [`guide.md`](./guide.md) — tutorial: mount fn, views, context,
+  `doc=` propagation, intent events.
 - [`loader.md`](./loader.md) — `src/loader.ts`, `src/main.ts` (wasm).
 - [`components.md`](./components.md) — package layout, manifest,
   mount-fn contract, embedding `<patchwork-view>`.

@@ -80,7 +80,7 @@ export class PatchworkContext extends HTMLElement {
   disconnectedCallback(): void {
     this.#unsubscribe?.();
     this.#unsubscribe = null;
-  }
+  } 
 
   #setValue(next: unknown): void {
     if (Object.is(next, this.#value)) return;
