@@ -34,11 +34,28 @@ type CacheKey = string;
 export type LoaderOptions = {
   repo: Repo;
   packagesRoot?: AutomergeUrl;
+  /**
+   * Bare-specifier → live module map for shared-instance dependencies.
+   * For each entry the loader synthesizes a tiny ESM shim whose
+   * exports re-read from `window.__overlock.externals[key]`, blobs it,
+   * and serves that blob URL whenever a loaded package imports the
+   * specifier. Keeps a single instance of `@automerge/automerge` (and
+   * friends) shared between the host bundle and every package, so
+   * wasm initialization and any module-scoped state live in one
+   * place.
+   *
+   * The host is responsible for populating `window.__overlock.externals`
+   * with the same `key → module` mapping before the loader is asked
+   * to resolve any package — typically right after wasm init in
+   * `main.ts`.
+   */
+  externals?: Record<string, object>;
 };
 
 export class Loader {
   readonly #repo: Repo;
   readonly #blobUrlCache = new Map<CacheKey, Promise<string>>();
+  readonly #externalUrls = new Map<string, string>();
   // Optional "packages folder" — when set, scripts whose root document
   // is a direct child of this folder get a friendly DevTools sourceURL
   // of the form `packages/<child-name>/<file>`. `null` until the
@@ -48,6 +65,13 @@ export class Loader {
 
   constructor(opts: LoaderOptions) {
     this.#repo = opts.repo;
+    if (opts.externals) {
+      for (const [key, mod] of Object.entries(opts.externals)) {
+        const source = buildExternalShimSource(key, mod);
+        const blob = new Blob([source], { type: "text/javascript" });
+        this.#externalUrls.set(key, URL.createObjectURL(blob));
+      }
+    }
     if (opts.packagesRoot) this.setPackagesRoot(opts.packagesRoot);
   }
 
@@ -224,6 +248,12 @@ export class Loader {
       return this.#materialize(rootUrl, normalizePath(spec), inFlight);
     }
 
+    // Bare specifier registered as an external — return the blob URL of
+    // a shim that re-reads from window.__overlock.externals so every
+    // package shares the host's live module instance.
+    const externalUrl = this.#externalUrls.get(spec);
+    if (externalUrl) return externalUrl;
+
     // Bare specifier — caller asked for passthrough behavior. The browser will
     // try to resolve it via an importmap (if the host page provides one) or
     // throw a clear error at import time.
@@ -290,6 +320,28 @@ export function splitPath(p: string): string[] {
 }
 
 // ── private helpers ─────────────────────────────────────────────────
+
+/**
+ * Generate the source of a tiny ESM shim that re-reads each named
+ * export from `window.__overlock.externals[key]`. Iterates the live
+ * module's keys at construction time, so the shim's set of exports
+ * matches whatever the host imported. `default` is skipped for the
+ * named-exports loop (reserved as syntax) but the namespace itself
+ * is re-exported as the default so `import M from "..."` still works.
+ */
+function buildExternalShimSource(key: string, mod: object): string {
+  const lines = [
+    `const m = window.__overlock.externals[${JSON.stringify(key)}];`,
+  ];
+  for (const k of Object.keys(mod)) {
+    if (k === "default") continue;
+    if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(k)) continue;
+    lines.push(`export const ${k} = m.${k};`);
+  }
+  lines.push(`export default m;`);
+  lines.push(`//# sourceURL=overlock-external/${key}`);
+  return lines.join("\n");
+}
 
 function normalizePath(p: string): string {
   return p

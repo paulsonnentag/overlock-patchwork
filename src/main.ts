@@ -10,6 +10,7 @@ import { automergeWasmBase64 } from "@automerge/automerge/automerge.wasm.base64"
 import * as Subduction from "@automerge/automerge-subduction/slim";
 // @ts-expect-error: "/wasm-base64" doesn't ship .d.ts
 import { wasmBase64 as subductionWasmBase64 } from "@automerge/automerge-subduction/wasm-base64";
+import * as AutomergeRepo from "@automerge/automerge-repo/slim";
 import {
   Repo,
   isValidAutomergeUrl,
@@ -45,6 +46,18 @@ async function initPatchwork () {
     module: base64ToBytes(subductionWasmBase64 as string),
   });
 
+  // Shared-instance dependencies for loaded packages. The Loader
+  // generates ESM shim modules that re-read from this global so every
+  // package gets the same wasm-initialised Automerge / Repo as the
+  // host. See `Loader` in src/loader.ts and `__overlock` in
+  // src/globals.d.ts.
+  window.__overlock = {
+    externals: {
+      "@automerge/automerge": Automerge,
+      "@automerge/automerge-repo": AutomergeRepo,
+    },
+  };
+
   const signer = await Subduction.WebCryptoSigner.setup();
 
   const repo = new Repo({
@@ -62,6 +75,7 @@ async function initPatchwork () {
     ?.content?.trim();
   const loader = new Loader({
     repo,
+    externals: window.__overlock.externals,
     packagesRoot:
       packagesRoot && isValidAutomergeUrl(packagesRoot)
         ? (packagesRoot as AutomergeUrl)

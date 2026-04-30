@@ -35,10 +35,37 @@ After fetching, the source is parsed with `es-module-lexer` and every
 | `./foo.js`, `../lib/bar.js` | Resolved relative to importer's path inside the folder doc. |
 | `automerge:abc/some/path.js` | Cross-doc; pinned to current heads on first sight. |
 | `/foo.js` | Resolved against importer's root folder. |
+| Registered external (e.g. `@automerge/automerge`) | Rewritten to a blob URL whose source re-reads from `window.__overlock.externals[key]` so every package shares the host's live module instance. See [Externals](#externals). |
 | Bare (`react`, `solid-js`, …) | Pass-through. |
 | `https://esm.sh/...` | Pass-through. |
 
 Rewriting splices end → start so lexer offsets stay valid.
+
+## Externals
+
+Pass `externals: Record<string, object>` to the `Loader` constructor
+to share live module instances between the host bundle and every
+loaded package. For each entry the loader synthesises a tiny ESM
+shim:
+
+```js
+const m = window.__overlock.externals["@automerge/automerge-repo"];
+export const parseAutomergeUrl = m.parseAutomergeUrl;
+// …one line per Object.keys(mod) entry…
+export default m;
+```
+
+The shim is wrapped in a `Blob`, the resulting URL is cached, and
+`#resolveSpecifier` returns it whenever a loaded package imports the
+key. Every package gets the same blob URL → the same module instance
+→ the same wasm-initialised state. The host populates
+`window.__overlock.externals` in `main.ts` before constructing the
+loader.
+
+Caveat: `export const x = m.x` captures the value at shim-evaluation
+time, so swapping the underlying module reference post-init won't
+propagate. Fine for the current `Automerge` / `AutomergeRepo`
+namespaces, which don't change after wasm init.
 
 ## Heads pinning + caching
 
