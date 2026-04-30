@@ -4,10 +4,6 @@ import {
 } from "@automerge/automerge-repo/slim";
 
 import { BranchableRepo } from "./branchable-repo";
-import {
-  PATCHWORK_CONTEXT_TAG,
-  type PatchworkContext,
-} from "./patchwork-context-element";
 
 /**
  * The element a mount fn receives. A plain `HTMLElement` plus:
@@ -15,19 +11,20 @@ import {
  * - `handle?` — the `DocHandle` resolved from the `doc=` attribute
  *   (absent when the host element had no `doc=`).
  * - `repo` — the `BranchableRepo` carried by the nearest ancestor
- *   `<patchwork-context>` whose value is a `BranchableRepo`. The
- *   bootstrap installs one such provider wrapping `<body>`, so every
- *   view that doesn't sit inside a more specific repo provider ends
- *   up with the page-level repo. `BranchableRepo` exposes
- *   `fork`/`checkout`/`reset` (each returns a new instance over the
- *   same underlying `Repo`); there is currently no UI wired up that
- *   invokes them.
- * - `context(predicate)` — walk up stacked `<patchwork-context>`
- *   ancestors (innermost first) and return the `value` of the first
- *   match, or `null`. Stamped at mount; `el.repo` is itself derived
- *   through this walk against `BranchableRepo`. Snapshot lookup —
- *   subscribe to the matched context's `change` event for reactive
- *   reads.
+ *   context whose value is a `BranchableRepo`. The bootstrap installs
+ *   one such provider wrapping `<body>`, so every view that doesn't
+ *   sit inside a more specific repo provider ends up with the
+ *   page-level repo. `BranchableRepo` exposes `fork`/`checkout`/`reset`
+ *   (each returns a new instance over the same underlying `Repo`);
+ *   there is currently no UI wired up that invokes them.
+ * - `context(predicate)` — walk up ancestor contexts (innermost first)
+ *   and return the `value` of the first match, or `null`. Stamped at
+ *   mount; `el.repo` is itself derived through this walk against
+ *   `BranchableRepo`. Snapshot lookup — subscribe to the matched
+ *   context's `change` event for reactive reads. A "context" is any
+ *   custom-element ancestor (tag name contains a hyphen) exposing a
+ *   `value` property; `defineContext` from the helper package
+ *   produces that shape.
  */
 export type ViewElement<V = unknown> = HTMLElement & {
   handle?: DocHandle<V>;
@@ -79,29 +76,24 @@ const views = new WeakMap<Element, ViewState>();
 
 /**
  * Claim `el` as a view backed by `mountFn`. Synchronously records the
- * claim, stamps `el.context` (the stacked-context walk) and `el.repo`
- * (derived via `el.context` against `BranchableRepo`), then starts
- * the async mount pipeline. Returns the promise that resolves once
- * the user mount fn has settled (or rejects if it threw); callers
- * that need to cascade into descendants after a successful mount
- * listen on the resolution.
+ * claim and starts the async mount pipeline. Returns the promise that
+ * resolves once the user mount fn has settled (or rejects if it
+ * threw); callers that need to cascade into descendants after a
+ * successful mount listen on the resolution.
  *
  * Top-down sequencing is enforced inside the pipeline: before
- * resolving `doc=` or running the user mount fn, the new view awaits
- * the closest ancestor view's `mounted`. That guarantees ancestor
- * `el.handle`, `<patchwork-context>` `source`, and any imperative
- * descendant mutations the ancestor performs are all visible by the
- * time a descendant runs.
+ * stamping `el.context`/`el.repo`, resolving `doc=`, or running the
+ * user mount fn, the new view awaits the closest ancestor view's
+ * `mounted`. That guarantees ancestor `el.handle`, ancestor context
+ * `value` getters (installed by `defineContext` on mount), and any
+ * imperative descendant mutations the ancestor performs are all
+ * visible by the time a descendant runs.
  */
 export function mountView(el: HTMLElement, mountFn: MountFn): Promise<void> {
   const existing = views.get(el);
   if (existing) return existing.mounted;
   const state: ViewState = { mounted: undefined!, cleanup: null };
   views.set(el, state);
-  const viewEl = el as ViewElement;
-  viewEl.context = <T>(predicate: (v: unknown) => v is T): T | null =>
-    walkContexts(el, predicate);
-  viewEl.repo = resolveRepo(viewEl);
   state.mounted = mount(el, mountFn);
   return state.mounted;
 }
@@ -157,6 +149,15 @@ async function mount(el: HTMLElement, mountFn: MountFn): Promise<void> {
     return;
   }
 
+  // Stamp `el.context` and `el.repo` only after the ancestor barrier:
+  // an ancestor context view's `value` getter is installed by its
+  // `defineContext` wrapper during *its* mount, so the walk below has
+  // to wait for that to finish. Top-down ordering guarantees it has.
+  const viewEl = el as ViewElement;
+  viewEl.context = <T>(predicate: (v: unknown) => v is T): T | null =>
+    walkContexts(el, predicate);
+  viewEl.repo = resolveRepo(viewEl);
+
   try {
     await resolveContext(el);
   } catch (err) {
@@ -202,8 +203,8 @@ function findAncestorMounted(el: HTMLElement): Promise<void> | null {
 /**
  * Read `doc=` off `el` and stamp `el.repo.find(url)` onto the element
  * as `el.handle`. No `doc=` is fine and leaves `el.handle` untouched.
- * `el.repo` is already stamped by `mountView` from the nearest
- * `<patchwork-context>` provider.
+ * `el.repo` is already stamped by `mount()` from the nearest ancestor
+ * context publishing a `BranchableRepo` value.
  */
 async function resolveContext(el: HTMLElement): Promise<void> {
   const docUrl = el.getAttribute("doc");
@@ -220,24 +221,34 @@ async function resolveContext(el: HTMLElement): Promise<void> {
 }
 
 /**
- * Walk up stacked `<patchwork-context>` ancestors from `start`,
- * returning the `value` of the innermost context that satisfies
- * `predicate`. Returns `null` if no matching context is in scope.
+ * Walk up ancestor contexts from `start`, returning the `value` of
+ * the innermost context whose value satisfies `predicate`. Returns
+ * `null` if no matching context is in scope.
+ *
+ * A "context" is any custom-element ancestor — tag name contains a
+ * hyphen — exposing a `value` property. The dash check filters out
+ * native form elements (`<input>`, `<select>`, `<button>`, …) whose
+ * built-in `.value` would otherwise be picked up by the duck-type
+ * test; HTML reserves dash-containing tag names exclusively for
+ * custom elements, so it's a reliable discriminator. The predicate
+ * runs against `value` and can return false for irrelevant contexts,
+ * letting the walk continue past them.
  *
  * Private to the view runtime — exposed to user code only as
  * `el.context(predicate)`, the per-element closure stamped in
- * `mountView`.
+ * `mount()`.
  */
 function walkContexts<T>(
   start: Element,
   predicate: (value: unknown) => value is T,
 ): T | null {
-  let cur: Element | null = start;
+  let cur: Element | null = start.parentElement;
   while (cur) {
-    const ctx = cur.closest(PATCHWORK_CONTEXT_TAG) as PatchworkContext | null;
-    if (!ctx) return null;
-    if (predicate(ctx.value)) return ctx.value;
-    cur = ctx.parentElement;
+    if (cur.localName.includes("-") && "value" in cur) {
+      const v = (cur as Element & { value: unknown }).value;
+      if (predicate(v)) return v;
+    }
+    cur = cur.parentElement;
   }
   return null;
 }
@@ -254,7 +265,7 @@ function resolveRepo(el: ViewElement): BranchableRepo {
   );
   if (repo === null) {
     throw new Error(
-      `[overlock-patchwork] <${el.localName}>: no <patchwork-context> with a BranchableRepo value in scope`,
+      `[overlock-patchwork] <${el.localName}>: no ancestor context with a BranchableRepo value in scope`,
     );
   }
   return repo;

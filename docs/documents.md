@@ -11,12 +11,16 @@ For lifecycle around `el.handle` resolution and `doc=` rebuilds see
 ## `window.repo` / `el.repo`
 
 [`src/main.ts`](../src/main.ts) constructs one `BranchableRepo` and
-assigns it to `window.repo` before the view registry starts. Every
-mounted view gets the same instance stamped on as `el.repo`
-(synchronously, inside `mountView`). `BranchableRepo` is a thin
-forkable wrapper — while unbranched, every method delegates to the
-underlying `Repo`, so `repo.find(...)` / `repo.create(...)` work as
-on a raw `Repo`.
+publishes it via the page-level repo provider wrapping `<body>`.
+Every mounted view gets it stamped on as `el.repo` — derived through
+`el.context(v => v instanceof BranchableRepo)` and resolved inside
+`mount()` after the ancestor barrier, before the user mount fn
+runs. A closer ancestor context publishing a different `BranchableRepo`
+overrides the page-level one for its subtree (e.g. a
+`<checked-out-branch-context>` after a fork). `BranchableRepo` is a
+thin forkable wrapper — while unbranched, every method delegates to
+the underlying `Repo`, so `repo.find(...)` / `repo.create(...)` work
+as on a raw `Repo`.
 
 ## `doc=` on `<patchwork-view>`
 
@@ -68,10 +72,10 @@ repo.branchHandle: DocHandle<BranchDoc> | null
 ```
 
 > **Status.** Wrapper is shipped but no UI calls
-> `fork`/`checkout`/`reset` today. Calls would mutate `window.repo`
-> in place — affecting every mounted view, since
-> `element.repo === window.repo` for all views and the registry
-> doesn't selectively rebuild on branch swaps.
+> `fork`/`checkout`/`reset` today. The branch-swap pattern is to
+> wrap a subtree in a context whose `value` is the forked
+> `BranchableRepo`; descendants pick it up via the standard `el.repo`
+> walk. The page-level `<body>` provider is unaffected.
 
 A branch is an Automerge doc storing
 `{ originalUrl → cloneUrl }`. The clone url carries the original's

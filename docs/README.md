@@ -17,8 +17,8 @@ Read the source for the full picture; these pages just orient you.
   mount-fn contract, embedding `<patchwork-view>`.
 - [`documents.md`](./documents.md) — `window.repo`, `doc=`,
   `el.handle`, branching.
-- [`context.md`](./context.md) — `<patchwork-context>` provider /
-  consumer.
+- [`context.md`](./context.md) — context provider / consumer
+  (`defineContext` helper, ancestor walk).
 - [`lifecycle.md`](./lifecycle.md) — top-down mount sequence, HMR,
   race handling.
 - [`internals.md`](./internals.md) — registry internals, module
@@ -54,9 +54,12 @@ Read the source for the full picture; these pages just orient you.
   ancestor view's `mounted` promise before resolving `doc=` or
   running. The post-mount cascade walks the now-static children.
   See [`lifecycle.md`](./lifecycle.md).
-- **`<patchwork-context>`.** Built-in custom element exposing a
-  subscribable `value` set via `source`. Descendants reach it with
-  `closest("patchwork-context")`.
+- **Context.** Any custom-element ancestor (tag name with a hyphen)
+  exposing a `value` property. Descendants find one via
+  `el.context(predicate)`, which walks up filtering by the dash rule
+  and the predicate. Authored with `defineContext` from the helper
+  package — wraps a regular mount fn and installs `value` / `source`
+  / `change` machinery on the host element.
 
 ## File map
 
@@ -68,6 +71,6 @@ Read the source for the full picture; these pages just orient you.
 | [`src/plugin-registry.ts`](../src/plugin-registry.ts) | pluginUrl → manifest+module cache, HMR via folder subscription |
 | [`src/view-registry.ts`](../src/view-registry.ts) | DOM observer, tag-name table, `<patchwork-view>` bootstrap, top-down walk + cascade, `doc=` rebuild |
 | [`src/patchwork-view-element.ts`](../src/patchwork-view-element.ts) | `<patchwork-view>` custom element: `src`/`doc` reflection, lazy upgrade |
-| [`src/patchwork-context-element.ts`](../src/patchwork-context-element.ts) | `<patchwork-context>` custom element: `source` setter, `value` getter, `change` events |
-| [`src/view.ts`](../src/view.ts) | `mountView`/`unmountView`/`isView`/`viewMounted`: per-element lifecycle, ancestor barrier, race guard. Stamps `el.repo` and `el.context` (stacked-context walk). Owns `WeakMap<Element, ViewState>`. |
+| [`src/view.ts`](../src/view.ts) | `mountView`/`unmountView`/`isView`/`viewMounted`: per-element lifecycle, ancestor barrier, race guard. Stamps `el.repo` and `el.context` (stacked-context walk via dash + `value`). Owns `WeakMap<Element, ViewState>`. |
+| [`packages/context/context.js`](../packages/context/context.js) | `defineContext`: wrap a mount fn so the host element publishes a `value` to descendants |
 | [`src/handle.ts`](../src/handle.ts) | `Handle<T>` reactive primitive — `EventTarget`, `value` getter, `change(next)` writer |

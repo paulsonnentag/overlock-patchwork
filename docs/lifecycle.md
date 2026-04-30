@@ -17,9 +17,11 @@ Inside `mountView`, each new view awaits its closest ancestor view's
 fn. Two consequences:
 
 - Ancestor mount fns see their template children unmodified — they
-  can imperatively set `doc=`, wrap in `<patchwork-context>`,
-  reorder, etc., and the children's mount fns observe the final
-  state.
+  can imperatively set `doc=`, wrap in a context, reorder, etc., and
+  the children's mount fns observe the final state. A context view
+  authored with `defineContext` only installs its `value` getter
+  inside its own mount fn, so the ancestor barrier is also what
+  guarantees a descendant's `el.context` walk sees that getter.
 - Descendants always observe a fully-settled ancestor.
 
 After a mount fn returns successfully, the registry cascades into
@@ -41,9 +43,10 @@ returned `LoadedPlugin` lets the view registry extract a mount fn,
 register the tag, and `swapTag` the `<patchwork-view>` to the user's
 tag (copying only `doc=`).
 
-`mountView(newEl, mountFn)` then claims `newEl` synchronously, stamps
-`newEl.repo = window.repo`, awaits the closest ancestor view's
-`mounted`, calls `resolveContext(newEl)` to read `doc=` and
+`mountView(newEl, mountFn)` then claims `newEl` synchronously,
+awaits the closest ancestor view's `mounted`, stamps `newEl.context`
+and `newEl.repo` (the latter via the context walk against
+`BranchableRepo`), calls `resolveContext(newEl)` to read `doc=` and
 `repo.find(Y)`, stamps `newEl.handle`, runs the user mount fn, and
 installs the returned cleanup in the views map. The view registry's
 post-mount cascade then walks `newEl`'s children with the same
@@ -93,15 +96,18 @@ instance to signal. `mountView` reads `el.isConnected` after every
 `await`; a detached element short-circuits, and a returned cleanup
 is run-and-discarded rather than installed.
 
-The mount pipeline claims `el` and stamps `el.repo` synchronously,
-then awaits the closest ancestor's `mounted`. If that rejects (an
-ancestor failed) or `el` disconnected meanwhile, the claim is dropped
-and the function returns. It then awaits `resolveContext(el)`; on
-disconnect it drops the claim, on throw it re-throws so descendants
-observe the failure. Finally it awaits the user mount fn; on
-disconnect it runs-and-discards the returned cleanup, on throw it
-re-throws. Only after all three awaits succeed does it install the
-cleanup in the views map.
+The mount pipeline claims `el` synchronously, then awaits the
+closest ancestor's `mounted`. If that rejects (an ancestor failed)
+or `el` disconnected meanwhile, the claim is dropped and the
+function returns. After the barrier, it stamps `el.context` and
+`el.repo` (the walk into ancestor contexts must run after the
+barrier so any ancestor `defineContext` view has installed its
+`value` getter). It then awaits `resolveContext(el)` to read `doc=`
+and `repo.find(url)`; on disconnect it drops the claim, on throw it
+re-throws so descendants observe the failure. Finally it awaits
+the user mount fn; on disconnect it runs-and-discards the returned
+cleanup, on throw it re-throws. Only after all awaits succeed does
+it install the cleanup in the views map.
 
 `doc=` rebuilds are microtask-batched: synchronous writes in the
 same tick coalesce into a single rebuild that reads the final

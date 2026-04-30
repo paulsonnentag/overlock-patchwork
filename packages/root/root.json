@@ -1,4 +1,4 @@
 {
   "name": "app-root",
-  "importUrl": "./root.js"
+  "importUrl": "./dist/root.js"
 }

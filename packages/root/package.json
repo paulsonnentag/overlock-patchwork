@@ -1,0 +1,18 @@
+{
+  "name": "root",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Component package for the overlock-patchwork demo. Bundled into ./dist/root.js by Vite; the manifest at root.json points at the built file.",
+  "scripts": {
+    "build": "vite build",
+    "watch": "vite build --watch"
+  },
+  "devDependencies": {
+    "solid-js": "^1.9.5",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10",
+    "vite-plugin-css-injected-by-js": "^4.0.1",
+    "vite-plugin-solid": "^2.11.0"
+  }
+}

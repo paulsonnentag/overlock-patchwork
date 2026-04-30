@@ -23,12 +23,14 @@ import { Loader } from "./loader";
 import { BranchableRepo } from "./branchable-repo";
 import { PluginRegistry } from "./plugin-registry";
 import { ViewRegistry } from "./view-registry";
-import {
-  PATCHWORK_CONTEXT_TAG,
-  type PatchworkContext,
-} from "./patchwork-context-element";
 
 import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
+
+// Tag name for the bootstrap-time repo provider. Hyphenated so the
+// view runtime's dash + `.value` walk picks it up; no class is
+// registered, the only thing that matters is the hyphen and the
+// `value` property installed below.
+const REPO_CONTEXT_TAG = "patchwork-root";
 
 window.AutomergeRepo = {
   isValidAutomergeUrl,
@@ -82,17 +84,25 @@ async function initPatchwork () {
         : undefined,
   });
 
-  // Wrap whatever is already in <body> in a <patchwork-context> whose
-  // value is the repo. Every view walks up to the nearest
-  // <patchwork-context> with a `BranchableRepo` value to obtain
-  // `el.repo`. The provider must be installed before the registry
-  // starts scanning so the first mount sees it.
-  const ctx = document.createElement(
-    PATCHWORK_CONTEXT_TAG,
-  ) as PatchworkContext;
+  // Wrap whatever is already in <body> in a hyphenated custom-tag
+  // wrapper whose `value` is the repo. Every view walks up looking
+  // for the nearest custom-element ancestor exposing a `.value` that
+  // is a `BranchableRepo`; this wrapper is the page-level fallback,
+  // overridden by any closer context that publishes a different repo
+  // (e.g. a `<checked-out-branch-context>`). The provider must be
+  // installed before the registry starts scanning so the first mount
+  // sees it. We install `value` directly rather than going through
+  // `defineContext` from the helper package because (a) the bootstrap
+  // can't await a package load before standing the registry up and
+  // (b) the page-level repo never changes after install, so the
+  // `source` setter / `change` event surface is unnecessary here.
+  const ctx = document.createElement(REPO_CONTEXT_TAG);
+  Object.defineProperty(ctx, "value", {
+    value: branchableRepo,
+    configurable: true,
+  });
   while (document.body.firstChild) ctx.appendChild(document.body.firstChild);
   document.body.appendChild(ctx);
-  ctx.source = branchableRepo;
 
   const pluginRegistry = new PluginRegistry({
     repo: branchableRepo,

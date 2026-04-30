@@ -19,8 +19,9 @@
  * spurious notification.
  *
  * The event payload is empty — listeners read `e.target.value` (or
- * close over the handle reference). That matches `<patchwork-context>`
- * and any other source/sink in the framework.
+ * close over the handle reference). That matches the context shape
+ * (`defineContext`-installed `value` getter + `change` event) and any
+ * other source/sink in the framework.
  */
 export class Handle<T> extends EventTarget {
   #current: T;

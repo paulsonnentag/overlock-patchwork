@@ -23,8 +23,8 @@ matching doc in the same commit when behavior changes.
 A change must update the matching doc whenever it affects:
 
 - public surface (mount-fn signature, manifest schema,
-  `<patchwork-view>` or `<patchwork-context>` attributes, `el.handle`
-  / `el.repo` contract);
+ `<patchwork-view>` attributes, the context shape / `defineContext`
+ helper, `el.handle` / `el.repo` / `el.context` contract);
 - lifecycle, HMR, or race-handling semantics;
 - the loader pipeline (`automerge:` resolution, import rewriting,
   package exports, heads pinning, wasm bootstrap);
@@ -51,8 +51,7 @@ not turn them back into tutorials.
   where"; don't restate it elsewhere.
 - **Keep code samples minimal.** Show only the smallest snippet that
   illustrates the public shape (a manifest, a mount-fn signature, a
-  consumer subscription). Tutorial-length walkthroughs belong in the
-  README's quick-demo section, not in `docs/`.
+  consumer subscription). Skip tutorial-length walkthroughs.
 - **No diagrams or ASCII art.** No mermaid, no box-drawing, no
   column-aligned pseudo-tables, no flowchart-style pseudo-code with
   arrow glyphs and indentation. If a sequence is hard to convey in

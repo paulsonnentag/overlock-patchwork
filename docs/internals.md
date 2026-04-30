@@ -8,19 +8,21 @@ Read this before changing
 
 ## Built-in custom elements
 
-Two registrations live in their own files and run as side-effect
-`customElements.define` calls on import:
+One registration lives in its own file and runs as a side-effect
+`customElements.define` call on import:
 
 - `<patchwork-view>` — [`src/patchwork-view-element.ts`](../src/patchwork-view-element.ts).
-- `<patchwork-context>` — [`src/patchwork-context-element.ts`](../src/patchwork-context-element.ts)
-  (see [`context.md`](./context.md)).
 
-Both are autonomous (extend `HTMLElement` directly) and don't go
-through `mountView`. `<patchwork-view>` reflects `src` and `doc` JS
-properties back to attributes (Solid/Lit-style frameworks write
-property slots), runs the standard "lazy property upgrade" dance for
-`<template>` clones, and declares an empty `connectedMoveCallback()`
-to opt into `Element.moveBefore()`.
+Autonomous (extends `HTMLElement` directly) and doesn't go through
+`mountView`. Reflects `src` and `doc` JS properties back to
+attributes (Solid/Lit-style frameworks write property slots), runs
+the standard "lazy property upgrade" dance for `<template>` clones,
+and declares an empty `connectedMoveCallback()` to opt into
+`Element.moveBefore()`.
+
+Context is *not* a registered element — it's a duck-typed shape
+(any custom-tag ancestor exposing a `.value`). See
+[`context.md`](./context.md) and the `defineContext` helper.
 
 User views stay plain `document.createElement(name)` elements and are
 never registered globally — `customElements.define` is a one-shot
@@ -109,8 +111,9 @@ directly in `view.ts`.
 - View name collisions throw — both at initial load and on HMR
   rename.
 - `doc=` requires a valid automerge URL or the mount is aborted.
-- `el.repo` is stamped synchronously inside `mountView`. Always
-  populated (`window.repo` is set before the registry starts).
+- `el.repo` is stamped inside `mount()` after the ancestor barrier,
+  before the user mount fn runs. Always populated — the bootstrap
+  installs a page-level repo provider on `<body>`.
 - `<patchwork-view>` carries only `src` and `doc`. `swapTag` copies
   only `doc=` to the user's tag.
 - Top-down failure propagates: an ancestor's failed mount leaves
