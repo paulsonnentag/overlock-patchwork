@@ -1,6 +1,6 @@
 # Components
 
-A *component package* is a folder doc with two files: a JSON manifest
+A *component package* is a folder doc with at minimum a JSON manifest
 and a JS module. Pages embed it with `<patchwork-view src="automerge:...">`.
 The view registry watches the DOM, fetches the package via the
 [loader](./loader.md), and mounts the module's default export.
@@ -12,10 +12,28 @@ race handling see [`lifecycle.md`](./lifecycle.md).
 
 ## Package layout
 
+Smallest shape — hand-written JS that runs as-is in the browser:
+
 ```
 packages/counter/
   counter.json   # { "name": "my-counter", "importUrl": "./counter.js" }
   counter.js     # default export = mount fn
+```
+
+Larger packages can ship a build step. The folder doc still only
+needs the manifest plus whatever file `importUrl` points at; the
+sources alongside are along for the ride. Pushwork's
+`artifact_directories: ["dist"]` keeps the build output in the
+synced folder. `markdown-editor` uses Vite + `vite-plugin-solid`:
+
+```
+packages/markdown-editor/
+  markdown-editor.json   # { ..., "importUrl": "./dist/markdown-editor.js" }
+  package.json           # local pnpm install + "build": "vite build"
+  vite.config.ts         # externalises @automerge/* (see loader.md) and
+                         # rewrites solid-js to esm.sh
+  src/                   # TSX / TS sources
+  dist/markdown-editor.js  # build output (gitignored, but pushed)
 ```
 
 Filenames are convention only — any sibling path inside the folder

@@ -1,4 +1,4 @@
 {
   "name": "markdown-editor",
-  "importUrl": "./markdown-editor.js"
+  "importUrl": "./dist/markdown-editor.js"
 }
