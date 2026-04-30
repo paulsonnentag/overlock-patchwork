@@ -62,7 +62,7 @@ Read the source for the full picture; these pages just orient you.
 | --- | --- |
 | [`src/main.ts`](../src/main.ts) | bootstrap: wasm init, Repo, registries on `document.body` |
 | [`src/branchable-repo.ts`](../src/branchable-repo.ts) | `BranchableRepo` — forkable wrapper over `Repo` with copy-on-write |
-| [`src/loader.ts`](../src/loader.ts) | `importFromAutomerge` + URL helpers (`parseAutomergeUrlWithPath`, `pinUrl`, `splitPath`) |
+| [`src/loader.ts`](../src/loader.ts) | `Loader` class (`import`, `setPackagesRoot`) + URL helpers (`parseAutomergeUrlWithPath`, `pinUrl`, `splitPath`) |
 | [`src/plugin-registry.ts`](../src/plugin-registry.ts) | pluginUrl → manifest+module cache, HMR via folder subscription |
 | [`src/view-registry.ts`](../src/view-registry.ts) | DOM observer, tag-name table, `<patchwork-view>` bootstrap, top-down walk + cascade, `doc=` rebuild |
 | [`src/patchwork-view-element.ts`](../src/patchwork-view-element.ts) | `<patchwork-view>` custom element: `src`/`doc` reflection, lazy upgrade |

@@ -6,7 +6,7 @@ dev server. wasm for both `@automerge/automerge` and
 `@automerge/automerge-subduction` is base64-inlined into the bundle.
 
 The page boots a [`Repo`](https://automerge.org/automerge-repo/) over
-Subduction, exposes a tiny `importFromAutomerge(repo, url)` loader, and
+Subduction, exposes a tiny `Loader` (with an `import(url)` method), and
 runs a `<patchwork-view>`-driven component registry with HMR.
 
 ## Build
@@ -64,7 +64,7 @@ preserves each package's `rootDirectoryUrl`. Editing
 Documentation lives in [`docs/`](./docs):
 
 - [`docs/README.md`](./docs/README.md) — index, glossary, file map.
-- [`docs/loader.md`](./docs/loader.md) — `importFromAutomerge`, blob URLs,
+- [`docs/loader.md`](./docs/loader.md) — `Loader` class, blob URLs,
   package exports, heads pinning, wasm bootstrap.
 - [`docs/components.md`](./docs/components.md) — package layout,
   manifest schema, mount-fn contract, embedding `<patchwork-view>`,

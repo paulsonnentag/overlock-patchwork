@@ -1,24 +1,29 @@
 # Loader
 
-`importFromAutomerge(repo, url)` resolves an `automerge:` URL into an
-executable ES module: walk the folder doc, rewrite imports, dynamic
-`import()` of a blob URL. The in-page equivalent of patchwork's
-service-worker loader, so the bundle works under `file://`.
+`new Loader({ repo, packagesRoot? })` exposes `loader.import(url)`,
+which resolves an `automerge:` URL into an executable ES module: walk
+the folder doc, rewrite imports, dynamic `import()` of a blob URL. The
+in-page equivalent of patchwork's service-worker loader, so the bundle
+works under `file://`.
 
 Source: [`src/loader.ts`](../src/loader.ts). Wasm bootstrap inlined at
 the top of [`src/main.ts`](../src/main.ts).
 
 ## Entry point
 
-`importFromAutomerge(repo, url) -> Promise<Module>`. Used by
-`PluginRegistry` via the `import` option; not exposed on `window`.
+`loader.import(url) -> Promise<Module>`. Used by `PluginRegistry` via
+the `import` option; not exposed on `window`.
 
 URL shape: `automerge:<docId>[?heads=...][/<path>]`. When `path` is
 absent, `resolveFileHandle` falls back to `package.json` `exports`
 then `main`, mirroring patchwork's service worker.
 
-Helpers also exported: `parseAutomergeUrlWithPath`, `pinUrl`,
-`splitPath`, `setPackagesRoot`.
+`loader.setPackagesRoot(url)` registers the friendly-DevTools-name
+folder; the constructor also accepts a `packagesRoot` option that
+calls it for you.
+
+Pure URL helpers re-exported alongside the class:
+`parseAutomergeUrlWithPath`, `pinUrl`, `splitPath`.
 
 ## Specifier rewriting
 
@@ -39,9 +44,9 @@ Rewriting splices end → start so lexer offsets stay valid.
 
 URLs without heads get pinned to current heads via `pinUrl`. Pinning
 itself is uncached (queries `handle.heads()` afresh) so HMR sees new
-heads, but the resulting blob URL is cached in `blobUrlCache` keyed by
-`(rootUrl-with-heads, path)`. Cache is module-scoped — fine because
-`main.ts` creates one `Repo` per page.
+heads, but the resulting blob URL is cached on the `Loader` instance
+keyed by `(rootUrl-with-heads, path)`. One instance per page is the
+expected deployment, mirroring the single `Repo` set up in `main.ts`.
 
 ## Cycles
 
@@ -51,12 +56,12 @@ so cycles would deadlock the rewriter.
 
 ## DevTools naming
 
-Rewritten modules get a `//# sourceURL=...` pragma. See
-`friendlyRootFor` in `src/loader.ts`. Two shapes:
+Rewritten modules get a `//# sourceURL=...` pragma. See the private
+`#friendlyRootFor` in `src/loader.ts`. Two shapes:
 
 - **`packages/<name>/<file>`** when the script's root is a child of
   the registered packages folder (`<meta name="overlock-packages-root">`
-  → `setPackagesRoot`).
+  → `loader.setPackagesRoot`).
 - **`automerge:<documentId>/<file>`** otherwise. Heads dropped on
   purpose so breakpoints survive HMR.
 

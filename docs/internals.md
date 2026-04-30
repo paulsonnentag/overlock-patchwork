@@ -96,8 +96,8 @@ owns. Notable dependencies:
 `PluginRegistry` depends on the loader half for two things: a
 `BranchableRepo` (folder/manifest resolution; operations that must
 never be branched call into `repo.repo` directly) and an `import`
-function wired in `main.ts` to `importFromAutomerge` against the
-raw `Repo`.
+function wired in `main.ts` to a `Loader` instance constructed against
+the raw `Repo`.
 
 `ViewRegistry` depends on `PluginRegistry`. `window.repo` is read
 directly in `view.ts`.

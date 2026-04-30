@@ -18,7 +18,7 @@ import {
 } from "@automerge/automerge-repo/slim";
 import { IndexedDBStorageAdapter } from "@automerge/automerge-repo-storage-indexeddb";
 
-import { importFromAutomerge, setPackagesRoot } from "./loader";
+import { Loader } from "./loader";
 import { BranchableRepo } from "./branchable-repo";
 import { PluginRegistry } from "./plugin-registry";
 import { ViewRegistry } from "./view-registry";
@@ -60,9 +60,13 @@ async function initPatchwork () {
   const packagesRoot = document
     .querySelector<HTMLMetaElement>('meta[name="overlock-packages-root"]')
     ?.content?.trim();
-  if (packagesRoot && isValidAutomergeUrl(packagesRoot)) {
-    setPackagesRoot(repo, packagesRoot as AutomergeUrl);
-  }
+  const loader = new Loader({
+    repo,
+    packagesRoot:
+      packagesRoot && isValidAutomergeUrl(packagesRoot)
+        ? (packagesRoot as AutomergeUrl)
+        : undefined,
+  });
 
   // Wrap whatever is already in <body> in a <patchwork-context> whose
   // value is the repo. Every view walks up to the nearest
@@ -78,7 +82,7 @@ async function initPatchwork () {
 
   const pluginRegistry = new PluginRegistry({
     repo: branchableRepo,
-    import: (url) => importFromAutomerge(repo, url),
+    import: (url) => loader.import(url),
   });
 
   new ViewRegistry({

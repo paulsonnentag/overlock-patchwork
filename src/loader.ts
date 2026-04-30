@@ -6,11 +6,11 @@
 // plus the browser's normal ESM resolution, but staying inside the
 // page so it works under file://.
 //
-// State here is module-scoped — `blobUrlCache` is page-global and the
-// cache key doesn't include a `Repo` identity. We assume one `Repo`
-// per page, which is true for the bootstrap in `main.ts`. If we ever
-// support multiple isolated repos in the same page, key the cache by
-// `Repo` via a `WeakMap`.
+// State (the blob URL cache and the optional packages-folder index for
+// friendly DevTools names) is per-instance. One instance per page is
+// the expected deployment, mirroring the single `Repo` set up in
+// `main.ts`. If multiple isolated repos ever live in one page, give
+// each its own `Loader`.
 
 import {
   isValidAutomergeUrl,
@@ -30,25 +30,217 @@ import {
 import * as Lexer from "es-module-lexer";
 
 type CacheKey = string;
-const blobUrlCache = new Map<CacheKey, Promise<string>>();
 
-// Optional "packages folder" — when set, scripts whose root document is a
-// direct child of this folder get a friendly DevTools sourceURL of the
-// form `packages/<child-name>/<file>` instead of the raw automerge URL.
-// Loaded eagerly from `setPackagesRoot`; `null` until the folder doc has
-// resolved, in which case lookups fall through to the automerge fallback.
-let packagesIndex: Map<string, string> | null = null;
+export type LoaderOptions = {
+  repo: Repo;
+  packagesRoot?: AutomergeUrl;
+};
 
-export async function importFromAutomerge(
-  repo: Repo,
-  url: string,
-): Promise<unknown> {
-  await Lexer.init;
-  const pinned = await pinUrl(repo, url);
-  const { rootUrl, path } = parseAutomergeUrlWithPath(pinned);
-  const blobUrl = await materialize(repo, rootUrl, normalizePath(path));
-  return import(/* @vite-ignore */ blobUrl);
+export class Loader {
+  readonly #repo: Repo;
+  readonly #blobUrlCache = new Map<CacheKey, Promise<string>>();
+  // Optional "packages folder" — when set, scripts whose root document
+  // is a direct child of this folder get a friendly DevTools sourceURL
+  // of the form `packages/<child-name>/<file>`. `null` until the
+  // folder doc has resolved; lookups fall through to the automerge
+  // fallback in the meantime.
+  #packagesIndex: Map<string, string> | null = null;
+
+  constructor(opts: LoaderOptions) {
+    this.#repo = opts.repo;
+    if (opts.packagesRoot) this.setPackagesRoot(opts.packagesRoot);
+  }
+
+  /**
+   * Resolve `url` to an executable ES module: walk the folder doc,
+   * rewrite imports, dynamic `import()` of a blob URL.
+   */
+  async import(url: string): Promise<unknown> {
+    await Lexer.init;
+    const pinned = await pinUrl(this.#repo, url);
+    const { rootUrl, path } = parseAutomergeUrlWithPath(pinned);
+    const blobUrl = await this.#materialize(rootUrl, normalizePath(path));
+    return import(/* @vite-ignore */ blobUrl);
+  }
+
+  /**
+   * Register a "packages folder" doc whose direct children get
+   * friendly `packages/<name>/<file>` sourceURLs in DevTools. Loaded
+   * once and cached; later writes to the packages folder are not
+   * picked up until the page reloads. Idempotent — calling twice with
+   * the same URL replaces the index.
+   */
+  setPackagesRoot(url: AutomergeUrl): void {
+    void this.#loadPackagesIndex(url);
+  }
+
+  async #loadPackagesIndex(url: AutomergeUrl): Promise<void> {
+    try {
+      const handle = await this.#repo.find<FolderDoc>(url);
+      const index = new Map<string, string>();
+      for (const link of handle.doc()?.docs ?? []) {
+        const { documentId } = parseAutomergeUrl(link.url);
+        index.set(documentId, link.name);
+      }
+      this.#packagesIndex = index;
+    } catch (error) {
+      console.warn(`overlock: failed to load packages root ${url}`, error);
+    }
+  }
+
+  async #materialize(
+    rootUrl: AutomergeUrl,
+    path: string,
+    inFlight: Set<CacheKey> = new Set(),
+  ): Promise<string> {
+    const key = `${rootUrl}|${path}`;
+    const cached = this.#blobUrlCache.get(key);
+    if (cached) return cached;
+
+    if (inFlight.has(key)) {
+      throw new Error(
+        `overlock: import cycle detected at ${rootUrl}/${path}. ` +
+          `Cycles are not supported because blob URLs cannot be allocated ` +
+          `before their content exists.`,
+      );
+    }
+    inFlight.add(key);
+
+    const promise = (async () => {
+      const folderHandle = await this.#repo.find<FolderDoc>(rootUrl);
+      const fileHandle = await resolveFileHandle(this.#repo, folderHandle, path);
+      if (!fileHandle) {
+        throw new Error(`overlock: could not resolve "${path}" in ${rootUrl}`);
+      }
+
+      // Re-derive the canonical path after exports resolution so relative imports
+      // inside the module resolve relative to where the file actually lives, not
+      // to the subpath that was requested. (e.g. asking for "." may have landed
+      // on "dist/index.js"; imports inside should be relative to "dist/".)
+      const canonicalPath = canonicalPathOf(folderHandle, fileHandle, path);
+
+      const fileDoc = fileHandle.doc() as UnixFileEntry;
+      const content = fileDoc?.content;
+      if (content == null) {
+        throw new Error(`overlock: file ${rootUrl}/${path} has no content`);
+      }
+
+      const mimeType =
+        fileDoc.mimeType ?? guessMimeType(canonicalPath ?? path);
+
+      if (!isJavaScript(mimeType, canonicalPath ?? path)) {
+        const blob = new Blob([toBlobPart(content)], { type: mimeType });
+        return URL.createObjectURL(blob);
+      }
+
+      const source =
+        typeof content === "string"
+          ? content
+          : new TextDecoder().decode(toUint8Array(content));
+
+      const rewritten = await this.#rewriteImports(
+        rootUrl,
+        canonicalPath ?? path,
+        source,
+        inFlight,
+      );
+
+      // Annotate with `//# sourceURL=…` so DevTools shows a meaningful path
+      // instead of the opaque blob: URL. Packages folder children get a
+      // `packages/<name>/<file>` URL; everything else falls back to the
+      // unpinned automerge URL.
+      const filePath = canonicalPath || path || "index.js";
+      const sourceUrl = `${this.#friendlyRootFor(rootUrl)}/${filePath}`;
+      const annotated = `${rewritten}\n//# sourceURL=${sourceUrl}\n`;
+      const blob = new Blob([annotated], { type: "text/javascript" });
+      return URL.createObjectURL(blob);
+    })().finally(() => {
+      inFlight.delete(key);
+    });
+
+    this.#blobUrlCache.set(key, promise);
+    return promise;
+  }
+
+  async #rewriteImports(
+    rootUrl: AutomergeUrl,
+    fromPath: string,
+    source: string,
+    inFlight: Set<CacheKey>,
+  ): Promise<string> {
+    const [imports] = Lexer.parse(source);
+
+    // Resolve every specifier in parallel, then splice end → start so offsets
+    // stay valid.
+    const resolved = await Promise.all(
+      imports.map(async (imp) => {
+        const spec = imp.n;
+        if (!spec) return null;
+        try {
+          const replacement = await this.#resolveSpecifier(
+            rootUrl,
+            fromPath,
+            spec,
+            inFlight,
+          );
+          if (replacement == null) return null;
+          return { start: imp.s, end: imp.e, replacement };
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : String(error);
+          throw new Error(
+            `overlock: failed to resolve "${spec}" from ${rootUrl}/${fromPath}: ${detail}`,
+          );
+        }
+      }),
+    );
+
+    let out = source;
+    for (let i = resolved.length - 1; i >= 0; i--) {
+      const r = resolved[i];
+      if (!r) continue;
+      out = out.slice(0, r.start) + r.replacement + out.slice(r.end);
+    }
+    return out;
+  }
+
+  async #resolveSpecifier(
+    rootUrl: AutomergeUrl,
+    fromPath: string,
+    spec: string,
+    inFlight: Set<CacheKey>,
+  ): Promise<string | null> {
+    if (spec.startsWith("automerge:")) {
+      const pinned = await pinUrl(this.#repo, spec);
+      const { rootUrl: pinnedRoot, path } = parseAutomergeUrlWithPath(pinned);
+      return this.#materialize(pinnedRoot, normalizePath(path), inFlight);
+    }
+
+    if (spec.startsWith("./") || spec.startsWith("../")) {
+      const resolvedPath = resolveRelative(fromPath, spec);
+      return this.#materialize(rootUrl, resolvedPath, inFlight);
+    }
+
+    if (spec.startsWith("/")) {
+      return this.#materialize(rootUrl, normalizePath(spec), inFlight);
+    }
+
+    // Bare specifier — caller asked for passthrough behavior. The browser will
+    // try to resolve it via an importmap (if the host page provides one) or
+    // throw a clear error at import time.
+    return null;
+  }
+
+  #friendlyRootFor(rootUrl: AutomergeUrl): string {
+    const { documentId } = parseAutomergeUrl(rootUrl);
+    const pkgName = this.#packagesIndex?.get(documentId);
+    if (pkgName) return `packages/${pkgName}`;
+    // Unpinned form — drop heads so all heads-versions share one DevTools
+    // entry and breakpoints survive HMR.
+    return stringifyAutomergeUrl({ documentId });
+  }
 }
+
+// ── pure URL helpers (re-exported for callers outside the loader) ───
 
 /**
  * Split an `automerge:<docId>[?heads=...][/<path>]` URL into its
@@ -97,156 +289,7 @@ export function splitPath(p: string): string[] {
     .filter(Boolean);
 }
 
-// ── core resolution ────────────────────────────────────────────────────
-
-async function materialize(
-  repo: Repo,
-  rootUrl: AutomergeUrl,
-  path: string,
-  inFlight: Set<CacheKey> = new Set(),
-): Promise<string> {
-  const key = `${rootUrl}|${path}`;
-  const cached = blobUrlCache.get(key);
-  if (cached) return cached;
-
-  if (inFlight.has(key)) {
-    throw new Error(
-      `overlock: import cycle detected at ${rootUrl}/${path}. ` +
-        `Cycles are not supported because blob URLs cannot be allocated ` +
-        `before their content exists.`,
-    );
-  }
-  inFlight.add(key);
-
-  const promise = (async () => {
-    const folderHandle = await repo.find<FolderDoc>(rootUrl);
-    const fileHandle = await resolveFileHandle(repo, folderHandle, path);
-    if (!fileHandle) {
-      throw new Error(`overlock: could not resolve "${path}" in ${rootUrl}`);
-    }
-
-    // Re-derive the canonical path after exports resolution so relative imports
-    // inside the module resolve relative to where the file actually lives, not
-    // to the subpath that was requested. (e.g. asking for "." may have landed
-    // on "dist/index.js"; imports inside should be relative to "dist/").
-    const canonicalPath = canonicalPathOf(folderHandle, fileHandle, path);
-
-    const fileDoc = fileHandle.doc() as UnixFileEntry;
-    const content = fileDoc?.content;
-    if (content == null) {
-      throw new Error(`overlock: file ${rootUrl}/${path} has no content`);
-    }
-
-    const mimeType =
-      fileDoc.mimeType ?? guessMimeType(canonicalPath ?? path);
-
-    if (!isJavaScript(mimeType, canonicalPath ?? path)) {
-      const blob = new Blob([toBlobPart(content)], { type: mimeType });
-      return URL.createObjectURL(blob);
-    }
-
-    const source =
-      typeof content === "string"
-        ? content
-        : new TextDecoder().decode(toUint8Array(content));
-
-    const rewritten = await rewriteImports(
-      repo,
-      rootUrl,
-      canonicalPath ?? path,
-      source,
-      inFlight,
-    );
-
-    // Annotate with `//# sourceURL=…` so DevTools shows a meaningful path
-    // instead of the opaque blob: URL. Packages folder children get a
-    // `packages/<name>/<file>` URL; everything else falls back to the
-    // unpinned automerge URL.
-    const filePath = canonicalPath || path || "index.js";
-    const sourceUrl = `${friendlyRootFor(rootUrl)}/${filePath}`;
-    const annotated = `${rewritten}\n//# sourceURL=${sourceUrl}\n`;
-    const blob = new Blob([annotated], { type: "text/javascript" });
-    return URL.createObjectURL(blob);
-  })().finally(() => {
-    inFlight.delete(key);
-  });
-
-  blobUrlCache.set(key, promise);
-  return promise;
-}
-
-async function rewriteImports(
-  repo: Repo,
-  rootUrl: AutomergeUrl,
-  fromPath: string,
-  source: string,
-  inFlight: Set<CacheKey>,
-): Promise<string> {
-  const [imports] = Lexer.parse(source);
-
-  // Resolve every specifier in parallel, then splice end → start so offsets
-  // stay valid.
-  const resolved = await Promise.all(
-    imports.map(async (imp) => {
-      const spec = imp.n;
-      if (!spec) return null;
-      try {
-        const replacement = await resolveSpecifier(
-          repo,
-          rootUrl,
-          fromPath,
-          spec,
-          inFlight,
-        );
-        if (replacement == null) return null;
-        return { start: imp.s, end: imp.e, replacement };
-      } catch (error) {
-        const detail = error instanceof Error ? error.message : String(error);
-        throw new Error(
-          `overlock: failed to resolve "${spec}" from ${rootUrl}/${fromPath}: ${detail}`,
-        );
-      }
-    }),
-  );
-
-  let out = source;
-  for (let i = resolved.length - 1; i >= 0; i--) {
-    const r = resolved[i];
-    if (!r) continue;
-    out = out.slice(0, r.start) + r.replacement + out.slice(r.end);
-  }
-  return out;
-}
-
-async function resolveSpecifier(
-  repo: Repo,
-  rootUrl: AutomergeUrl,
-  fromPath: string,
-  spec: string,
-  inFlight: Set<CacheKey>,
-): Promise<string | null> {
-  if (spec.startsWith("automerge:")) {
-    const pinned = await pinUrl(repo, spec);
-    const { rootUrl: pinnedRoot, path } = parseAutomergeUrlWithPath(pinned);
-    return materialize(repo, pinnedRoot, normalizePath(path), inFlight);
-  }
-
-  if (spec.startsWith("./") || spec.startsWith("../")) {
-    const resolvedPath = resolveRelative(fromPath, spec);
-    return materialize(repo, rootUrl, resolvedPath, inFlight);
-  }
-
-  if (spec.startsWith("/")) {
-    return materialize(repo, rootUrl, normalizePath(spec), inFlight);
-  }
-
-  // Bare specifier — caller asked for passthrough behavior. The browser will
-  // try to resolve it via an importmap (if the host page provides one) or
-  // throw a clear error at import time.
-  return null;
-}
-
-// ── helpers ────────────────────────────────────────────────────────────
+// ── private helpers ─────────────────────────────────────────────────
 
 function normalizePath(p: string): string {
   return p
@@ -261,43 +304,6 @@ function resolveRelative(fromFile: string, spec: string): string {
   const base = "fake:///" + fromFile;
   const u = new URL(spec, base);
   return normalizePath(u.pathname);
-}
-
-/**
- * Register a "packages folder" doc whose direct children get friendly
- * `packages/<name>/<file>` sourceURLs in DevTools. Loaded once and
- * cached; later writes to the packages folder are not picked up until
- * the page reloads. Idempotent — calling twice with the same URL is a
- * no-op; a different URL replaces the index.
- */
-export function setPackagesRoot(repo: Repo, url: AutomergeUrl): void {
-  void loadPackagesIndex(repo, url);
-}
-
-async function loadPackagesIndex(
-  repo: Repo,
-  url: AutomergeUrl,
-): Promise<void> {
-  try {
-    const handle = await repo.find<FolderDoc>(url);
-    const index = new Map<string, string>();
-    for (const link of handle.doc()?.docs ?? []) {
-      const { documentId } = parseAutomergeUrl(link.url);
-      index.set(documentId, link.name);
-    }
-    packagesIndex = index;
-  } catch (error) {
-    console.warn(`overlock: failed to load packages root ${url}`, error);
-  }
-}
-
-function friendlyRootFor(rootUrl: AutomergeUrl): string {
-  const { documentId } = parseAutomergeUrl(rootUrl);
-  const pkgName = packagesIndex?.get(documentId);
-  if (pkgName) return `packages/${pkgName}`;
-  // Unpinned form — drop heads so all heads-versions share one DevTools
-  // entry and breakpoints survive HMR.
-  return stringifyAutomergeUrl({ documentId });
 }
 
 function canonicalPathOf(
