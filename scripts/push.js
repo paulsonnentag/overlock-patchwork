@@ -17,6 +17,11 @@
  *                subfolder is skipped when no file under it has been
  *                modified since the mtime of its `.pushwork/snapshot.json`
  *                (which pushwork rewrites on each sync).
+ *
+ * Whenever a subfolder *is* about to be synced (i.e. not skipped) and
+ * has a top-level `package.json` with a `scripts.build` entry, we run
+ * `pnpm build` in that subfolder first so any generated output (e.g.
+ * `dist/`) is part of the push.
  */
 
 import * as fs from "node:fs/promises";
@@ -117,6 +122,53 @@ async function syncSubfolder(absPath) {
     console.log(`\n=== pushwork init --sub ${absPath} ===`);
     await runPushwork(["init", "--sub", absPath]);
   }
+}
+
+function runPnpmBuild(cwd) {
+  return new Promise((resolve, reject) => {
+    const child = spawn("pnpm", ["build"], { stdio: "inherit", cwd });
+    child.on("error", (err) => {
+      if (err.code === "ENOENT") {
+        reject(new Error("Could not find `pnpm` on PATH."));
+      } else {
+        reject(err);
+      }
+    });
+    child.on("exit", (code, signal) => {
+      if (code === 0) resolve();
+      else
+        reject(
+          new Error(
+            `pnpm build (in ${cwd}) exited with ${code ?? `signal ${signal}`}`
+          )
+        );
+    });
+  });
+}
+
+async function readPackageJson(absPath) {
+  const pkgPath = path.join(absPath, "package.json");
+  if (!(await pathExists(pkgPath))) return null;
+  try {
+    const raw = await fs.readFile(pkgPath, "utf8");
+    return JSON.parse(raw);
+  } catch (err) {
+    console.warn(
+      `warning: could not parse ${pkgPath}: ${err?.message ?? err}`
+    );
+    return null;
+  }
+}
+
+// Run `pnpm build` in the subfolder if its package.json has a build
+// script. Called only when we've already decided to sync — building
+// when nothing changed would just churn the dist mtimes and force a
+// noop sync next time.
+async function buildSubfolderIfNeeded(absPath) {
+  const pkg = await readPackageJson(absPath);
+  if (!pkg || typeof pkg.scripts?.build !== "string") return;
+  console.log(`\n=== pnpm build ${absPath} ===`);
+  await runPnpmBuild(absPath);
 }
 
 async function readSubfolderRootUrl(absPath) {
@@ -286,6 +338,7 @@ async function main() {
     if (skip) {
       console.log(`(unchanged) skipping pushwork sync for ${sub.name}`);
     } else {
+      await buildSubfolderIfNeeded(sub.absPath);
       await syncSubfolder(sub.absPath);
     }
 
