@@ -1,16 +1,6 @@
-// In-page ES-module loader: resolves an automerge URL + path into a
-// blob URL whose source has every static `import` / dynamic
-// `import("...")` / `export ... from` rewritten to point at sibling
-// blob URLs. Equivalent role to the SW's `resolveAutomergeUrl`
-// (patchwork-next/core/bootloader/src/service-worker.ts lines 225-340)
-// plus the browser's normal ESM resolution, but staying inside the
-// page so it works under file://.
-//
-// State (the blob URL cache and the optional packages-folder index for
-// friendly DevTools names) is per-instance. One instance per page is
-// the expected deployment, mirroring the single `Repo` set up in
-// `main.ts`. If multiple isolated repos ever live in one page, give
-// each its own `Loader`.
+// In-page ES-module loader: automerge URL + path → blob URL whose
+// imports are rewritten to sibling blob URLs. Per-instance state
+// (blob cache, packages-folder index); one instance per page.
 
 import {
   isValidAutomergeUrl,
@@ -34,21 +24,10 @@ type CacheKey = string;
 export type LoaderOptions = {
   repo: Repo;
   packagesRoot?: AutomergeUrl;
-  /**
-   * Bare-specifier → live module map for shared-instance dependencies.
-   * For each entry the loader synthesizes a tiny ESM shim whose
-   * exports re-read from `window.__overlock.externals[key]`, blobs it,
-   * and serves that blob URL whenever a loaded package imports the
-   * specifier. Keeps a single instance of `@automerge/automerge` (and
-   * friends) shared between the host bundle and every package, so
-   * wasm initialization and any module-scoped state live in one
-   * place.
-   *
-   * The host is responsible for populating `window.__overlock.externals`
-   * with the same `key → module` mapping before the loader is asked
-   * to resolve any package — typically right after wasm init in
-   * `main.ts`.
-   */
+  // Bare-specifier → live module map. Each entry is served as a shim
+  // re-reading from `window.__overlock.externals[key]` so packages
+  // share a single instance with the host (wasm, module-scoped state).
+  // Host populates `window.__overlock.externals` before any import.
   externals?: Record<string, object>;
 };
 
@@ -56,11 +35,8 @@ export class Loader {
   readonly #repo: Repo;
   readonly #blobUrlCache = new Map<CacheKey, Promise<string>>();
   readonly #externalUrls = new Map<string, string>();
-  // Optional "packages folder" — when set, scripts whose root document
-  // is a direct child of this folder get a friendly DevTools sourceURL
-  // of the form `packages/<child-name>/<file>`. `null` until the
-  // folder doc has resolved; lookups fall through to the automerge
-  // fallback in the meantime.
+  // documentId → friendly name for DevTools sourceURL. `null` until
+  // the folder doc resolves; lookups fall back to the automerge URL.
   #packagesIndex: Map<string, string> | null = null;
 
   constructor(opts: LoaderOptions) {
@@ -75,10 +51,6 @@ export class Loader {
     if (opts.packagesRoot) this.setPackagesRoot(opts.packagesRoot);
   }
 
-  /**
-   * Resolve `url` to an executable ES module: walk the folder doc,
-   * rewrite imports, dynamic `import()` of a blob URL.
-   */
   async import(url: string): Promise<unknown> {
     await Lexer.init;
     const pinned = await pinUrl(this.#repo, url);
@@ -87,13 +59,8 @@ export class Loader {
     return import(/* @vite-ignore */ blobUrl);
   }
 
-  /**
-   * Register a "packages folder" doc whose direct children get
-   * friendly `packages/<name>/<file>` sourceURLs in DevTools. Loaded
-   * once and cached; later writes to the packages folder are not
-   * picked up until the page reloads. Idempotent — calling twice with
-   * the same URL replaces the index.
-   */
+  // Direct children of `url` get friendly `packages/<name>/<file>`
+  // sourceURLs in DevTools. Loaded once; later writes don't refresh.
   setPackagesRoot(url: AutomergeUrl): void {
     void this.#loadPackagesIndex(url);
   }
@@ -137,10 +104,9 @@ export class Loader {
         throw new Error(`overlock: could not resolve "${path}" in ${rootUrl}`);
       }
 
-      // Re-derive the canonical path after exports resolution so relative imports
-      // inside the module resolve relative to where the file actually lives, not
-      // to the subpath that was requested. (e.g. asking for "." may have landed
-      // on "dist/index.js"; imports inside should be relative to "dist/".)
+      // Re-derive the canonical path after exports resolution: asking
+      // for "." may have landed on "dist/index.js"; relative imports
+      // inside should resolve against "dist/", not the requested subpath.
       const canonicalPath = canonicalPathOf(folderHandle, fileHandle, path);
 
       const fileDoc = fileHandle.doc() as UnixFileEntry;
@@ -169,10 +135,7 @@ export class Loader {
         inFlight,
       );
 
-      // Annotate with `//# sourceURL=…` so DevTools shows a meaningful path
-      // instead of the opaque blob: URL. Packages folder children get a
-      // `packages/<name>/<file>` URL; everything else falls back to the
-      // unpinned automerge URL.
+      // `//# sourceURL=…` so DevTools shows a meaningful path.
       const filePath = canonicalPath || path || "index.js";
       const sourceUrl = `${this.#friendlyRootFor(rootUrl)}/${filePath}`;
       const annotated = `${rewritten}\n//# sourceURL=${sourceUrl}\n`;
@@ -194,8 +157,7 @@ export class Loader {
   ): Promise<string> {
     const [imports] = Lexer.parse(source);
 
-    // Resolve every specifier in parallel, then splice end → start so offsets
-    // stay valid.
+    // Resolve in parallel, splice end → start so offsets stay valid.
     const resolved = await Promise.all(
       imports.map(async (imp) => {
         const spec = imp.n;
@@ -248,15 +210,11 @@ export class Loader {
       return this.#materialize(rootUrl, normalizePath(spec), inFlight);
     }
 
-    // Bare specifier registered as an external — return the blob URL of
-    // a shim that re-reads from window.__overlock.externals so every
-    // package shares the host's live module instance.
     const externalUrl = this.#externalUrls.get(spec);
     if (externalUrl) return externalUrl;
 
-    // Bare specifier — caller asked for passthrough behavior. The browser will
-    // try to resolve it via an importmap (if the host page provides one) or
-    // throw a clear error at import time.
+    // Passthrough — the browser will try an importmap or throw at
+    // import time.
     return null;
   }
 
@@ -264,19 +222,11 @@ export class Loader {
     const { documentId } = parseAutomergeUrl(rootUrl);
     const pkgName = this.#packagesIndex?.get(documentId);
     if (pkgName) return `packages/${pkgName}`;
-    // Unpinned form — drop heads so all heads-versions share one DevTools
-    // entry and breakpoints survive HMR.
+    // Drop heads so breakpoints survive HMR.
     return stringifyAutomergeUrl({ documentId });
   }
 }
 
-// ── pure URL helpers (re-exported for callers outside the loader) ───
-
-/**
- * Split an `automerge:<docId>[?heads=...][/<path>]` URL into its
- * document URL and its path inside the folder doc. `path` is `""` if
- * the URL has no path component.
- */
 export function parseAutomergeUrlWithPath(
   url: string,
 ): { rootUrl: AutomergeUrl; path: string } {
@@ -292,14 +242,8 @@ export function parseAutomergeUrlWithPath(
   return { rootUrl: urlPart, path };
 }
 
-/**
- * Pin the root of `url` to the document's current heads. Already-pinned
- * URLs are returned unchanged. The path (if any) is preserved.
- *
- * Uncached: each call queries `handle.heads()` afresh. That's cheap and
- * intentional — callers (notably `PluginRegistry`'s HMR path) rely on
- * seeing fresh heads to invalidate the loader's blob cache.
- */
+// Uncached on purpose: HMR relies on fresh `handle.heads()` to
+// invalidate the loader's blob cache.
 export async function pinUrl(repo: Repo, url: string): Promise<string> {
   const { rootUrl, path } = parseAutomergeUrlWithPath(url);
   const { documentId, heads } = parseAutomergeUrl(rootUrl);
@@ -319,16 +263,9 @@ export function splitPath(p: string): string[] {
     .filter(Boolean);
 }
 
-// ── private helpers ─────────────────────────────────────────────────
-
-/**
- * Generate the source of a tiny ESM shim that re-reads each named
- * export from `window.__overlock.externals[key]`. Iterates the live
- * module's keys at construction time, so the shim's set of exports
- * matches whatever the host imported. `default` is skipped for the
- * named-exports loop (reserved as syntax) but the namespace itself
- * is re-exported as the default so `import M from "..."` still works.
- */
+// ESM shim re-reading from `window.__overlock.externals[key]`. Named
+// exports snapshot the live module's keys at construction; the
+// namespace is also re-exported as default for `import M from "..."`.
 function buildExternalShimSource(key: string, mod: object): string {
   const lines = [
     `const m = window.__overlock.externals[${JSON.stringify(key)}];`,
@@ -351,8 +288,7 @@ function normalizePath(p: string): string {
 }
 
 function resolveRelative(fromFile: string, spec: string): string {
-  // Resolve relative to the *directory* of `fromFile`. `URL` does the right
-  // thing here as long as we use a fake hierarchical base.
+  // Hierarchical base so `URL` resolves against `fromFile`'s directory.
   const base = "fake:///" + fromFile;
   const u = new URL(spec, base);
   return normalizePath(u.pathname);
@@ -363,14 +299,10 @@ function canonicalPathOf(
   _fileHandle: DocHandle<UnixFileEntry>,
   requestedPath: string,
 ): string | null {
-  // The walker in resolveFileHandle already followed the path; for the v1 we
-  // assume direct path lookups land on the requested path. If they didn't
-  // (because exports kicked in) we fall back to walking the folder tree to
-  // find the link that points to the file. Cheap and rarely needed.
   if (requestedPath && !requestedPath.endsWith("/")) return requestedPath;
+  // Exports resolution kicked in: best-effort, pick the first JS/JSON link.
   const folder = folderHandle.doc();
   if (!folder?.docs?.length) return null;
-  // Best-effort: pick the first link that names something with a JS extension.
   const link = folder.docs.find((d) => /\.(m?js|json)$/i.test(d.name));
   return link?.name ?? null;
 }
@@ -396,7 +328,6 @@ function isJavaScript(mimeType: string, path: string): boolean {
 function toBlobPart(content: UnixFileEntry["content"]): BlobPart {
   if (typeof content === "string") return content;
   if (content instanceof Uint8Array) return new Uint8Array(content);
-  // ImmutableString — coerce to a real string.
   return String(content);
 }
 

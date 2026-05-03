@@ -10,18 +10,6 @@ import { parseAutomergeUrlWithPath, pinUrl, splitPath } from "./loader";
 
 type Loader = (url: string) => Promise<unknown>;
 
-/**
- * A loaded plugin: every field declared on the source manifest, with
- * `importUrl` resolved to an absolute URL, plus the imported JS
- * `module`.
- *
- * `PluginRegistry` only requires `name` and `importUrl`; everything
- * else (including `module`, which it sets itself) is carried through
- * opaquely so plugin kinds can layer their own required fields on
- * top via consumer-side narrowing. `module` is the raw return of
- * the injected `import` function; each plugin kind validates its own
- * shape.
- */
 export type LoadedPlugin = {
   name: string;
   importUrl: string;
@@ -29,27 +17,6 @@ export type LoadedPlugin = {
   [key: string]: unknown;
 };
 
-/**
- * Event detail payloads. The registry extends `EventTarget` and
- * dispatches `CustomEvent`s; consumers pull args off `event.detail`:
- *
- *   reg.addEventListener("updated", e => {
- *     const { pluginUrl, previous, next } = e.detail;
- *   });
- *
- * - `loaded`   — first successful resolution of a plugin URL.
- * - `updated`  — HMR re-fetch produced a new manifest or module.
- *                Carries `previous` and `next` snapshots so consumers
- *                can diff without keeping their own copy.
- * - `removed`  — `remove(pluginUrl)` evicted a cached entry.
- * - `changed`  — fires alongside every other event. Convenience for
- *                consumers (UI mirrors, dev tools) that only care
- *                that something moved. Empty detail.
- *
- * `addEventListener` accepts `{ signal }` for batch unsubscription;
- * one `AbortController.abort()` tears down every listener registered
- * with that signal.
- */
 export type PluginRegistryEventMap = {
   loaded: CustomEvent<{ pluginUrl: string; plugin: LoadedPlugin }>;
   updated: CustomEvent<{
@@ -72,33 +39,14 @@ type PluginRecord = {
   unsubscribe: () => void;
 };
 
-/**
- * Owns the plugin URL → `LoadedPlugin` load pipeline and the HMR
- * subscription that drives reloads. Extends `EventTarget`; consumers
- * subscribe via the standard `addEventListener(name, fn)` /
- * `removeEventListener(name, fn)` pair.
- *
- * One folder subscription per unique plugin URL: the manifest's parent
- * folder document is watched, and any change there triggers a re-fetch
- * + a fan-out to every listener via `updated` (and `changed`). Pushwork
- * propagates child updates upward, so this catches edits to the
- * manifest, the JS module, or anything else inside the package's
- * folder.
- *
- * No dedup on event fires: the `updated` listener gets `previous` and
- * `next` on every successful re-fetch and decides whether anything
- * observable changed. That keeps the registry kind-agnostic — plugin
- * kinds with different "observable change" semantics can layer their
- * own dedup on top.
- */
+// pluginUrl → LoadedPlugin cache + folder subscription for HMR. One
+// folder subscription per unique URL drives `updated` fan-out; consumer
+// kinds (the view registry) layer their own dedup on top.
 export class PluginRegistry extends EventTarget {
   readonly #repo: BranchableRepo;
   readonly #import: Loader;
-
-  // Cached records, keyed by plugin URL. One entry per unique URL.
   readonly #loaded = new Map<string, PluginRecord>();
   readonly #loading = new Map<string, Promise<PluginRecord>>();
-
   #destroyed = false;
 
   constructor(options: PluginRegistryOptions) {
@@ -107,15 +55,6 @@ export class PluginRegistry extends EventTarget {
     this.#import = options.import;
   }
 
-  /**
-   * Resolve `url` to its current `LoadedPlugin` snapshot. Idempotent;
-   * concurrent calls share the in-flight promise; subsequent calls hit
-   * the cache. The folder subscription that drives HMR is set up on
-   * first load; subsequent calls do not re-subscribe.
-   *
-   * Fires `loaded` (and `changed`) on the first successful resolution
-   * of a plugin URL. Cache hits do *not* re-fire `loaded`.
-   */
   async load(url: string): Promise<LoadedPlugin> {
     if (this.#destroyed) {
       throw new Error("[overlock-patchwork] PluginRegistry has been destroyed");
@@ -140,12 +79,6 @@ export class PluginRegistry extends EventTarget {
     return promise.then((record) => record.plugin);
   }
 
-  /**
-   * Evict the cached entry for `url`. Drops the folder subscription,
-   * fires `removed` and `changed`. No-op (returns false) if the URL
-   * was not cached. In-flight loads for the URL are abandoned — when
-   * they resolve they find no matching record and bail.
-   */
   remove(url: string): boolean {
     const record = this.#loaded.get(url);
     if (!record) return false;
@@ -157,12 +90,6 @@ export class PluginRegistry extends EventTarget {
     return true;
   }
 
-  /**
-   * Drop every folder subscription and clear the cache. After
-   * `destroy`, `load` rejects. Existing `addEventListener` registrations
-   * are *not* removed automatically — consumers should pair
-   * registrations with an `AbortSignal` if they need batch cleanup.
-   */
   destroy(): void {
     if (this.#destroyed) return;
     this.#destroyed = true;
@@ -198,8 +125,7 @@ export class PluginRegistry extends EventTarget {
       parentParts.length === 0
         ? rootHandle
         : ((await findHandleInFolderHandle<FolderDoc>(
-            // findHandleInFolderHandle expects a raw `Repo`; module
-            // resolution should never see branched docs.
+            // Module resolution should never see branched docs.
             this.#repo.repo,
             rootHandle,
             parentParts,
@@ -212,9 +138,8 @@ export class PluginRegistry extends EventTarget {
 
     const plugin = await this.#fetchPlugin(url, parentFolderHandle, manifestName);
 
-    // The folder doc handle is an automerge-repo `DocHandle` (still
-    // EventEmitter-shaped upstream), so subscribe via `.on/.off`
-    // rather than `addEventListener`.
+    // automerge-repo `DocHandle` is still EventEmitter-shaped upstream;
+    // use `.on/.off` rather than `addEventListener`.
     const onChange = (): void => {
       void this.#reload(url);
     };
@@ -226,11 +151,6 @@ export class PluginRegistry extends EventTarget {
     return { plugin, parentFolderHandle, unsubscribe };
   }
 
-  /**
-   * The manifest's parent folder doc changed. Re-fetch the plugin,
-   * splice the new value into the cached record, and fire `updated`
-   * (with `previous` and `next` snapshots) followed by `changed`.
-   */
   async #reload(url: string): Promise<void> {
     if (this.#destroyed) return;
     const old = this.#loaded.get(url);
@@ -261,21 +181,15 @@ export class PluginRegistry extends EventTarget {
     this.#emit("changed", undefined);
   }
 
-  /**
-   * Fetch the manifest doc, parse it (only `name` and `importUrl` are
-   * required; other fields are preserved opaquely), resolve `importUrl`
-   * against the manifest's URL to an absolute automerge URL, pin the
-   * absolute URL to current heads so the loader's blob cache produces
-   * a fresh module on HMR, and fetch the module.
-   */
+  // manifest doc → parse → resolve `importUrl` → pin to current heads
+  // (so the loader's blob cache produces a fresh module on HMR) →
+  // import.
   async #fetchPlugin(
     url: string,
     parentFolderHandle: DocHandle<FolderDoc>,
     manifestName: string,
   ): Promise<LoadedPlugin> {
     const manifestHandle = await findHandleInFolderHandle<UnixFileEntry>(
-      // findHandleInFolderHandle expects a raw `Repo`; module resolution
-      // should never see branched docs.
       this.#repo.repo,
       parentFolderHandle,
       [manifestName],
@@ -340,16 +254,9 @@ function readManifest(
   return parsed as RawManifest;
 }
 
-/**
- * Resolve a manifest's `importUrl` (currently restricted to a `./`
- * sibling reference) against the manifest's own URL. Only `./` is
- * supported for now — `../` and bare specifiers are rejected so HMR's
- * pinning semantics stay obvious.
- *
- * Returned URL is absolute but *not* heads-pinned. Pinning happens
- * separately at import time so the resolved `importUrl` stays stable
- * across HMR reloads.
- */
+// Returns absolute but not heads-pinned. Pinning happens at import time
+// so the resolved `importUrl` stays stable across HMR reloads. Only `./`
+// is supported for now.
 function resolveImportUrl(manifestUrl: string, importUrl: string): string {
   if (!importUrl.startsWith("./")) {
     throw new Error(

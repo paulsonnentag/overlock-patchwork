@@ -1,27 +1,7 @@
-// BranchableRepo — a `Repo` wrapper that adds git-style branching to
-// Automerge documents.
-//
-// The wrapper is *immutable*: `fork()`, `checkout()`, and `reset()`
-// return a new `BranchableRepo` over the same underlying `Repo`,
-// pointing at a different branch (or off-branch). The instance you
-// hold never has its branch state swapped out from under you, so a
-// `BranchedDocHandle` obtained from `repo.find(url)` is bound to the
-// branch the repo had at find time and stays that way for the
-// wrapper's lifetime.
-//
-// First `change()` on a wrapped handle triggers a copy-on-write clone
-// of the document; from that point on the wrapper is backed by the
-// clone and writes do not disturb the original. The original/clone
-// pairing is recorded in a "branch document" stored on the underlying
-// repo, so a branch can be reopened later with
-// `parent.checkout(branchDocUrl)`.
-//
-// `repo.fork({ urls })` snapshots the listed documents eagerly at fork
-// time. URLs may carry heads to fork at a specific point in time.
-//
-// Wrapped handles always report the *original* url so the rest of the
-// app sees a stable document identity. Reads, events, and writes are
-// forwarded to whichever inner handle (original or clone) is active.
+// `Repo` wrapper with git-style branching. `fork`/`checkout`/`reset`
+// return a new immutable `BranchableRepo`; the first write on a
+// wrapped handle triggers copy-on-write and records the original→clone
+// pairing on a branch document.
 
 import {
   parseAutomergeUrl,
@@ -44,24 +24,18 @@ const BRANCH_TYPE = "branch" as const;
 
 export type BranchDoc = {
   [BRANCH_MARKER]: { type: typeof BRANCH_TYPE };
-  // Human-readable branch name. Optional; populated by `fork({ name })`.
   name?: string;
-  // Wall-clock millis at fork time. Optional; populated by `fork()`.
   createdAt?: number;
-  // Map of *original* AutomergeUrl → cloned AutomergeUrl. The clone
-  // url carries the heads of the original at the moment the clone was
-  // created — i.e. the fork point. Because `Repo.clone` shares history
-  // with the original, those heads are also valid heads inside the
-  // clone, which is what makes `handle.diff()` cheap.
+  // original → cloned URL; the clone URL carries the original's heads
+  // at fork time so `handle.diff()` is cheap.
   clones: Record<AutomergeUrl, AutomergeUrl>;
 };
 
 export type ForkOpts = {
   // Documents to clone eagerly at fork time. URLs may carry heads to
-  // fork at a specific point in time. Without this list, documents are
-  // cloned lazily on first write (copy-on-write).
+  // fork at a specific point in time. Without this, docs are cloned
+  // lazily on first write.
   urls?: AutomergeUrl[];
-  // Human-readable branch name stored on the new branch document.
   name?: string;
 };
 
@@ -76,8 +50,7 @@ function isBranchDoc(value: unknown): value is BranchDoc {
   );
 }
 
-// Drop any heads so the url identifies the *document*, not a snapshot
-// of it.
+// Drop heads so the URL identifies the document, not a snapshot.
 function canonicalUrl(url: AutomergeUrl): AutomergeUrl {
   const { documentId } = parseAutomergeUrl(url);
   return stringifyAutomergeUrl({ documentId });
@@ -88,19 +61,10 @@ function anyIdToCanonicalUrl(id: AnyDocumentId): AutomergeUrl {
 }
 
 export class BranchableRepo {
-  // The underlying Automerge repo. Network/storage live here. Shared
-  // across the chain of `BranchableRepo`s produced by `fork` /
-  // `checkout` / `reset`, so every branch sees the same documents and
-  // sync state.
+  // Shared across the chain of `BranchableRepo`s produced by fork /
+  // checkout / reset, so every branch sees the same network/storage.
   readonly repo: Repo;
-
-  // The branch document, or `null` if this repo is not on a branch.
-  // Fixed at construction — branch swaps yield a new `BranchableRepo`.
   readonly #branchHandle: DocHandle<BranchDoc> | null;
-
-  // Per-instance dedup cache for `BranchedDocHandle`s. Each new
-  // `BranchableRepo` from fork/checkout/reset starts with an empty
-  // cache; old wrappers stay bound to the instance that produced them.
   readonly #wrapped = new Map<AutomergeUrl, BranchedDocHandle<unknown>>();
 
   constructor(repo: Repo, branchHandle: DocHandle<BranchDoc> | null = null) {
@@ -108,20 +72,11 @@ export class BranchableRepo {
     this.#branchHandle = branchHandle;
   }
 
-  // The branch document, or `null` off-branch.
   get branchHandle(): DocHandle<BranchDoc> | null {
     return this.#branchHandle;
   }
 
-  // Create a new branch over the same underlying `Repo` and return a
-  // `BranchableRepo` pointed at it. Throws if already on a branch —
-  // nested branching is not yet supported.
-  //
-  // Without `urls`, documents are cloned lazily on first write
-  // (copy-on-write). With `urls`, the listed documents are cloned
-  // eagerly — at the heads encoded in each url, if any. `name` is
-  // recorded on the branch document so UI can render a label without
-  // separately tracking metadata.
+  // Throws if already on a branch — nested branching not yet supported.
   async fork(opts: ForkOpts = {}): Promise<BranchableRepo> {
     if (this.#branchHandle) {
       throw new Error(
@@ -142,8 +97,6 @@ export class BranchableRepo {
     return next;
   }
 
-  // Open an existing branch over the same underlying `Repo` and return
-  // a `BranchableRepo` pointed at it.
   async checkout(branchDocUrl: AutomergeUrl): Promise<BranchableRepo> {
     const branchHandle = await this.repo.find<BranchDoc>(branchDocUrl);
     if (!isBranchDoc(branchHandle.doc())) {
@@ -154,21 +107,18 @@ export class BranchableRepo {
     return new BranchableRepo(this.repo, branchHandle);
   }
 
-  // Return an off-branch `BranchableRepo` over the same underlying
-  // `Repo`. Idempotent if already off-branch (returns a fresh instance
-  // anyway, so consumers that key on identity see a swap).
+  // Always returns a fresh instance, so identity-keyed consumers see
+  // a swap even when already off-branch.
   reset(): BranchableRepo {
     return new BranchableRepo(this.repo, null);
   }
 
-  // Create a new document. While on a branch, the new doc lives on the
-  // underlying repo and is *not* tracked in `clones`: it has no original
-  // to fork from and is "branch-native".
+  // Branch-native: lives on the underlying repo, not tracked in
+  // `clones`.
   create<T>(initialValue?: T): DocHandle<T> {
     return this.repo.create<T>(initialValue);
   }
 
-  // Find a document, returning a handle that respects the branch state.
   async find<T>(id: AnyDocumentId): Promise<DocHandle<T>> {
     const original = anyIdToCanonicalUrl(id);
 
@@ -201,8 +151,6 @@ export class BranchableRepo {
     return wrapped as unknown as DocHandle<T>;
   }
 
-  // Called by `BranchedDocHandle` after a copy-on-write so the branch
-  // document gets the new clone url recorded.
   /** @internal */
   _recordClone(originalUrl: AutomergeUrl, cloneUrl: AutomergeUrl): void {
     if (!this.#branchHandle) {
@@ -228,8 +176,7 @@ export class BranchableRepo {
     });
     this._recordClone(original, cloneUrl);
 
-    // Pre-populate the wrapper cache so the next find() returns the
-    // same instance, already backed by the clone.
+    // Pre-populate so the next find() returns the same wrapper.
     const wrapped = new BranchedDocHandle({
       branched: this,
       originalUrl: original,
@@ -241,18 +188,10 @@ export class BranchableRepo {
   }
 }
 
-// ---------------------------------------------------------------------------
-// BranchedDocHandle
-//
-// A wrapper that exposes the public DocHandle surface used by this
-// codebase. It:
-//   • reports the *original* url, keeping doc identity stable
-//   • delegates reads to whichever inner handle is currently active
-//     (original until first write, clone afterwards)
-//   • re-emits events from the active inner handle, swapping
-//     subscriptions across the COW boundary
-//   • intercepts change/changeAt/merge to trigger copy-on-write
-//   • overloads diff() so the no-args form returns branch-vs-original
+// Wrapper that always reports the original URL, delegates reads to
+// the active inner handle (original or clone), re-emits its events,
+// triggers COW on writes, and overloads `diff()` so the no-args form
+// returns branch-vs-original patches.
 
 const FORWARDED_EVENTS = [
   "change",
@@ -279,10 +218,7 @@ export class BranchedDocHandle<T> {
   readonly #originalHandle: DocHandle<T>;
   #cloneHandle: DocHandle<T> | null;
   #forkHeads: UrlHeads | null;
-
-  // Listeners registered through *this* wrapper.
   readonly #listeners = new Map<string, Set<Listener>>();
-  // Internal forwarders attached to the currently-active inner handle.
   #forwarders: Array<{ ev: string; fn: Listener }> = [];
 
   constructor(opts: WrapperOpts<T>) {
@@ -294,7 +230,6 @@ export class BranchedDocHandle<T> {
     this.#wireForwarders(this.#active);
   }
 
-  // Always reports the *original* url, keeping the illusion stable.
   get url(): AutomergeUrl {
     return this.#originalUrl;
   }
@@ -303,7 +238,7 @@ export class BranchedDocHandle<T> {
     return parseAutomergeUrl(this.#originalUrl).documentId;
   }
 
-  // The clone url (with fork heads), or `null` if no COW has happened.
+  // Clone URL with fork heads, or `null` before the first COW.
   get cloneUrl(): AutomergeUrl | null {
     if (!this.#cloneHandle || !this.#forkHeads) return null;
     return stringifyAutomergeUrl({
@@ -315,8 +250,6 @@ export class BranchedDocHandle<T> {
   get #active(): DocHandle<T> {
     return this.#cloneHandle ?? this.#originalHandle;
   }
-
-  // ------ read passthroughs ------
 
   get state() {
     return this.#active.state;
@@ -382,11 +315,8 @@ export class BranchedDocHandle<T> {
     this.#active.broadcast(message);
   }
 
-  // ------ diff overload ------
-
-  // No-args: branch-vs-original patches. Empty array if not on a branch
-  // or before the first COW.
-  // With args: delegates to the underlying `DocHandle.diff`.
+  // No-args form returns branch-vs-original patches (empty array off
+  // a branch or before the first COW); with args, delegates.
   diff(): Patch[];
   diff(first: UrlHeads | DocHandle<T>, second?: UrlHeads): Patch[];
   diff(first?: UrlHeads | DocHandle<T>, second?: UrlHeads): Patch[] {
@@ -396,8 +326,6 @@ export class BranchedDocHandle<T> {
     }
     return this.#active.diff(first as UrlHeads | DocHandle<T>, second);
   }
-
-  // ------ writes (trigger COW) ------
 
   change(callback: ChangeFn<T>, options?: ChangeOptions<T>): void {
     this.#triggerCOW();
@@ -422,8 +350,7 @@ export class BranchedDocHandle<T> {
     this.#active.merge(inner);
   }
 
-  // ------ events (EventEmitter-compatible subset) ------
-
+  // EventEmitter-compatible subset.
   on(ev: string, fn: Listener): this {
     let set = this.#listeners.get(ev);
     if (!set) {
@@ -468,8 +395,6 @@ export class BranchedDocHandle<T> {
     return true;
   }
 
-  // ------ internals ------
-
   #triggerCOW(): void {
     if (this.#cloneHandle) return;
     const heads = this.#originalHandle.heads();
@@ -490,8 +415,8 @@ export class BranchedDocHandle<T> {
   #wireForwarders(target: DocHandle<T>): void {
     for (const ev of FORWARDED_EVENTS) {
       const fn: Listener = (payload: unknown) => {
-        // Replace `handle` in the payload (if present) with this wrapper
-        // so listeners see the same identity they registered against.
+        // Swap `handle` in the payload for this wrapper so listeners
+        // see the identity they registered against.
         if (
           payload &&
           typeof payload === "object" &&
