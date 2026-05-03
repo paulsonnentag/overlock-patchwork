@@ -17,15 +17,27 @@ export type LoadedPlugin = {
   [key: string]: unknown;
 };
 
+export type PluginLoadedEvent = CustomEvent<{ pluginUrl: string; plugin: LoadedPlugin }>;
+
+export type PluginUpdatedEvent = CustomEvent<{
+  pluginUrl: string;
+  previous: LoadedPlugin;
+  next: LoadedPlugin;
+}>;
+
+export type PluginRemovedEvent = CustomEvent<{ pluginUrl: string }>;
+
+export type PluginChangedEvent = Event;
+
+export type PluginEvent =
+  | PluginLoadedEvent
+  | PluginUpdatedEvent
+  | PluginRemovedEvent
+
 export type PluginRegistryEventMap = {
-  loaded: CustomEvent<{ pluginUrl: string; plugin: LoadedPlugin }>;
-  updated: CustomEvent<{
-    pluginUrl: string;
-    previous: LoadedPlugin;
-    next: LoadedPlugin;
-  }>;
-  removed: CustomEvent<{ pluginUrl: string }>;
-  changed: Event;
+  loaded: PluginLoadedEvent;
+  updated: PluginUpdatedEvent;
+  removed: PluginRemovedEvent;
 };
 
 export type PluginRegistryOptions = {
@@ -65,7 +77,6 @@ export class PluginRegistry extends EventTarget {
         this.#loaded.set(url, record);
         this.#loading.delete(url);
         this.#emit("loaded", { pluginUrl: url, plugin: record.plugin });
-        this.#emit("changed", undefined);
         return record;
       })
       .catch((err) => {
@@ -83,7 +94,6 @@ export class PluginRegistry extends EventTarget {
     this.#loaded.delete(url);
     this.#loading.delete(url);
     this.#emit("removed", { pluginUrl: url });
-    this.#emit("changed", undefined);
     return true;
   }
 
@@ -173,7 +183,6 @@ export class PluginRegistry extends EventTarget {
     old.plugin = next;
 
     this.#emit("updated", { pluginUrl: url, previous, next });
-    this.#emit("changed", undefined);
   }
 
   async #fetchPlugin(
