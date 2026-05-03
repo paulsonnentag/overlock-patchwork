@@ -1,0 +1,81 @@
+---
+description: Comment style — keep the source slim, let docs/ carry prose
+alwaysApply: true
+---
+
+# Comments
+
+Comments should explain things the code can't. If a sentence repeats
+the function name, restates the type, or paraphrases prose that already
+lives in [`docs/`](../../docs), delete it.
+
+## Rules
+
+- **No JSDoc on small / self-evident helpers.** A good name plus a
+  type signature is enough. Reserve doc-blocks for genuinely
+  surprising contracts (race handling, ordering guarantees, throw
+  conditions that aren't obvious from types).
+- **Don't duplicate `docs/`.** Architecture, lifecycle, and public-shape
+  prose live in [`docs/`](../../docs) — see
+  [`architecture-docs.mdc`](./architecture-docs.mdc). The matching
+  source file gets a one-line pointer at most. If you find yourself
+  writing a paragraph in a `.ts` file, the paragraph belongs in the
+  doc.
+- **No narrative blocks restating the next few lines.** "Build X
+  because Y" comments tend to paraphrase the code below them. Trust
+  the code. Inline a short *why* only when a reader would otherwise
+  ask "is this a bug?".
+- **No field-level prose** unless the field carries a non-obvious
+  invariant. The type and the name already say what it is.
+- **Keep the comments that survive short.** One or two lines. If it's
+  longer, it's probably a doc.
+
+## ❌ Bad
+
+```ts
+/**
+ * Whether `el` is currently claimed by `mountView` (in flight or
+ * fully mounted). Used by the registry's mount path to dedup and by
+ * the descendant walk to stop at view boundaries.
+ */
+export function isView(el: Element): boolean {
+  return views.has(el);
+}
+
+// tag name -> mount fn. Throws on collision.
+readonly #viewsByTag = new Map<string, MountFn>();
+
+// Top-down barrier: wait for the closest ancestor view to finish
+// mounting before this view does anything observable. Ancestor
+// failure propagates as the promise rejection — descendants stay
+// un-mounted in that subtree.
+const ancestor = findAncestorMounted(el);
+if (ancestor) await ancestor;
+```
+
+## ✅ Good
+
+```ts
+export function isView(el: Element): boolean {
+  return views.has(el);
+}
+
+readonly #viewsByTag = new Map<string, MountFn>();
+
+const ancestor = findAncestorMounted(el);
+if (ancestor) await ancestor;
+```
+
+## ✅ Worth keeping
+
+A comment that names a non-obvious *why* with a concrete trap:
+
+```ts
+// Re-derive the canonical path after exports resolution: asking for
+// "." may have landed on "dist/index.js"; relative imports inside
+// should resolve against "dist/", not the requested subpath.
+const canonicalPath = canonicalPathOf(folderHandle, fileHandle, path);
+```
+
+When in doubt, cut prose and add a link to the source or a `docs/`
+page instead.
