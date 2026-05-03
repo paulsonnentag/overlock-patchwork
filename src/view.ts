@@ -5,90 +5,23 @@ import {
 
 import { BranchableRepo } from "./branchable-repo";
 
-/**
- * The element a mount fn receives. A plain `HTMLElement` plus:
- *
- * - `handle?` — the `DocHandle` resolved from the `doc=` attribute
- *   (absent when the host element had no `doc=`).
- * - `repo` — the `BranchableRepo` carried by the nearest ancestor
- *   context whose value is a `BranchableRepo`. The bootstrap installs
- *   one such provider wrapping `<body>`, so every view that doesn't
- *   sit inside a more specific repo provider ends up with the
- *   page-level repo. `BranchableRepo` exposes `fork`/`checkout`/`reset`
- *   (each returns a new instance over the same underlying `Repo`);
- *   there is currently no UI wired up that invokes them.
- * - `context(predicate)` — walk up ancestor contexts (innermost first)
- *   and return the `value` of the first match, or `null`. Stamped at
- *   mount; `el.repo` is itself derived through this walk against
- *   `BranchableRepo`. Snapshot lookup — subscribe to the matched
- *   context's `change` event for reactive reads. A "context" is any
- *   custom-element ancestor (tag name contains a hyphen) exposing a
- *   `value` property; `defineContext` from the helper package
- *   produces that shape.
- */
 export type ViewElement<V = unknown> = HTMLElement & {
   handle?: DocHandle<V>;
   repo: BranchableRepo;
   context: <T>(predicate: (value: unknown) => value is T) => T | null;
 };
 
-/**
- * A view's default export. Returns either nothing or a cleanup fn.
- *
- * The mount fn is `async` so authors can `await repo.find(...)`, dynamic
- * imports, etc. before they touch the element. Races (element removed
- * mid-mount, source hot-reloaded mid-mount, `doc=` flipped mid-mount)
- * are observed by `mountView` via `el.isConnected` after each await:
- * if the element disconnected while the mount fn was in flight, the
- * returned cleanup runs immediately and is discarded rather than
- * installed.
- */
 export type MountFn = (
   element: ViewElement,
 ) => Promise<(() => void) | void> | ((() => void) | void);
 
-/**
- * Per-view state. The `mounted` promise is the synchronisation point
- * for top-down mounting: each view awaits the closest ancestor view's
- * `mounted` before resolving its own context and running the user
- * mount fn. It resolves on success (or clean disconnect) and rejects
- * on error so descendants stay un-mounted when an ancestor fails.
- *
- * `cleanup` is null while the user mount fn is in flight or if the
- * fn returned no cleanup; otherwise it's the function `unmountView`
- * runs at teardown.
- */
 type ViewState = {
   mounted: Promise<void>;
   cleanup: (() => void) | null;
 };
 
-/**
- * `WeakMap<Element, ViewState>` keyed by every element claimed by
- * `mountView`. Entries are claimed *synchronously* at the top of
- * `mountView` (before any await) so the registry's `MutationObserver`
- * microtask sees the element as already-claimed and dedups.
- *
- * The element is the identity carrier for a mounted view; there is
- * no separate `View` instance.
- */
 const views = new WeakMap<Element, ViewState>();
 
-/**
- * Claim `el` as a view backed by `mountFn`. Synchronously records the
- * claim and starts the async mount pipeline. Returns the promise that
- * resolves once the user mount fn has settled (or rejects if it
- * threw); callers that need to cascade into descendants after a
- * successful mount listen on the resolution.
- *
- * Top-down sequencing is enforced inside the pipeline: before
- * stamping `el.context`/`el.repo`, resolving `doc=`, or running the
- * user mount fn, the new view awaits the closest ancestor view's
- * `mounted`. That guarantees ancestor `el.handle`, ancestor context
- * `value` getters (installed by `defineContext` on mount), and any
- * imperative descendant mutations the ancestor performs are all
- * visible by the time a descendant runs.
- */
 export function mountView(el: HTMLElement, mountFn: MountFn): Promise<void> {
   const existing = views.get(el);
   if (existing) return existing.mounted;
@@ -98,13 +31,6 @@ export function mountView(el: HTMLElement, mountFn: MountFn): Promise<void> {
   return state.mounted;
 }
 
-/**
- * Run the cleanup (if any) associated with `el` and forget the
- * element. Idempotent. Safe on elements that were never mounted (no-op),
- * on in-flight mounts (drops the claim so the in-flight closure's
- * `isConnected` check short-circuits the install path), and on
- * already-unmounted elements.
- */
 export function unmountView(el: Element): void {
   const state = views.get(el);
   if (!state) return;
@@ -112,29 +38,15 @@ export function unmountView(el: Element): void {
   if (state.cleanup) runCleanup(state.cleanup);
 }
 
-/**
- * Whether `el` is currently claimed by `mountView` (in flight or
- * fully mounted). Used by the registry's mount path to dedup and by
- * the descendant walk to stop at view boundaries.
- */
 export function isView(el: Element): boolean {
   return views.has(el);
 }
 
-/**
- * The mounted-promise for `el`, or null if `el` is not a claimed view.
- * Exposed for tests and tooling; the runtime itself reads ancestor
- * promises through the WeakMap directly.
- */
 export function viewMounted(el: Element): Promise<void> | null {
   return views.get(el)?.mounted ?? null;
 }
 
 async function mount(el: HTMLElement, mountFn: MountFn): Promise<void> {
-  // Top-down barrier: wait for the closest ancestor view to finish
-  // mounting before this view does anything observable. Ancestor
-  // failure propagates as the promise rejection — descendants stay
-  // un-mounted in that subtree.
   const ancestor = findAncestorMounted(el);
   if (ancestor) {
     try {
@@ -149,10 +61,6 @@ async function mount(el: HTMLElement, mountFn: MountFn): Promise<void> {
     return;
   }
 
-  // Stamp `el.context` and `el.repo` only after the ancestor barrier:
-  // an ancestor context view's `value` getter is installed by its
-  // `defineContext` wrapper during *its* mount, so the walk below has
-  // to wait for that to finish. Top-down ordering guarantees it has.
   const viewEl = el as ViewElement;
   viewEl.context = <T>(predicate: (v: unknown) => v is T): T | null =>
     walkContexts(el, predicate);
@@ -200,12 +108,6 @@ function findAncestorMounted(el: HTMLElement): Promise<void> | null {
   return null;
 }
 
-/**
- * Read `doc=` off `el` and stamp `el.repo.find(url)` onto the element
- * as `el.handle`. No `doc=` is fine and leaves `el.handle` untouched.
- * `el.repo` is already stamped by `mount()` from the nearest ancestor
- * context publishing a `BranchableRepo` value.
- */
 async function resolveContext(el: HTMLElement): Promise<void> {
   const docUrl = el.getAttribute("doc");
   if (!docUrl) return;
@@ -220,24 +122,6 @@ async function resolveContext(el: HTMLElement): Promise<void> {
   (el as ViewElement).handle = handle as DocHandle<unknown>;
 }
 
-/**
- * Walk up ancestor contexts from `start`, returning the `value` of
- * the innermost context whose value satisfies `predicate`. Returns
- * `null` if no matching context is in scope.
- *
- * A "context" is any custom-element ancestor — tag name contains a
- * hyphen — exposing a `value` property. The dash check filters out
- * native form elements (`<input>`, `<select>`, `<button>`, …) whose
- * built-in `.value` would otherwise be picked up by the duck-type
- * test; HTML reserves dash-containing tag names exclusively for
- * custom elements, so it's a reliable discriminator. The predicate
- * runs against `value` and can return false for irrelevant contexts,
- * letting the walk continue past them.
- *
- * Private to the view runtime — exposed to user code only as
- * `el.context(predicate)`, the per-element closure stamped in
- * `mount()`.
- */
 function walkContexts<T>(
   start: Element,
   predicate: (value: unknown) => value is T,
@@ -253,12 +137,6 @@ function walkContexts<T>(
   return null;
 }
 
-/**
- * Stamp `el.repo` by routing through `el.context`. Throws if no
- * provider is in scope — the bootstrap in `main.ts` installs one
- * wrapping `<body>`, so this is only reachable on a misconfigured
- * page.
- */
 function resolveRepo(el: ViewElement): BranchableRepo {
   const repo = el.context(
     (v): v is BranchableRepo => v instanceof BranchableRepo,

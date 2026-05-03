@@ -1,6 +1,3 @@
-// `EventTarget` with a `value` getter and a `change` event. Empty
-// event payload — listeners read `e.target.value`. `equals` defaults
-// to `Object.is`; pass `shallowArrayEquals` for list-shaped values.
 export class Handle<T> extends EventTarget {
   #current: T;
   readonly #equals: (a: T, b: T) => boolean;

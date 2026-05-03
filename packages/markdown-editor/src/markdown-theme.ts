@@ -1,9 +1,6 @@
-// Markdown editor theme. Ported from
-// patchwork-next/tools/codemirror/codemirror-markdown/src/themes/markdown.ts
-// — same look (Merriweather Sans body, centered "page", themed
-// headings). The daisyUI CSS variables it references get fallbacks
-// from `styles.css` so the editor works without daisyUI/Tailwind on
-// the host page.
+// Ported from patchwork-next/tools/codemirror/codemirror-markdown.
+// daisyUI CSS variables get fallbacks from `styles.css` so the editor
+// works without daisyUI/Tailwind on the host.
 
 import {
   HighlightStyle,

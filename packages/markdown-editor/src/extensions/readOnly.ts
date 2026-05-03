@@ -3,10 +3,8 @@ import { createEffect } from "solid-js";
 import { EditorView } from "@codemirror/view";
 import { Compartment, EditorState } from "@codemirror/state";
 
-/**
- * CodeMirror extension wired into a Compartment so the editor's
- * read-only state can be flipped without rebuilding the EditorView.
- */
+// Wrapped in a `Compartment` so the read-only flag can be flipped
+// without rebuilding the EditorView.
 export function createReadOnlyExtension(readOnly: () => boolean) {
   const readOnlyCompartment = new Compartment();
 

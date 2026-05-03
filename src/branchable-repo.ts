@@ -1,8 +1,3 @@
-// `Repo` wrapper with git-style branching. `fork`/`checkout`/`reset`
-// return a new immutable `BranchableRepo`; the first write on a
-// wrapped handle triggers copy-on-write and records the original→clone
-// pairing on a branch document.
-
 import {
   parseAutomergeUrl,
   stringifyAutomergeUrl,
@@ -26,15 +21,10 @@ export type BranchDoc = {
   [BRANCH_MARKER]: { type: typeof BRANCH_TYPE };
   name?: string;
   createdAt?: number;
-  // original → cloned URL; the clone URL carries the original's heads
-  // at fork time so `handle.diff()` is cheap.
   clones: Record<AutomergeUrl, AutomergeUrl>;
 };
 
 export type ForkOpts = {
-  // Documents to clone eagerly at fork time. URLs may carry heads to
-  // fork at a specific point in time. Without this, docs are cloned
-  // lazily on first write.
   urls?: AutomergeUrl[];
   name?: string;
 };
@@ -61,8 +51,6 @@ function anyIdToCanonicalUrl(id: AnyDocumentId): AutomergeUrl {
 }
 
 export class BranchableRepo {
-  // Shared across the chain of `BranchableRepo`s produced by fork /
-  // checkout / reset, so every branch sees the same network/storage.
   readonly repo: Repo;
   readonly #branchHandle: DocHandle<BranchDoc> | null;
   readonly #wrapped = new Map<AutomergeUrl, BranchedDocHandle<unknown>>();
@@ -76,7 +64,6 @@ export class BranchableRepo {
     return this.#branchHandle;
   }
 
-  // Throws if already on a branch — nested branching not yet supported.
   async fork(opts: ForkOpts = {}): Promise<BranchableRepo> {
     if (this.#branchHandle) {
       throw new Error(
@@ -107,14 +94,11 @@ export class BranchableRepo {
     return new BranchableRepo(this.repo, branchHandle);
   }
 
-  // Always returns a fresh instance, so identity-keyed consumers see
-  // a swap even when already off-branch.
+  // Always returns a fresh instance so identity-keyed consumers see a swap.
   reset(): BranchableRepo {
     return new BranchableRepo(this.repo, null);
   }
 
-  // Branch-native: lives on the underlying repo, not tracked in
-  // `clones`.
   create<T>(initialValue?: T): DocHandle<T> {
     return this.repo.create<T>(initialValue);
   }
@@ -188,11 +172,6 @@ export class BranchableRepo {
   }
 }
 
-// Wrapper that always reports the original URL, delegates reads to
-// the active inner handle (original or clone), re-emits its events,
-// triggers COW on writes, and overloads `diff()` so the no-args form
-// returns branch-vs-original patches.
-
 const FORWARDED_EVENTS = [
   "change",
   "heads-changed",
@@ -238,7 +217,7 @@ export class BranchedDocHandle<T> {
     return parseAutomergeUrl(this.#originalUrl).documentId;
   }
 
-  // Clone URL with fork heads, or `null` before the first COW.
+  // `null` before the first COW.
   get cloneUrl(): AutomergeUrl | null {
     if (!this.#cloneHandle || !this.#forkHeads) return null;
     return stringifyAutomergeUrl({
@@ -315,8 +294,8 @@ export class BranchedDocHandle<T> {
     this.#active.broadcast(message);
   }
 
-  // No-args form returns branch-vs-original patches (empty array off
-  // a branch or before the first COW); with args, delegates.
+  // No-args form returns branch-vs-original patches; empty off a
+  // branch or before the first COW.
   diff(): Patch[];
   diff(first: UrlHeads | DocHandle<T>, second?: UrlHeads): Patch[];
   diff(first?: UrlHeads | DocHandle<T>, second?: UrlHeads): Patch[] {
@@ -415,8 +394,8 @@ export class BranchedDocHandle<T> {
   #wireForwarders(target: DocHandle<T>): void {
     for (const ev of FORWARDED_EVENTS) {
       const fn: Listener = (payload: unknown) => {
-        // Swap `handle` in the payload for this wrapper so listeners
-        // see the identity they registered against.
+        // Swap `handle` for this wrapper so listeners see the identity
+        // they registered against.
         if (
           payload &&
           typeof payload === "object" &&

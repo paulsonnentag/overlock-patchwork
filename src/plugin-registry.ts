@@ -39,9 +39,6 @@ type PluginRecord = {
   unsubscribe: () => void;
 };
 
-// pluginUrl → LoadedPlugin cache + folder subscription for HMR. One
-// folder subscription per unique URL drives `updated` fan-out; consumer
-// kinds (the view registry) layer their own dedup on top.
 export class PluginRegistry extends EventTarget {
   readonly #repo: BranchableRepo;
   readonly #import: Loader;
@@ -138,8 +135,6 @@ export class PluginRegistry extends EventTarget {
 
     const plugin = await this.#fetchPlugin(url, parentFolderHandle, manifestName);
 
-    // automerge-repo `DocHandle` is still EventEmitter-shaped upstream;
-    // use `.on/.off` rather than `addEventListener`.
     const onChange = (): void => {
       void this.#reload(url);
     };
@@ -181,9 +176,6 @@ export class PluginRegistry extends EventTarget {
     this.#emit("changed", undefined);
   }
 
-  // manifest doc → parse → resolve `importUrl` → pin to current heads
-  // (so the loader's blob cache produces a fresh module on HMR) →
-  // import.
   async #fetchPlugin(
     url: string,
     parentFolderHandle: DocHandle<FolderDoc>,
@@ -254,9 +246,6 @@ function readManifest(
   return parsed as RawManifest;
 }
 
-// Returns absolute but not heads-pinned. Pinning happens at import time
-// so the resolved `importUrl` stays stable across HMR reloads. Only `./`
-// is supported for now.
 function resolveImportUrl(manifestUrl: string, importUrl: string): string {
   if (!importUrl.startsWith("./")) {
     throw new Error(

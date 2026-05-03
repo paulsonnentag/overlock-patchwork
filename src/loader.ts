@@ -1,7 +1,3 @@
-// In-page ES-module loader: automerge URL + path → blob URL whose
-// imports are rewritten to sibling blob URLs. Per-instance state
-// (blob cache, packages-folder index); one instance per page.
-
 import {
   isValidAutomergeUrl,
   parseAutomergeUrl,
@@ -24,10 +20,6 @@ type CacheKey = string;
 export type LoaderOptions = {
   repo: Repo;
   packagesRoot?: AutomergeUrl;
-  // Bare-specifier → live module map. Each entry is served as a shim
-  // re-reading from `window.__overlock.externals[key]` so packages
-  // share a single instance with the host (wasm, module-scoped state).
-  // Host populates `window.__overlock.externals` before any import.
   externals?: Record<string, object>;
 };
 
@@ -35,8 +27,8 @@ export class Loader {
   readonly #repo: Repo;
   readonly #blobUrlCache = new Map<CacheKey, Promise<string>>();
   readonly #externalUrls = new Map<string, string>();
-  // documentId → friendly name for DevTools sourceURL. `null` until
-  // the folder doc resolves; lookups fall back to the automerge URL.
+  // documentId → friendly DevTools sourceURL name; `null` before the
+  // folder doc resolves.
   #packagesIndex: Map<string, string> | null = null;
 
   constructor(opts: LoaderOptions) {
@@ -59,8 +51,6 @@ export class Loader {
     return import(/* @vite-ignore */ blobUrl);
   }
 
-  // Direct children of `url` get friendly `packages/<name>/<file>`
-  // sourceURLs in DevTools. Loaded once; later writes don't refresh.
   setPackagesRoot(url: AutomergeUrl): void {
     void this.#loadPackagesIndex(url);
   }
@@ -263,9 +253,6 @@ export function splitPath(p: string): string[] {
     .filter(Boolean);
 }
 
-// ESM shim re-reading from `window.__overlock.externals[key]`. Named
-// exports snapshot the live module's keys at construction; the
-// namespace is also re-exported as default for `import M from "..."`.
 function buildExternalShimSource(key: string, mod: object): string {
   const lines = [
     `const m = window.__overlock.externals[${JSON.stringify(key)}];`,

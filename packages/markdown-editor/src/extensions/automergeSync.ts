@@ -7,11 +7,8 @@ import type { Prop as AutomergeProp } from "@automerge/automerge";
 import { automergeSyncPlugin } from "@automerge/automerge-codemirror";
 import type { DocHandle } from "@automerge/automerge-repo";
 
-/**
- * CodeMirror extension that bidirectionally syncs the editor with an
- * Automerge document property. Wrapped in a `Compartment` so the
- * caller can swap handle/path without rebuilding the EditorView.
- */
+// Wrapped in a `Compartment` so handle/path can be swapped without
+// rebuilding the EditorView.
 export function createSyncExtension<T>(
   handle: () => DocHandle<T>,
   path: () => AutomergeProp[],
