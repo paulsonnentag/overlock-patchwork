@@ -1,0 +1,183 @@
+spreadsheet-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #1f2937;
+  background: #fff;
+  --ss-border: #d1d5db;
+  --ss-header-bg: #f3f4f6;
+  --ss-header-active-bg: #e0e7ff;
+  --ss-selection-bg: rgba(99, 102, 241, 0.12);
+  --ss-active-border: #4f46e5;
+}
+
+.ss-root {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.ss-placeholder {
+  padding: 1rem;
+  color: #6b7280;
+}
+
+/* Formula bar */
+
+.ss-formula-bar {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--ss-border);
+  background: #fff;
+  flex: 0 0 auto;
+}
+
+.ss-ref {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 60px;
+  padding: 0 8px;
+  font: 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #4b5563;
+  border-right: 1px solid var(--ss-border);
+  background: var(--ss-header-bg);
+}
+
+.ss-formula-input {
+  flex: 1 1 auto;
+  border: 0;
+  outline: none;
+  padding: 6px 10px;
+  font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: transparent;
+  color: inherit;
+}
+
+.ss-formula-input:focus {
+  background: #fafbff;
+}
+
+/* Grid */
+
+.ss-grid-root {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  outline: none;
+}
+
+.ss-grid-root:focus {
+  box-shadow: inset 0 0 0 1px var(--ss-active-border);
+}
+
+.ss-scroller {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+}
+
+.ss-spacer {
+  position: relative;
+}
+
+.ss-corner {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  background: var(--ss-header-bg);
+  border-right: 1px solid var(--ss-border);
+  border-bottom: 1px solid var(--ss-border);
+  box-sizing: border-box;
+}
+
+.ss-col-headers {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.ss-row-headers {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+}
+
+.ss-col-header,
+.ss-row-header {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ss-header-bg);
+  color: #6b7280;
+  font: 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  border-right: 1px solid var(--ss-border);
+  border-bottom: 1px solid var(--ss-border);
+  box-sizing: border-box;
+  user-select: none;
+}
+
+.ss-row-header {
+  border-right: 1px solid var(--ss-border);
+}
+
+.ss-header-active {
+  background: var(--ss-header-active-bg);
+  color: #1e293b;
+}
+
+.ss-body {
+  position: absolute;
+}
+
+.ss-cell {
+  position: absolute;
+  box-sizing: border-box;
+  padding: 0 6px;
+  display: flex;
+  align-items: center;
+  border-right: 1px solid var(--ss-border);
+  border-bottom: 1px solid var(--ss-border);
+  background: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: none;
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.ss-cell-selected {
+  background: var(--ss-selection-bg);
+}
+
+.ss-cell-active {
+  outline: 2px solid var(--ss-active-border);
+  outline-offset: -2px;
+  z-index: 1;
+}
+
+.ss-cell-cycle {
+  color: #b91c1c;
+}
+
+.ss-cell-pending {
+  color: #6b7280;
+  font-style: italic;
+}
+
+.ss-inline-editor {
+  position: absolute;
+  z-index: 4;
+  box-sizing: border-box;
+  padding: 0 6px;
+  border: 2px solid var(--ss-active-border);
+  outline: none;
+  background: #fff;
+  font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: inherit;
+}
