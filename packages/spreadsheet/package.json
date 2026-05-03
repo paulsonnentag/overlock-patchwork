@@ -1,0 +1,19 @@
+{
+  "name": "spreadsheet",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Library package: a generic spreadsheet engine driven by a swappable Ohm-grammar language. Bundled into ./dist/spreadsheet.js by Vite. See ./docs/.",
+  "scripts": {
+    "build": "vite build",
+    "watch": "vite build --watch"
+  },
+  "dependencies": {
+    "ohm-js": "^17.1.0"
+  },
+  "devDependencies": {
+    "patchwork-types": "workspace:*",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10"
+  }
+}
