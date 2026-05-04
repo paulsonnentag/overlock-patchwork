@@ -228,10 +228,7 @@ function readManifest(
   if (content == null) {
     throw new Error(`[overlock-patchwork] manifest has no content: ${moduleUrl}`);
   }
-  const text =
-    typeof content === "string"
-      ? content
-      : new TextDecoder().decode(content as Uint8Array);
+  const text = contentToText(content);
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -251,6 +248,14 @@ function readManifest(
     );
   }
   return parsed as RawManifest;
+}
+
+function contentToText(content: UnixFileEntry["content"]): string {
+  if (typeof content === "string") return content;
+  if (content instanceof ArrayBuffer) return new TextDecoder().decode(content);
+  if (ArrayBuffer.isView(content)) return new TextDecoder().decode(content);
+  if (Array.isArray(content)) return new TextDecoder().decode(Uint8Array.from(content));
+  return String(content);
 }
 
 function resolveImportUrl(manifestUrl: string, importUrl: string): string {

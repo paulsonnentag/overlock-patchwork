@@ -329,12 +329,27 @@ function isJavaScript(mimeType: string, path: string): boolean {
 
 function toBlobPart(content: UnixFileEntry["content"]): BlobPart {
   if (typeof content === "string") return content;
+  if (content instanceof ArrayBuffer) return content;
   if (content instanceof Uint8Array) return new Uint8Array(content);
+  if (ArrayBuffer.isView(content)) {
+    const bytes = new Uint8Array(
+      content.buffer,
+      content.byteOffset,
+      content.byteLength,
+    );
+    return new Uint8Array(bytes);
+  }
+  if (Array.isArray(content)) return Uint8Array.from(content);
   return String(content);
 }
 
 function toUint8Array(content: UnixFileEntry["content"]): Uint8Array {
+  if (content instanceof ArrayBuffer) return new Uint8Array(content);
   if (content instanceof Uint8Array) return content;
+  if (ArrayBuffer.isView(content)) {
+    return new Uint8Array(content.buffer, content.byteOffset, content.byteLength);
+  }
+  if (Array.isArray(content)) return Uint8Array.from(content);
   return new TextEncoder().encode(String(content));
 }
 

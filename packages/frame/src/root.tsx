@@ -19,8 +19,6 @@ export default defineView(({ element, repo, registerView }) => {
 
   const url = getOrCreateMarkdownUrl(repo);
 
-  console.log("url", url);
-
   return render(
     () => (
       // @ts-expect-error: <markdown-editor> is a custom element, untyped JSX
