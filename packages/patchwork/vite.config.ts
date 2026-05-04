@@ -3,7 +3,7 @@ import { defineConfig } from "vite";
 export default defineConfig({
   build: {
     lib: {
-      entry: "src/view.ts",
+      entry: "src/index.ts",
       formats: ["es"],
       fileName: () => "patchwork.js",
     },

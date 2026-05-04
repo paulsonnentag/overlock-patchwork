@@ -6,10 +6,10 @@
   "description": "Shared runtime + types for patchwork view packages (defineView, ViewElement, ViewFn).",
   "main": "./dist/patchwork.js",
   "module": "./dist/patchwork.js",
-  "types": "./dist/view.d.ts",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/view.d.ts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/patchwork.js"
     }
   },

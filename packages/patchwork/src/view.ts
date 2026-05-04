@@ -1,111 +1,95 @@
 import type { AutomergeUrl, DocHandle, Repo } from "@automerge/automerge-repo"
 
-export type ViewElement<P extends { handle?: unknown; value?: unknown } = {}> = HTMLElement & {
-  isPatchworkView: true
-  url?: AutomergeUrl
-  handle?: DocHandle<P extends { handle: infer H } ? H : unknown>
-  value?: P extends { value: infer V } ? V : unknown
+import type { Mount, PatchworkElement } from "./types"
+
+export type Find = {
+  <T extends PatchworkElement>(
+    predicate: (element: PatchworkElement) => element is T,
+  ): T | undefined
+  (predicate: (element: PatchworkElement) => boolean): PatchworkElement | undefined
 }
 
-export type ViewProps<P extends { handle?: unknown; value?: unknown } = {}> = {
-  element: ViewElement<P>
-  find: (predicate: (element: ViewElement) => boolean) => ViewElement | undefined
+export type ViewElement<V = unknown> = PatchworkElement & {
+  url: AutomergeUrl | null
+  handle: DocHandle<V> | undefined
+}
+
+export type ViewProps<V = unknown> = {
+  element: ViewElement<V>
+  find: Find
   repo: Repo
 }
 
-export type ViewFn<P extends { handle?: unknown; value?: unknown } = {}> = (
-  props: ViewProps<P>,
+export type ViewFn<V = unknown> = (
+  props: ViewProps<V>,
 ) => undefined | (() => void) | Promise<undefined | (() => void)>
 
-export type Mount<P extends { handle?: unknown; value?: unknown } = {}> = (
-  element: HTMLElement,
-) => Promise<(() => void) | null>
-
-export function defineView<P extends { handle?: unknown; value?: unknown } = {}>(
-  viewFn: ViewFn<P>
-): Mount<P> {
+export function defineView<V = unknown>(viewFn: ViewFn<V>): Mount {
   return async (element) => {
-    const viewElement = element as ViewElement<P>
+    const viewElement = element as ViewElement<V>
 
-    const find = <T extends ViewElement>(
-      predicate: (element: ViewElement) => boolean,
-    ): T | undefined => {
+    const find = ((predicate: (el: PatchworkElement) => boolean) => {
       let current = element.parentElement
       while (current) {
         if (
-          (current as any).isPatchworkView === true &&
-          predicate(current as ViewElement)
+          (current as PatchworkElement).isPatchworkView === true &&
+          predicate(current as PatchworkElement)
         ) {
-          return current as T
+          return current as PatchworkElement
         }
         current = current.parentElement
       }
       return undefined
-    }
+    }) as Find
 
-    const repoContext = find<ViewElement<{ value: Repo }>>(isRepo)
+    const repoContext = find(isRepoContext)
     const repo = repoContext?.value
-
-    if (!repo) {
-      throw new Error("no repo found")
-    }
+    if (!repo) throw new Error("no repo found")
 
     Object.defineProperty(element, "url", {
       get: () => element.getAttribute("url"),
       set: (url) => {
         if (url !== element.getAttribute("url")) {
           element.setAttribute("url", url)
-          mount()
         }
       },
-      configurable: true
+      configurable: true,
     })
 
-    const mutationObserver = new MutationObserver(mutations => {
-      for (const mutation of mutations) {
-        if (mutation.attributeName === "url") {
-          viewElement.url = viewElement.getAttribute("url") as AutomergeUrl
-        }
+    const observer = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        if (m.attributeName === "url") mount()
       }
     })
-    mutationObserver.observe(element, { attributes: true, attributeFilter: ["url"] })
+    observer.observe(element, { attributes: true, attributeFilter: ["url"] })
 
-    let unmount : (() => void) | undefined
+    let unmount: (() => void) | undefined
 
     const mount = async () => {
-      const url = element.getAttribute("url") as AutomergeUrl
+      const url = element.getAttribute("url") as AutomergeUrl | null
+      if (url) viewElement.handle = await repo.find(url)
 
-      if (url) {
-        viewElement.handle = await repo.find(url)
-      }
-
-      if (unmount) {
-        unmount()
-      }
-
-      unmount = await viewFn({
-        element: viewElement,
-        find,
-        repo,
-      })
+      if (unmount) unmount()
+      unmount = await viewFn({ element: viewElement, find, repo })
     }
 
     mount()
 
     return () => {
-      if (unmount) {
-        unmount()    
-      }
-      mutationObserver.disconnect()
+      if (unmount) unmount()
+      observer.disconnect()
     }
   }
 }
 
-function isRepo({ value }: ViewElement<{ value: unknown }>) {
+function isRepoContext(
+  element: PatchworkElement,
+): element is PatchworkElement & { value: Repo } {
+  const value = (element as PatchworkElement & { value?: unknown }).value
   return (
     typeof value === "object" &&
     value !== null &&
-    "find" in value && typeof (value as any).find === "function" &&
-    "create" in value && typeof (value as any).create === "function"
+    "find" in value && typeof (value as { find?: unknown }).find === "function" &&
+    "create" in value && typeof (value as { create?: unknown }).create === "function"
   )
 }
