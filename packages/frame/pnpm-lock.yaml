@@ -29,16 +29,19 @@ importers:
 
   .:
     dependencies:
+      patchwork-solid:
+        specifier: automerge:3XY44mYiGQDhjZi1NS3vH2332jJJ
+        version: automerge:3XY44mYiGQDhjZi1NS3vH2332jJJ@2sJnL2FoeTdykHGSVqvcXYj6tJqhP72Tk5Uzb2QKFDF5NXaDT3(patchwork-view@automerge:4GDfeA2wqw1PBXrv4QAu8CCjXkPc@ut4ZVYpBoacAJvfdVEY3WPkViuQAnfPmUb9RnDhZETmXkn3PY)(solid-js@1.9.12)
       patchwork-view:
         specifier: automerge:4GDfeA2wqw1PBXrv4QAu8CCjXkPc
-        version: patchwork@automerge:4GDfeA2wqw1PBXrv4QAu8CCjXkPc@2iTrkthyQZfCCE2bd9C5rRgpNumpVkXHKEFae8DGSTqSGtFx2p
+        version: automerge:4GDfeA2wqw1PBXrv4QAu8CCjXkPc@ut4ZVYpBoacAJvfdVEY3WPkViuQAnfPmUb9RnDhZETmXkn3PY
     devDependencies:
       '@automerge/automerge-repo':
         specifier: 2.6.0-subduction.13
         version: 2.6.0-subduction.13
       patchwork-vite-plugin-manifests:
         specifier: automerge:2YZETGnfiAfcGJ1DFBaBh5mPtrzp
-        version: vite-plugin-patchwork-manifests@automerge:2YZETGnfiAfcGJ1DFBaBh5mPtrzp@4AvS5n3Fk3SL4tVVuoBhamybte7eWpVPvXtB6tLaNr4BmtYbM(vite@5.4.21)
+        version: automerge:2YZETGnfiAfcGJ1DFBaBh5mPtrzp@URaTDSCgjaE6zg9s8K2bW2yH27YJTArMzY6jhxr1b59UNLETi(vite@5.4.21)
       solid-js:
         specifier: ^1.9.5
         version: 1.9.12
@@ -631,9 +634,22 @@ packages:
   parse5@7.3.0:
     resolution: {integrity: sha512-IInvU7fabl34qmi9gY8XOVxhYyMyuH2xUNpb2q8/Y+7552KlejkRvqvD19nMoUW/uQGGbqNpA6Tufu5FL5BZgw==}
 
-  patchwork@automerge:4GDfeA2wqw1PBXrv4QAu8CCjXkPc@2iTrkthyQZfCCE2bd9C5rRgpNumpVkXHKEFae8DGSTqSGtFx2p:
+  patchwork-solid@automerge:3XY44mYiGQDhjZi1NS3vH2332jJJ@2sJnL2FoeTdykHGSVqvcXYj6tJqhP72Tk5Uzb2QKFDF5NXaDT3:
+    resolution: {automergeUrl: automerge:3XY44mYiGQDhjZi1NS3vH2332jJJ, type: custom:automerge}
+    version: 0.0.0
+    peerDependencies:
+      patchwork-view: '*'
+      solid-js: ^1.9.5
+
+  patchwork-view@automerge:4GDfeA2wqw1PBXrv4QAu8CCjXkPc@ut4ZVYpBoacAJvfdVEY3WPkViuQAnfPmUb9RnDhZETmXkn3PY:
     resolution: {automergeUrl: automerge:4GDfeA2wqw1PBXrv4QAu8CCjXkPc, type: custom:automerge}
     version: 0.0.0
+
+  patchwork-vite-plugin-manifests@automerge:2YZETGnfiAfcGJ1DFBaBh5mPtrzp@URaTDSCgjaE6zg9s8K2bW2yH27YJTArMzY6jhxr1b59UNLETi:
+    resolution: {automergeUrl: automerge:2YZETGnfiAfcGJ1DFBaBh5mPtrzp, type: custom:automerge}
+    version: 0.0.0
+    peerDependencies:
+      vite: ^5.4.10
 
   picocolors@1.1.1:
     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
@@ -693,12 +709,6 @@ packages:
     resolution: {integrity: sha512-WfyRojojQyAO/KzWf+efcXpTPv6zJPXaRmr9EYq5a4v5I3PWCR7kR01hiri2lW6+rHm3a57kpwsf+iahIJi1Qw==}
     peerDependencies:
       vite: '>2.0.0-0'
-
-  vite-plugin-patchwork-manifests@automerge:2YZETGnfiAfcGJ1DFBaBh5mPtrzp@4AvS5n3Fk3SL4tVVuoBhamybte7eWpVPvXtB6tLaNr4BmtYbM:
-    resolution: {automergeUrl: automerge:2YZETGnfiAfcGJ1DFBaBh5mPtrzp, type: custom:automerge}
-    version: 0.0.0
-    peerDependencies:
-      vite: ^5.4.10
 
   vite-plugin-solid@2.11.12:
     resolution: {integrity: sha512-FgjPcx2OwX9h6f28jli7A4bG7PP3te8uyakE5iqsmpq3Jqi1TWLgSroC9N6cMfGRU2zXsl4Q6ISvTr2VL0QHpA==}
@@ -1252,7 +1262,16 @@ snapshots:
     dependencies:
       entities: 6.0.1
 
-  patchwork@automerge:4GDfeA2wqw1PBXrv4QAu8CCjXkPc@2iTrkthyQZfCCE2bd9C5rRgpNumpVkXHKEFae8DGSTqSGtFx2p: {}
+  patchwork-solid@automerge:3XY44mYiGQDhjZi1NS3vH2332jJJ@2sJnL2FoeTdykHGSVqvcXYj6tJqhP72Tk5Uzb2QKFDF5NXaDT3(patchwork-view@automerge:4GDfeA2wqw1PBXrv4QAu8CCjXkPc@ut4ZVYpBoacAJvfdVEY3WPkViuQAnfPmUb9RnDhZETmXkn3PY)(solid-js@1.9.12):
+    dependencies:
+      patchwork-view: automerge:4GDfeA2wqw1PBXrv4QAu8CCjXkPc@ut4ZVYpBoacAJvfdVEY3WPkViuQAnfPmUb9RnDhZETmXkn3PY
+      solid-js: 1.9.12
+
+  patchwork-view@automerge:4GDfeA2wqw1PBXrv4QAu8CCjXkPc@ut4ZVYpBoacAJvfdVEY3WPkViuQAnfPmUb9RnDhZETmXkn3PY: {}
+
+  patchwork-vite-plugin-manifests@automerge:2YZETGnfiAfcGJ1DFBaBh5mPtrzp@URaTDSCgjaE6zg9s8K2bW2yH27YJTArMzY6jhxr1b59UNLETi(vite@5.4.21):
+    dependencies:
+      vite: 5.4.21
 
   picocolors@1.1.1: {}
 
@@ -1329,10 +1348,6 @@ snapshots:
   uuid@9.0.1: {}
 
   vite-plugin-css-injected-by-js@4.0.1(vite@5.4.21):
-    dependencies:
-      vite: 5.4.21
-
-  vite-plugin-patchwork-manifests@automerge:2YZETGnfiAfcGJ1DFBaBh5mPtrzp@4AvS5n3Fk3SL4tVVuoBhamybte7eWpVPvXtB6tLaNr4BmtYbM(vite@5.4.21):
     dependencies:
       vite: 5.4.21
 

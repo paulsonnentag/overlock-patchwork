@@ -10,6 +10,7 @@
     "server": "wss://subduction.sync.inkandswitch.com"
   },
   "dependencies": {
+    "patchwork-solid": "automerge:3XY44mYiGQDhjZi1NS3vH2332jJJ",
     "patchwork-view": "automerge:4GDfeA2wqw1PBXrv4QAu8CCjXkPc"
   },
   "devDependencies": {

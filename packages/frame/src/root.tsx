@@ -2,7 +2,7 @@ import { render } from "solid-js/web";
 
 import type { Repo } from "@automerge/automerge-repo";
 
-import { defineView } from "patchwork-view";
+import { defineView } from "patchwork-solid";
 
 // Bundled into root.js by `vite-plugin-css-injected-by-js`; the frame
 // owns its `<app-root>` host styling the same way `markdown-editor`
@@ -15,15 +15,12 @@ const MARKDOWN_EDITOR_SRC =
 const STORAGE_KEY = "overlock-patchwork:root:markdown-url";
 
 export default defineView(({ element, repo, registerView }) => {
-  registerView(MARKDOWN_EDITOR_SRC);
+  const MarkdownEditor = registerView(MARKDOWN_EDITOR_SRC);
 
   const url = getOrCreateMarkdownUrl(repo);
 
   return render(
-    () => (
-      // @ts-expect-error: <markdown-editor> is a custom element, untyped JSX
-      <markdown-editor url={url} />
-    ),
+    () => <MarkdownEditor url={url} />,
     element,
   );
 });
