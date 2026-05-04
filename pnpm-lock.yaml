@@ -67,6 +67,30 @@ importers:
         specifier: ^5.4.10
         version: 5.4.21(@types/node@25.6.0)
 
+  packages/frame:
+    devDependencies:
+      '@automerge/automerge-repo':
+        specifier: 2.6.0-subduction.13
+        version: 2.6.0-subduction.13
+      patchwork:
+        specifier: workspace:*
+        version: link:../patchwork
+      solid-js:
+        specifier: ^1.9.5
+        version: 1.9.12
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      vite:
+        specifier: ^5.4.10
+        version: 5.4.21(@types/node@25.6.0)
+      vite-plugin-css-injected-by-js:
+        specifier: ^4.0.1
+        version: 4.0.1(vite@5.4.21(@types/node@25.6.0))
+      vite-plugin-solid:
+        specifier: ^2.11.0
+        version: 2.11.12(solid-js@1.9.12)(vite@5.4.21(@types/node@25.6.0))
+
   packages/markdown-editor:
     dependencies:
       '@automerge/automerge-codemirror':
@@ -97,9 +121,9 @@ importers:
       '@automerge/automerge-repo':
         specifier: 2.6.0-subduction.13
         version: 2.6.0-subduction.13
-      patchwork-types:
+      patchwork:
         specifier: workspace:*
-        version: link:../patchwork-types
+        version: link:../patchwork
       solid-js:
         specifier: ^1.9.5
         version: 1.9.12
@@ -116,48 +140,11 @@ importers:
         specifier: ^2.11.0
         version: 2.11.12(solid-js@1.9.12)(vite@5.4.21(@types/node@25.6.0))
 
-  packages/patchwork-types:
-    dependencies:
-      '@automerge/automerge-repo':
-        specifier: ^2.6.0-subduction.13
-        version: 2.6.0-subduction.13
-      solid-js:
-        specifier: ^1.9.5
-        version: 1.9.12
-
-  packages/root:
+  packages/patchwork:
     devDependencies:
       '@automerge/automerge-repo':
         specifier: 2.6.0-subduction.13
         version: 2.6.0-subduction.13
-      patchwork-types:
-        specifier: workspace:*
-        version: link:../patchwork-types
-      solid-js:
-        specifier: ^1.9.5
-        version: 1.9.12
-      typescript:
-        specifier: ^5.6.3
-        version: 5.9.3
-      vite:
-        specifier: ^5.4.10
-        version: 5.4.21(@types/node@25.6.0)
-      vite-plugin-css-injected-by-js:
-        specifier: ^4.0.1
-        version: 4.0.1(vite@5.4.21(@types/node@25.6.0))
-      vite-plugin-solid:
-        specifier: ^2.11.0
-        version: 2.11.12(solid-js@1.9.12)(vite@5.4.21(@types/node@25.6.0))
-
-  packages/spreadsheet:
-    dependencies:
-      ohm-js:
-        specifier: ^17.1.0
-        version: 17.5.0
-    devDependencies:
-      patchwork-types:
-        specifier: workspace:*
-        version: link:../patchwork-types
       typescript:
         specifier: ^5.6.3
         version: 5.9.3
@@ -910,10 +897,6 @@ packages:
 
   node-releases@2.0.38:
     resolution: {integrity: sha512-3qT/88Y3FbH/Kx4szpQQ4HzUbVrHPKTLVpVocKiLfoYvw9XSGOX2FmD2d6DrXbVYyAQTF2HeF6My8jmzx7/CRw==}
-
-  ohm-js@17.5.0:
-    resolution: {integrity: sha512-l4Sa7026+6jsvYbt0PXKmL+f+ML32fD++IznLgxDhx2t9Cx6NC7zwRqblCujPHGGmkQerHoeBzRutdxaw/S72g==}
-    engines: {node: '>=0.12.1'}
 
   package-json-from-dist@1.0.1:
     resolution: {integrity: sha512-UEZIS3/by4OC8vL3P2dTXRETpebLI2NiI5vIrjaD/5UtrkFX/tNbwjTSRAGC/+7CAo2pIcBaRgWmcBBHcsaCIw==}
@@ -1858,8 +1841,6 @@ snapshots:
     optional: true
 
   node-releases@2.0.38: {}
-
-  ohm-js@17.5.0: {}
 
   package-json-from-dist@1.0.1: {}
 

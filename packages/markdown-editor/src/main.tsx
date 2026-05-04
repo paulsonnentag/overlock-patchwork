@@ -7,7 +7,7 @@ import { markdown } from "@codemirror/lang-markdown";
 import { parseAutomergeUrl } from "@automerge/automerge-repo";
 import type { DocHandle } from "@automerge/automerge-repo";
 
-import type { ViewElement } from "patchwork-types";
+import type { ViewElement } from "patchwork";
 
 import { CodeMirror } from "./codemirror";
 import { markdownTheme } from "./markdown-theme";

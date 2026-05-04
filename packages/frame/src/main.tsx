@@ -1,7 +1,7 @@
 import { render } from "solid-js/web";
 
 import type { Repo } from "@automerge/automerge-repo";
-import type { ViewElement } from "patchwork-types";
+import type { ViewElement } from "patchwork";
 
 const MARKDOWN_EDITOR_SRC =
   "automerge:ktem5LsqihaRgoZbz9SXQ9uJ5J4/markdown-editor.json";
