@@ -14,27 +14,16 @@
 
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🧶</text></svg>">
     <style>
-      html, body { margin: 0; padding: 0; }
+      html, body { height: 100%; margin: 0; padding: 0; }
+      body, repo-context {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 auto;
+        min-height: 0;
+      }
     </style>
   </head>
   <body>
     <script src="./dist/patchwork.js"></script>
-
-    <!--
-      After running `pnpm push packages`, copy `rootDirectoryUrl` from
-      `packages/root/.pushwork/snapshot.json` into the `src` below and
-      re-run `pnpm push packages`. The URL stays stable across
-      subsequent pushes because pushwork preserves the package's
-      `rootDirectoryUrl`. The path component (`/root.json`) is the
-      package's manifest filename — by convention named after the
-      package, not `component.json`, so the URL self-describes.
-
-      `<app-root>` is the markdown demo entry point: a folder list
-      sidebar with branch-aware document editing. It self-bootstraps
-      its account doc via `localStorage` on first load. Sibling
-      packages (folder list, branch picker, …) are loaded by URL from
-      inside `root.js`.
-    -->
-    <patchwork-view src="automerge:3t8ivUxWittXbhnmz5ZLVCMPqxJC/root.json"/>
   </body>
 </html>

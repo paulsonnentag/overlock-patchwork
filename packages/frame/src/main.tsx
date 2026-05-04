@@ -1,24 +1,37 @@
 import { render } from "solid-js/web";
 
 import type { Repo } from "@automerge/automerge-repo";
-import type { ViewElement } from "patchwork";
+
+import { defineView } from "patchwork";
+
+// Bundled into root.js by `vite-plugin-css-injected-by-js`; the frame
+// owns its `<app-root>` host styling the same way `markdown-editor`
+// owns its host. Bootstrap doesn't know this tag name exists.
+import "./styles.css";
 
 const MARKDOWN_EDITOR_SRC =
   "automerge:ktem5LsqihaRgoZbz9SXQ9uJ5J4/markdown-editor.json";
 
 const STORAGE_KEY = "overlock-patchwork:root:markdown-url";
 
-export default function (element: ViewElement): () => void {
-  const url = ensureMarkdownUrl(element.repo);
+export default defineView(({ element, repo }) => {
+  // @ts-expect-error: window.patchwork is set by the bootstrap, untyped here
+  patchwork.registerView(MARKDOWN_EDITOR_SRC);
+
+  const url = getOrCreateMarkdownUrl(repo);
+  
+  console.log("url", url);
+
   return render(
     () => (
-      <patchwork-view src={MARKDOWN_EDITOR_SRC} doc={url} />
+      // @ts-expect-error: <markdown-editor> is a custom element, untyped JSX
+      <markdown-editor url={url} />
     ),
     element,
   );
-}
+});
 
-function ensureMarkdownUrl(repo: Repo): string {
+function getOrCreateMarkdownUrl(repo: Repo): string {
   const existing = localStorage.getItem(STORAGE_KEY);
   if (existing) return existing;
   const handle = repo.create({

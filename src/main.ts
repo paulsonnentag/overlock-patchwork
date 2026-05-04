@@ -11,6 +11,7 @@ import {
   stringifyAutomergeUrl,
 } from "@automerge/automerge-repo/slim";
 import { IndexedDBStorageAdapter } from "@automerge/automerge-repo-storage-indexeddb";
+import { defineContext } from "patchwork";
 
 import { Loader } from "./loader";
 import { BranchableRepo } from "./branchable-repo";
@@ -19,7 +20,10 @@ import { ViewRegistry, type MountFn } from "./view-registry";
 
 import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
 
-const REPO_CONTEXT_TAG = "patchwork-root";
+const REPO_CONTEXT_TAG = "repo-context";
+
+const ROOT_MANIFEST_URL =
+  "automerge:3t8ivUxWittXbhnmz5ZLVCMPqxJC/root.json";
 
 window.AutomergeRepo = {
   isValidAutomergeUrl,
@@ -29,8 +33,7 @@ window.AutomergeRepo = {
 
 const SUBDUCTION_ENDPOINT = "wss://subduction.sync.inkandswitch.com";
 
-async function initPatchwork () {
-
+async function initPatchwork() {
   await Automerge.initializeBase64Wasm(automergeWasmBase64 as string);
   // @ts-expect-error: subduction's .d.ts doesn't expose the wasm-bindgen runtime helpers like `initSync`.
   Subduction.initSync({
@@ -66,18 +69,6 @@ async function initPatchwork () {
         : undefined,
   });
 
-  // Page-level repo provider. `value` is installed directly rather
-  // than via `defineContext` because the bootstrap can't await a
-  // package load before standing the registry up, and the page-level
-  // repo never changes after install.
-  const ctx = document.createElement(REPO_CONTEXT_TAG);
-  Object.defineProperty(ctx, "value", {
-    value: branchableRepo,
-    configurable: true,
-  });
-  while (document.body.firstChild) ctx.appendChild(document.body.firstChild);
-  document.body.appendChild(ctx);
-
   const moduleWatcher = new ModuleWatcher({
     repo: branchableRepo,
     import: (url) => loader.import(url),
@@ -97,6 +88,14 @@ async function initPatchwork () {
       await moduleWatcher.load(manifestUrl);
     },
   };
+
+  viewRegistry.registerView(REPO_CONTEXT_TAG, defineContext(branchableRepo));
+
+  const rootModule = await moduleWatcher.load(ROOT_MANIFEST_URL);
+
+  const ctx = document.createElement(REPO_CONTEXT_TAG);
+  ctx.appendChild(document.createElement(rootModule.name));
+  document.body.appendChild(ctx);
 }
 
 function registerModuleView(
@@ -113,7 +112,7 @@ function registerModuleView(
   viewRegistry.registerView(module.name, mount as MountFn);
 }
 
-initPatchwork()
+initPatchwork();
 
 function base64ToBytes(b64: string): Uint8Array {
   const binary = atob(b64);

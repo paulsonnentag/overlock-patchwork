@@ -50,6 +50,9 @@ importers:
       eventemitter3:
         specifier: ^5.0.4
         version: 5.0.4
+      patchwork:
+        specifier: workspace:*
+        version: link:packages/patchwork
       resolve.exports:
         specifier: ^2.0.3
         version: 2.0.3

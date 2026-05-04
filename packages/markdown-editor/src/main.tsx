@@ -5,9 +5,8 @@ import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 
 import { parseAutomergeUrl } from "@automerge/automerge-repo";
-import type { DocHandle } from "@automerge/automerge-repo";
 
-import type { ViewElement } from "patchwork";
+import { defineView, type ViewElement } from "patchwork";
 
 import { CodeMirror } from "./codemirror";
 import { markdownTheme } from "./markdown-theme";
@@ -19,29 +18,13 @@ import "./styles.css";
 
 type TextDoc = { content?: string };
 
-const PATH = ["content"] as const;
+const PATH = ["content"];
 
-export default function (element: ViewElement<TextDoc>) {
+export default defineView<TextDoc>(({ element }) => {
   const handle = element.handle;
-  if (!handle) {
-    return renderPlaceholder(element);
-  }
+  if (!handle) return;
 
-  const isReadOnly = !!parseAutomergeUrl(handle.url).heads;
-
-  const dispose = render(
-    () => <Editor handle={handle} isReadOnly={isReadOnly} />,
-    element,
-  );
-
-  return dispose;
-}
-
-function Editor(props: {
-  handle: DocHandle<TextDoc>;
-  isReadOnly: boolean;
-}) {
-  const baseExtensions = [
+  const extensions = [
     markdown(),
     history(),
     keymap.of([...defaultKeymap, ...historyKeymap]),
@@ -49,22 +32,15 @@ function Editor(props: {
     ...markdownTheme("sans"),
   ];
 
-  return (
-    <CodeMirror
-      handle={props.handle}
-      path={[...PATH]}
-      extensions={baseExtensions}
-      readOnly={props.isReadOnly}
-    />
+  return render(
+    () => (
+      <CodeMirror
+        handle={handle}
+        path={PATH}
+        extensions={extensions}
+      />
+    ),
+    element,
   );
-}
+});
 
-function renderPlaceholder(element: ViewElement<TextDoc>): () => void {
-  const placeholder = document.createElement("textarea");
-  placeholder.disabled = true;
-  placeholder.placeholder = "Select a document";
-  element.append(placeholder);
-  return () => {
-    placeholder.remove();
-  };
-}
