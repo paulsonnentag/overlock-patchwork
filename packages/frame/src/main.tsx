@@ -14,12 +14,11 @@ const MARKDOWN_EDITOR_SRC =
 
 const STORAGE_KEY = "overlock-patchwork:root:markdown-url";
 
-export default defineView(({ element, repo }) => {
-  // @ts-expect-error: window.patchwork is set by the bootstrap, untyped here
-  patchwork.registerView(MARKDOWN_EDITOR_SRC);
+export default defineView(({ element, repo, registerView }) => {
+  registerView(MARKDOWN_EDITOR_SRC);
 
   const url = getOrCreateMarkdownUrl(repo);
-  
+
   console.log("url", url);
 
   return render(

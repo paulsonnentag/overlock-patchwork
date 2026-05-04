@@ -1,29 +1,41 @@
+import {
+  type ModuleUpdatedEvent,
+  type ModuleWatcher,
+} from "./module-watcher";
+
 export type MountFn = (
   element: HTMLElement,
 ) => undefined | (() => void) | Promise<undefined | (() => void)>;
 
-export type ViewElement = HTMLElement & {
-  isPatchworkView: true;
-};
-
 export const MOUNTED_EVENT = "patchwork:mounted";
 export const UNMOUNTED_EVENT = "patchwork:unmounted";
 
+export type ViewRegistryOptions = {
+  root: HTMLElement;
+  moduleWatcher: ModuleWatcher;
+};
+
 export class ViewRegistry {
   readonly #root: HTMLElement;
+  readonly #moduleWatcher: ModuleWatcher;
 
   readonly #mountFnByViewName = new Map<string, MountFn>();
   readonly #elementsByViewName = new Map<string, Set<HTMLElement>>();
   readonly #unmountByElement = new WeakMap<HTMLElement, () => void>();
+  readonly #nameByManifestUrl = new Map<string, string>();
   readonly #abort = new AbortController();
 
   #observer: MutationObserver;
 
-  constructor(root: HTMLElement) {
+  constructor({ root, moduleWatcher }: ViewRegistryOptions) {
     this.#root = root;
+    this.#moduleWatcher = moduleWatcher;
 
     const signal = this.#abort.signal;
     this.#root.addEventListener(MOUNTED_EVENT, this.#onMounted, { signal });
+    this.#moduleWatcher.addEventListener("updated", this.#onModuleUpdated, {
+      signal,
+    });
 
     this.#observer = new MutationObserver(this.#handleMutations);
     this.#observer.observe(this.#root, {
@@ -41,7 +53,23 @@ export class ViewRegistry {
     this.#root.replaceChildren();
   }
 
-  registerView(name: string, mount: MountFn): void {
+  async registerView(url: string): Promise<string> {
+    const cached = this.#nameByManifestUrl.get(url);
+    if (cached) return cached;
+
+    const module = await this.#moduleWatcher.load(url);
+    const mount = (module.module as { default?: MountFn }).default;
+    if (typeof mount !== "function") {
+      throw new Error(
+        `[overlock-patchwork] manifest "${url}" has no default-export mount fn`,
+      );
+    }
+    this.#nameByManifestUrl.set(url, module.name);
+    this.#registerNamed(module.name, mount);
+    return module.name;
+  }
+
+  #registerNamed(name: string, mount: MountFn): void {
     const tag = name.toLowerCase();
 
     const existing = this.#elementsByViewName.get(tag);
@@ -58,6 +86,14 @@ export class ViewRegistry {
       if (el instanceof HTMLElement) this.#tryMount(el);
     }
   }
+
+  #onModuleUpdated = (event: ModuleUpdatedEvent): void => {
+    const { moduleUrl, next } = event.detail;
+    if (!this.#nameByManifestUrl.has(moduleUrl)) return;
+    const mount = (next.module as { default?: MountFn }).default;
+    if (typeof mount !== "function") return;
+    this.#registerNamed(next.name, mount);
+  };
 
   #handleMutations = (mutations: MutationRecord[]): void => {
     for (const mutation of mutations) {
@@ -112,7 +148,6 @@ export class ViewRegistry {
       return;
     }
 
-    (el as ViewElement).isPatchworkView = true;
     if (unmount) this.#unmountByElement.set(el, unmount);
 
     el.dispatchEvent(new CustomEvent(MOUNTED_EVENT, { bubbles: true }));

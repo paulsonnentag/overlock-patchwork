@@ -7,29 +7,18 @@ import * as AutomergeRepo from "@automerge/automerge-repo/slim";
 import {
   Repo,
   isValidAutomergeUrl,
-  parseAutomergeUrl,
-  stringifyAutomergeUrl,
 } from "@automerge/automerge-repo/slim";
 import { IndexedDBStorageAdapter } from "@automerge/automerge-repo-storage-indexeddb";
-import { defineContext } from "patchwork";
 
 import { Loader } from "./loader";
 import { BranchableRepo } from "./branchable-repo";
-import { ModuleWatcher, type LoadedModule } from "./module-watcher";
-import { ViewRegistry, type MountFn } from "./view-registry";
+import { ModuleWatcher } from "./module-watcher";
+import { ViewRegistry } from "./view-registry";
 
 import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
 
-const REPO_CONTEXT_TAG = "repo-context";
-
 const ROOT_MANIFEST_URL =
   "automerge:3t8ivUxWittXbhnmz5ZLVCMPqxJC/root.json";
-
-window.AutomergeRepo = {
-  isValidAutomergeUrl,
-  parseAutomergeUrl,
-  stringifyAutomergeUrl,
-};
 
 const SUBDUCTION_ENDPOINT = "wss://subduction.sync.inkandswitch.com";
 
@@ -74,42 +63,25 @@ async function initPatchwork() {
     import: (url) => loader.import(url),
   });
 
-  const viewRegistry = new ViewRegistry(document.body);
-
-  moduleWatcher.addEventListener("loaded", (event) => {
-    registerModuleView(viewRegistry, event.detail.module);
-  });
-  moduleWatcher.addEventListener("updated", (event) => {
-    registerModuleView(viewRegistry, event.detail.next);
+  const viewRegistry = new ViewRegistry({
+    root: document.body,
+    moduleWatcher,
   });
 
-  window.patchwork = {
-    async registerView(manifestUrl: string): Promise<void> {
-      await moduleWatcher.load(manifestUrl);
-    },
-  };
+  const repoEl = document.createElement("repo-context");
+  Object.assign(repoEl, { value: branchableRepo });
+  repoEl.style.display = "contents";
 
-  viewRegistry.registerView(REPO_CONTEXT_TAG, defineContext(branchableRepo));
+  const registryEl = document.createElement("view-registry-context");
+  Object.assign(registryEl, { value: viewRegistry });
+  registryEl.style.display = "contents";
 
-  const rootModule = await moduleWatcher.load(ROOT_MANIFEST_URL);
+  repoEl.appendChild(registryEl);
 
-  const ctx = document.createElement(REPO_CONTEXT_TAG);
-  ctx.appendChild(document.createElement(rootModule.name));
-  document.body.appendChild(ctx);
-}
+  const rootName = await viewRegistry.registerView(ROOT_MANIFEST_URL);
+  registryEl.appendChild(document.createElement(rootName));
 
-function registerModuleView(
-  viewRegistry: ViewRegistry,
-  module: LoadedModule,
-): void {
-  const mount = (module.module as { default?: unknown })?.default;
-  if (typeof mount !== "function") {
-    console.warn(
-      `[overlock-patchwork] module "${module.name}" has no default export, skipping view registration`,
-    );
-    return;
-  }
-  viewRegistry.registerView(module.name, mount as MountFn);
+  document.body.appendChild(repoEl);
 }
 
 initPatchwork();

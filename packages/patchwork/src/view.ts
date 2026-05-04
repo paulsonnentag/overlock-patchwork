@@ -1,23 +1,26 @@
 import type { AutomergeUrl, DocHandle, Repo } from "@automerge/automerge-repo"
 
-import type { Mount, PatchworkElement } from "./types"
+import type { Mount } from "./types"
 
 export type Find = {
-  <T extends PatchworkElement>(
-    predicate: (element: PatchworkElement) => element is T,
+  <T extends HTMLElement>(
+    predicate: (element: HTMLElement) => element is T,
   ): T | undefined
-  (predicate: (element: PatchworkElement) => boolean): PatchworkElement | undefined
+  (predicate: (element: HTMLElement) => boolean): HTMLElement | undefined
 }
 
-export type ViewElement<V = unknown> = PatchworkElement & {
+export type ViewElement<V = unknown> = HTMLElement & {
   url: AutomergeUrl | null
   handle: DocHandle<V> | undefined
 }
+
+export type RegisterView = (url: string) => Promise<string>
 
 export type ViewProps<V = unknown> = {
   element: ViewElement<V>
   find: Find
   repo: Repo
+  registerView: RegisterView
 }
 
 export type ViewFn<V = unknown> = (
@@ -28,15 +31,10 @@ export function defineView<V = unknown>(viewFn: ViewFn<V>): Mount {
   return async (element) => {
     const viewElement = element as ViewElement<V>
 
-    const find = ((predicate: (el: PatchworkElement) => boolean) => {
+    const find = ((predicate: (el: HTMLElement) => boolean) => {
       let current = element.parentElement
       while (current) {
-        if (
-          (current as PatchworkElement).isPatchworkView === true &&
-          predicate(current as PatchworkElement)
-        ) {
-          return current as PatchworkElement
-        }
+        if (predicate(current)) return current
         current = current.parentElement
       }
       return undefined
@@ -46,6 +44,11 @@ export function defineView<V = unknown>(viewFn: ViewFn<V>): Mount {
     const repo = repoContext?.value
     if (!repo) throw new Error("no repo found")
 
+    const registryContext = find(isRegistryContext)
+    const registry = registryContext?.value
+    if (!registry) throw new Error("no registry found")
+    const registerView: RegisterView = (url) => registry.registerView(url)
+
     let unmount: (() => void) | undefined
 
     const unsub = syncProp(element, "url", async (value) => {
@@ -53,7 +56,7 @@ export function defineView<V = unknown>(viewFn: ViewFn<V>): Mount {
       if (url) viewElement.handle = await repo.find(url)
 
       if (unmount) unmount()
-      unmount = await viewFn({ element: viewElement, find, repo })
+      unmount = await viewFn({ element: viewElement, find, repo, registerView })
     })
 
     return () => {
@@ -97,13 +100,25 @@ function syncProp(
 }
 
 function isRepoContext(
-  element: PatchworkElement,
-): element is PatchworkElement & { value: Repo } {
-  const value = (element as PatchworkElement & { value?: unknown }).value
+  element: HTMLElement,
+): element is HTMLElement & { value: Repo } {
+  const value = (element as HTMLElement & { value?: unknown }).value
   return (
     typeof value === "object" &&
     value !== null &&
     "find" in value && typeof (value as { find?: unknown }).find === "function" &&
     "create" in value && typeof (value as { create?: unknown }).create === "function"
+  )
+}
+
+function isRegistryContext(
+  element: HTMLElement,
+): element is HTMLElement & { value: { registerView: RegisterView } } {
+  const value = (element as HTMLElement & { value?: unknown }).value
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "registerView" in value &&
+    typeof (value as { registerView?: unknown }).registerView === "function"
   )
 }
