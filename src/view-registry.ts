@@ -36,26 +36,28 @@ export class ViewRegistry {
   }
 
   registerView(name: string, mount: MountFn): void {
-    // todo: right now we don't handle conflicts
+    const tag = name.toLowerCase();
 
-    const matchingElements = this.#elementsByViewName.get(name);
+    const matchingElements = this.#elementsByViewName.get(tag);
 
     if (matchingElements) {
       for (const element of matchingElements) {
         const unmount = this.#unmountByElement.get(element);
 
         if (unmount) {
-          unmount
+          unmount();
+          this.#unmountByElement.delete(element);
         }
       }
     }
 
-    this.#mountFnByViewName.set(name, mount);
+    this.#mountFnByViewName.set(tag, mount);
     this.#mountViewsIn(this.#root);
   }
 
   #handleMutations = (mutations: MutationRecord[]): void => {
     for (const mutation of mutations) {
+      
       for (const node of mutation.addedNodes) {
         if (node instanceof HTMLElement) {
           this.#mountViewsIn(node);
@@ -75,7 +77,8 @@ export class ViewRegistry {
       return
     }
 
-    const mount = this.#mountFnByViewName.get(root.tagName);
+    const tag = root.tagName.toLowerCase();
+    const mount = this.#mountFnByViewName.get(tag);
 
     if (mount) {
       for (const element of this.#pendingElements) {
@@ -85,6 +88,13 @@ export class ViewRegistry {
       }
 
       this.#pendingElements.add(root);
+
+      let bucket = this.#elementsByViewName.get(tag);
+      if (!bucket) {
+        bucket = new Set();
+        this.#elementsByViewName.set(tag, bucket);
+      }
+      bucket.add(root);
 
       const unmount = await mount(root);
       (root as ViewElement).isPatchworkView = true;
@@ -110,7 +120,15 @@ export class ViewRegistry {
     const unmount = this.#unmountByElement.get(root);
 
     if (unmount) {
-      unmount()
+      unmount();
+      this.#unmountByElement.delete(root);
+    }
+
+    const tag = root.tagName.toLowerCase();
+    const bucket = this.#elementsByViewName.get(tag);
+    if (bucket) {
+      bucket.delete(root);
+      if (bucket.size === 0) this.#elementsByViewName.delete(tag);
     }
 
     for (const child of root.children) {

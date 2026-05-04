@@ -14,6 +14,9 @@ declare global {
     __overlock: {
       externals: Record<string, object>;
     };
+    patchwork: {
+      registerView: (manifestUrl: string) => Promise<void>;
+    };
   }
 }
 

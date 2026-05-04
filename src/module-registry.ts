@@ -7,76 +7,75 @@ import {
 
 import { BranchableRepo } from "./branchable-repo";
 import { parseAutomergeUrlWithPath, pinUrl, splitPath } from "./loader";
+import { TypedEventTarget } from "./typed-event-target";
 
 type Loader = (url: string) => Promise<unknown>;
 
-export type LoadedPlugin = {
+export type LoadedModule = {
   name: string;
   importUrl: string;
   module: unknown;
   [key: string]: unknown;
 };
 
-export type PluginLoadedEvent = CustomEvent<{ pluginUrl: string; plugin: LoadedPlugin }>;
+export type ModuleLoadedEvent = CustomEvent<{ moduleUrl: string; module: LoadedModule }>;
 
-export type PluginUpdatedEvent = CustomEvent<{
-  pluginUrl: string;
-  previous: LoadedPlugin;
-  next: LoadedPlugin;
+export type ModuleUpdatedEvent = CustomEvent<{
+  moduleUrl: string;
+  previous: LoadedModule;
+  next: LoadedModule;
 }>;
 
-export type PluginRemovedEvent = CustomEvent<{ pluginUrl: string }>;
+export type ModuleRemovedEvent = CustomEvent<{ moduleUrl: string; name: string }>;
 
-export type PluginChangedEvent = Event;
+export type ModuleEvent =
+  | ModuleLoadedEvent
+  | ModuleUpdatedEvent
+  | ModuleRemovedEvent
 
-export type PluginEvent =
-  | PluginLoadedEvent
-  | PluginUpdatedEvent
-  | PluginRemovedEvent
-
-export type PluginRegistryEventMap = {
-  loaded: PluginLoadedEvent;
-  updated: PluginUpdatedEvent;
-  removed: PluginRemovedEvent;
+export type ModuleRegistryEventMap = {
+  loaded: ModuleLoadedEvent;
+  updated: ModuleUpdatedEvent;
+  removed: ModuleRemovedEvent;
 };
 
-export type PluginRegistryOptions = {
+export type ModuleRegistryOptions = {
   repo: BranchableRepo;
   import: Loader;
 };
 
-type PluginRecord = {
-  plugin: LoadedPlugin;
+type ModuleRecord = {
+  module: LoadedModule;
   parentFolderHandle: DocHandle<FolderDoc>;
   unsubscribe: () => void;
 };
 
-export class PluginRegistry extends EventTarget {
+export class ModuleRegistry extends TypedEventTarget<ModuleRegistryEventMap> {
   readonly #repo: BranchableRepo;
   readonly #import: Loader;
-  readonly #loaded = new Map<string, PluginRecord>();
-  readonly #loading = new Map<string, Promise<PluginRecord>>();
+  readonly #loaded = new Map<string, ModuleRecord>();
+  readonly #loading = new Map<string, Promise<ModuleRecord>>();
   #destroyed = false;
 
-  constructor(options: PluginRegistryOptions) {
+  constructor(options: ModuleRegistryOptions) {
     super();
     this.#repo = options.repo;
     this.#import = options.import;
   }
 
-  async load(url: string): Promise<LoadedPlugin> {
+  async load(url: string): Promise<LoadedModule> {
     if (this.#destroyed) {
-      throw new Error("[overlock-patchwork] PluginRegistry has been destroyed");
+      throw new Error("[overlock-patchwork] ModuleRegistry has been destroyed");
     }
     const cached = this.#loaded.get(url);
-    if (cached) return cached.plugin;
+    if (cached) return cached.module;
     const inFlight = this.#loading.get(url);
-    if (inFlight) return inFlight.then((record) => record.plugin);
+    if (inFlight) return inFlight.then((record) => record.module);
     const promise = this.#loadFresh(url)
       .then((record) => {
         this.#loaded.set(url, record);
         this.#loading.delete(url);
-        this.#emit("loaded", { pluginUrl: url, plugin: record.plugin });
+        this.#emit("loaded", { moduleUrl: url, module: record.module });
         return record;
       })
       .catch((err) => {
@@ -84,7 +83,7 @@ export class PluginRegistry extends EventTarget {
         throw err;
       });
     this.#loading.set(url, promise);
-    return promise.then((record) => record.plugin);
+    return promise.then((record) => record.module);
   }
 
   remove(url: string): boolean {
@@ -93,7 +92,7 @@ export class PluginRegistry extends EventTarget {
     record.unsubscribe();
     this.#loaded.delete(url);
     this.#loading.delete(url);
-    this.#emit("removed", { pluginUrl: url });
+    this.#emit("removed", { moduleUrl: url, name: record.module.name });
     return true;
   }
 
@@ -105,9 +104,9 @@ export class PluginRegistry extends EventTarget {
     this.#loading.clear();
   }
 
-  #emit<K extends keyof PluginRegistryEventMap>(
+  #emit<K extends keyof ModuleRegistryEventMap>(
     name: K,
-    detail: PluginRegistryEventMap[K] extends CustomEvent<infer D> ? D : undefined,
+    detail: ModuleRegistryEventMap[K] extends CustomEvent<infer D> ? D : undefined,
   ): void {
     if (detail === undefined) {
       this.dispatchEvent(new Event(name));
@@ -116,7 +115,7 @@ export class PluginRegistry extends EventTarget {
     }
   }
 
-  async #loadFresh(url: string): Promise<PluginRecord> {
+  async #loadFresh(url: string): Promise<ModuleRecord> {
     const { rootUrl, path } = parseAutomergeUrlWithPath(url);
     const parts = splitPath(path);
     if (parts.length === 0) {
@@ -143,7 +142,7 @@ export class PluginRegistry extends EventTarget {
       );
     }
 
-    const plugin = await this.#fetchPlugin(url, parentFolderHandle, manifestName);
+    const module = await this.#fetchModule(url, parentFolderHandle, manifestName);
 
     const onChange = (): void => {
       void this.#reload(url);
@@ -153,7 +152,7 @@ export class PluginRegistry extends EventTarget {
       parentFolderHandle.off("change", onChange);
     };
 
-    return { plugin, parentFolderHandle, unsubscribe };
+    return { module, parentFolderHandle, unsubscribe };
   }
 
   async #reload(url: string): Promise<void> {
@@ -165,9 +164,9 @@ export class PluginRegistry extends EventTarget {
     const parts = splitPath(path);
     const manifestName = parts[parts.length - 1];
 
-    let next: LoadedPlugin;
+    let next: LoadedModule;
     try {
-      next = await this.#fetchPlugin(url, old.parentFolderHandle, manifestName);
+      next = await this.#fetchModule(url, old.parentFolderHandle, manifestName);
     } catch (err) {
       console.error(
         `[overlock-patchwork] HMR reload failed for ${url}:`,
@@ -179,17 +178,17 @@ export class PluginRegistry extends EventTarget {
     if (this.#destroyed) return;
     if (this.#loaded.get(url) !== old) return;
 
-    const previous = old.plugin;
-    old.plugin = next;
+    const previous = old.module;
+    old.module = next;
 
-    this.#emit("updated", { pluginUrl: url, previous, next });
+    this.#emit("updated", { moduleUrl: url, previous, next });
   }
 
-  async #fetchPlugin(
+  async #fetchModule(
     url: string,
     parentFolderHandle: DocHandle<FolderDoc>,
     manifestName: string,
-  ): Promise<LoadedPlugin> {
+  ): Promise<LoadedModule> {
     const manifestHandle = await findHandleInFolderHandle<UnixFileEntry>(
       this.#repo.repo,
       parentFolderHandle,
@@ -223,12 +222,12 @@ type RawManifest = {
 
 function readManifest(
   handle: DocHandle<UnixFileEntry>,
-  pluginUrl: string,
+  moduleUrl: string,
 ): RawManifest {
   const doc = handle.doc();
   const content = doc?.content;
   if (content == null) {
-    throw new Error(`[overlock-patchwork] manifest has no content: ${pluginUrl}`);
+    throw new Error(`[overlock-patchwork] manifest has no content: ${moduleUrl}`);
   }
   const text =
     typeof content === "string"
@@ -239,7 +238,7 @@ function readManifest(
     parsed = JSON.parse(text);
   } catch (err) {
     throw new Error(
-      `[overlock-patchwork] invalid JSON in manifest ${pluginUrl}: ${(err as Error).message}`,
+      `[overlock-patchwork] invalid JSON in manifest ${moduleUrl}: ${(err as Error).message}`,
     );
   }
   if (
@@ -249,7 +248,7 @@ function readManifest(
     typeof (parsed as { importUrl?: unknown }).importUrl !== "string"
   ) {
     throw new Error(
-      `[overlock-patchwork] manifest missing "name" or "importUrl": ${pluginUrl}`,
+      `[overlock-patchwork] manifest missing "name" or "importUrl": ${moduleUrl}`,
     );
   }
   return parsed as RawManifest;

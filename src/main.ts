@@ -14,8 +14,8 @@ import { IndexedDBStorageAdapter } from "@automerge/automerge-repo-storage-index
 
 import { Loader } from "./loader";
 import { BranchableRepo } from "./branchable-repo";
-import { PluginRegistry } from "./plugin-registry";
-import { ViewRegistry } from "./view-registry";
+import { ModuleRegistry, type LoadedModule } from "./module-registry";
+import { ViewRegistry, type MountFn } from "./view-registry";
 
 import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
 
@@ -80,15 +80,39 @@ async function initPatchwork () {
   while (document.body.firstChild) ctx.appendChild(document.body.firstChild);
   document.body.appendChild(ctx);
 
-  const pluginRegistry = new PluginRegistry({
+  const moduleRegistry = new ModuleRegistry({
     repo: branchableRepo,
     import: (url) => loader.import(url),
   });
 
-  new ViewRegistry({
-    root: document.body,
-    pluginRegistry,
+  const viewRegistry = new ViewRegistry(document.body);
+
+  moduleRegistry.addEventListener("loaded", (event) => {
+    registerModuleView(viewRegistry, event.detail.module);
   });
+  moduleRegistry.addEventListener("updated", (event) => {
+    registerModuleView(viewRegistry, event.detail.next);
+  });
+
+  window.patchwork = {
+    async registerView(manifestUrl: string): Promise<void> {
+      await moduleRegistry.load(manifestUrl);
+    },
+  };
+}
+
+function registerModuleView(
+  viewRegistry: ViewRegistry,
+  module: LoadedModule,
+): void {
+  const mount = (module.module as { default?: unknown })?.default;
+  if (typeof mount !== "function") {
+    console.warn(
+      `[overlock-patchwork] module "${module.name}" has no default export, skipping view registration`,
+    );
+    return;
+  }
+  viewRegistry.registerView(module.name, mount as MountFn);
 }
 
 initPatchwork()
