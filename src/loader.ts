@@ -17,6 +17,13 @@ import * as Lexer from "es-module-lexer";
 
 type CacheKey = string;
 
+// Shared with generated shim modules via the global symbol registry —
+// each shim does `window[Symbol.for(EXTERNALS_SYMBOL_KEY)]` to recover
+// this map. Plain `Symbol(...)` won't work because shims run in their
+// own ESM scope.
+const EXTERNALS_SYMBOL_KEY = "overlock.loader.externals";
+const EXTERNALS_SYMBOL = Symbol.for(EXTERNALS_SYMBOL_KEY);
+
 export type LoaderOptions = {
   repo: Repo;
   packagesRoot?: AutomergeUrl;
@@ -34,6 +41,7 @@ export class Loader {
   constructor(opts: LoaderOptions) {
     this.#repo = opts.repo;
     if (opts.externals) {
+      installExternals(opts.externals);
       for (const [key, mod] of Object.entries(opts.externals)) {
         const source = buildExternalShimSource(key, mod);
         const blob = new Blob([source], { type: "text/javascript" });
@@ -253,9 +261,16 @@ export function splitPath(p: string): string[] {
     .filter(Boolean);
 }
 
+function installExternals(externals: Record<string, object>): void {
+  const w = window as unknown as Record<symbol, Record<string, object>>;
+  const bag = w[EXTERNALS_SYMBOL] ?? {};
+  Object.assign(bag, externals);
+  w[EXTERNALS_SYMBOL] = bag;
+}
+
 function buildExternalShimSource(key: string, mod: object): string {
   const lines = [
-    `const m = window.__overlock.externals[${JSON.stringify(key)}];`,
+    `const m = window[Symbol.for(${JSON.stringify(EXTERNALS_SYMBOL_KEY)})][${JSON.stringify(key)}];`,
   ];
   for (const k of Object.keys(mod)) {
     if (k === "default") continue;

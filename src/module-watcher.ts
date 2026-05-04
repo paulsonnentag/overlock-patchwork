@@ -33,13 +33,13 @@ export type ModuleEvent =
   | ModuleUpdatedEvent
   | ModuleRemovedEvent
 
-export type ModuleRegistryEventMap = {
+export type ModuleWatcherEventMap = {
   loaded: ModuleLoadedEvent;
   updated: ModuleUpdatedEvent;
   removed: ModuleRemovedEvent;
 };
 
-export type ModuleRegistryOptions = {
+export type ModuleWatcherOptions = {
   repo: BranchableRepo;
   import: Loader;
 };
@@ -50,14 +50,14 @@ type ModuleRecord = {
   unsubscribe: () => void;
 };
 
-export class ModuleRegistry extends TypedEventTarget<ModuleRegistryEventMap> {
+export class ModuleWatcher extends TypedEventTarget<ModuleWatcherEventMap> {
   readonly #repo: BranchableRepo;
   readonly #import: Loader;
   readonly #loaded = new Map<string, ModuleRecord>();
   readonly #loading = new Map<string, Promise<ModuleRecord>>();
   #destroyed = false;
 
-  constructor(options: ModuleRegistryOptions) {
+  constructor(options: ModuleWatcherOptions) {
     super();
     this.#repo = options.repo;
     this.#import = options.import;
@@ -65,7 +65,7 @@ export class ModuleRegistry extends TypedEventTarget<ModuleRegistryEventMap> {
 
   async load(url: string): Promise<LoadedModule> {
     if (this.#destroyed) {
-      throw new Error("[overlock-patchwork] ModuleRegistry has been destroyed");
+      throw new Error("[overlock-patchwork] ModuleWatcher has been destroyed");
     }
     const cached = this.#loaded.get(url);
     if (cached) return cached.module;
@@ -75,7 +75,11 @@ export class ModuleRegistry extends TypedEventTarget<ModuleRegistryEventMap> {
       .then((record) => {
         this.#loaded.set(url, record);
         this.#loading.delete(url);
-        this.#emit("loaded", { moduleUrl: url, module: record.module });
+        this.dispatchEvent(
+          new CustomEvent("loaded", {
+            detail: { moduleUrl: url, module: record.module },
+          }),
+        );
         return record;
       })
       .catch((err) => {
@@ -92,7 +96,11 @@ export class ModuleRegistry extends TypedEventTarget<ModuleRegistryEventMap> {
     record.unsubscribe();
     this.#loaded.delete(url);
     this.#loading.delete(url);
-    this.#emit("removed", { moduleUrl: url, name: record.module.name });
+    this.dispatchEvent(
+      new CustomEvent("removed", {
+        detail: { moduleUrl: url, name: record.module.name },
+      }),
+    );
     return true;
   }
 
@@ -102,17 +110,6 @@ export class ModuleRegistry extends TypedEventTarget<ModuleRegistryEventMap> {
     for (const record of this.#loaded.values()) record.unsubscribe();
     this.#loaded.clear();
     this.#loading.clear();
-  }
-
-  #emit<K extends keyof ModuleRegistryEventMap>(
-    name: K,
-    detail: ModuleRegistryEventMap[K] extends CustomEvent<infer D> ? D : undefined,
-  ): void {
-    if (detail === undefined) {
-      this.dispatchEvent(new Event(name));
-    } else {
-      this.dispatchEvent(new CustomEvent(name, { detail }));
-    }
   }
 
   async #loadFresh(url: string): Promise<ModuleRecord> {
@@ -181,7 +178,9 @@ export class ModuleRegistry extends TypedEventTarget<ModuleRegistryEventMap> {
     const previous = old.module;
     old.module = next;
 
-    this.#emit("updated", { moduleUrl: url, previous, next });
+    this.dispatchEvent(
+      new CustomEvent("updated", { detail: { moduleUrl: url, previous, next } }),
+    );
   }
 
   async #fetchModule(

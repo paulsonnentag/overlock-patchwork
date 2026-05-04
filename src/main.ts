@@ -14,7 +14,7 @@ import { IndexedDBStorageAdapter } from "@automerge/automerge-repo-storage-index
 
 import { Loader } from "./loader";
 import { BranchableRepo } from "./branchable-repo";
-import { ModuleRegistry, type LoadedModule } from "./module-registry";
+import { ModuleWatcher, type LoadedModule } from "./module-watcher";
 import { ViewRegistry, type MountFn } from "./view-registry";
 
 import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
@@ -37,11 +37,9 @@ async function initPatchwork () {
     module: base64ToBytes(subductionWasmBase64 as string),
   });
 
-  window.__overlock = {
-    externals: {
-      "@automerge/automerge": Automerge,
-      "@automerge/automerge-repo": AutomergeRepo,
-    },
+  const externals = {
+    "@automerge/automerge": Automerge,
+    "@automerge/automerge-repo": AutomergeRepo,
   };
 
   const signer = await Subduction.WebCryptoSigner.setup();
@@ -61,7 +59,7 @@ async function initPatchwork () {
     ?.content?.trim();
   const loader = new Loader({
     repo,
-    externals: window.__overlock.externals,
+    externals,
     packagesRoot:
       packagesRoot && isValidAutomergeUrl(packagesRoot)
         ? (packagesRoot as AutomergeUrl)
@@ -80,23 +78,23 @@ async function initPatchwork () {
   while (document.body.firstChild) ctx.appendChild(document.body.firstChild);
   document.body.appendChild(ctx);
 
-  const moduleRegistry = new ModuleRegistry({
+  const moduleWatcher = new ModuleWatcher({
     repo: branchableRepo,
     import: (url) => loader.import(url),
   });
 
   const viewRegistry = new ViewRegistry(document.body);
 
-  moduleRegistry.addEventListener("loaded", (event) => {
+  moduleWatcher.addEventListener("loaded", (event) => {
     registerModuleView(viewRegistry, event.detail.module);
   });
-  moduleRegistry.addEventListener("updated", (event) => {
+  moduleWatcher.addEventListener("updated", (event) => {
     registerModuleView(viewRegistry, event.detail.next);
   });
 
   window.patchwork = {
     async registerView(manifestUrl: string): Promise<void> {
-      await moduleRegistry.load(manifestUrl);
+      await moduleWatcher.load(manifestUrl);
     },
   };
 }
