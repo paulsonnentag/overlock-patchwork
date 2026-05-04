@@ -1,16 +1,16 @@
 {
-  "name": "patchwork",
+  "name": "patchwork-view",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "description": "Shared runtime + types for patchwork view packages (defineView, ViewElement, ViewFn).",
-  "main": "./dist/patchwork.js",
-  "module": "./dist/patchwork.js",
+  "main": "./dist/patchwork-view.js",
+  "module": "./dist/patchwork-view.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/patchwork.js"
+      "import": "./dist/patchwork-view.js"
     }
   },
   "files": ["dist", "src"],

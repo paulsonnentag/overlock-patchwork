@@ -160,6 +160,59 @@ async function readPackageJson(absPath) {
   }
 }
 
+async function orderSubfoldersByPackageDeps(subfolders) {
+  const byPackageName = new Map();
+  const packageBySubfolder = new Map();
+
+  for (const sub of subfolders) {
+    const pkg = await readPackageJson(sub.absPath);
+    packageBySubfolder.set(sub.name, pkg);
+    if (!pkg?.name) continue;
+    const existing = byPackageName.get(pkg.name);
+    if (existing) {
+      throw new Error(
+        `Duplicate package name "${pkg.name}" in ${existing.name} and ${sub.name}`
+      );
+    }
+    byPackageName.set(pkg.name, sub);
+  }
+
+  const ordered = [];
+  const visiting = new Set();
+  const visited = new Set();
+  const alphabetical = [...subfolders].sort((a, b) => a.name.localeCompare(b.name));
+
+  for (const sub of alphabetical) visitSubfolder(sub);
+  return ordered;
+
+  function visitSubfolder(sub) {
+    if (visited.has(sub.name)) return;
+    if (visiting.has(sub.name)) {
+      throw new Error(`Package dependency cycle involving ${sub.name}`);
+    }
+
+    visiting.add(sub.name);
+    const pkg = packageBySubfolder.get(sub.name);
+    for (const depName of packageDependencyNames(pkg)) {
+      const dep = byPackageName.get(depName);
+      if (dep && dep.name !== sub.name) visitSubfolder(dep);
+    }
+    visiting.delete(sub.name);
+    visited.add(sub.name);
+    ordered.push(sub);
+  }
+}
+
+function packageDependencyNames(pkg) {
+  if (!pkg) return [];
+  return [
+    ...Object.keys(pkg.dependencies ?? {}),
+    ...Object.keys(pkg.devDependencies ?? {}),
+    ...Object.keys(pkg.peerDependencies ?? {}),
+    ...Object.keys(pkg.optionalDependencies ?? {}),
+  ];
+}
+
 // Run `pnpm install` then `pnpm build` in the subfolder if its
 // package.json has a build script. Called only when we've already
 // decided to sync — building when nothing changed would just churn the
@@ -299,7 +352,7 @@ async function main() {
   const automergeStorageDir = path.join(rootPushworkDir, "automerge");
 
   const entries = await fs.readdir(absFolder, { withFileTypes: true });
-  const subfolders = [];
+  let subfolders = [];
   const offending = [];
   for (const e of entries) {
     if (TOLERATED_TOP_LEVEL_ENTRIES.has(e.name)) continue;
@@ -320,7 +373,7 @@ async function main() {
     process.exit(1);
   }
 
-  subfolders.sort((a, b) => a.name.localeCompare(b.name));
+  subfolders = await orderSubfoldersByPackageDeps(subfolders);
 
   for (const sub of subfolders) {
     const subSnapshot = path.join(sub.absPath, ".pushwork", "snapshot.json");

@@ -6,7 +6,7 @@ import { markdown } from "@codemirror/lang-markdown";
 
 import { parseAutomergeUrl } from "@automerge/automerge-repo";
 
-import { defineView, type ViewElement } from "solid-patchwork";
+import { defineView, type ViewElement } from "patchwork-solid";
 
 import { CodeMirror } from "./codemirror";
 import { markdownTheme } from "./markdown-theme";

@@ -7,10 +7,10 @@ export default defineConfig({
     lib: {
       entry: "src/index.ts",
       formats: ["es"],
-      fileName: () => "solid-patchwork.js",
+      fileName: () => "patchwork-solid.js",
     },
     rollupOptions: {
-      external: ["solid-js", "solid-js/web", "patchwork"],
+      external: ["solid-js", "solid-js/web", "patchwork-view"],
     },
   },
 })

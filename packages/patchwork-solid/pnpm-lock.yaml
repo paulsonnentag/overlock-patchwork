@@ -32,9 +32,9 @@ importers:
       '@automerge/automerge-repo':
         specifier: 2.6.0-subduction.13
         version: 2.6.0-subduction.13
-      patchwork:
+      patchwork-view:
         specifier: automerge:4GDfeA2wqw1PBXrv4QAu8CCjXkPc
-        version: automerge:4GDfeA2wqw1PBXrv4QAu8CCjXkPc@2iTrkthyQZfCCE2bd9C5rRgpNumpVkXHKEFae8DGSTqSGtFx2p
+        version: patchwork@automerge:4GDfeA2wqw1PBXrv4QAu8CCjXkPc@2iTrkthyQZfCCE2bd9C5rRgpNumpVkXHKEFae8DGSTqSGtFx2p
       solid-js:
         specifier: ^1.9.5
         version: 1.9.12

@@ -1,0 +1,19 @@
+{
+  "name": "patchwork-vite-plugin-manifests",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Vite plugin for building Patchwork view manifests as library entries.",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "import": "./src/index.js"
+    }
+  },
+  "files": ["src"],
+  "peerDependencies": {
+    "vite": "^5.4.10"
+  }
+}

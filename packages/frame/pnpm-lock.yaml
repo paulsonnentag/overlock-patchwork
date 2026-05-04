@@ -29,13 +29,16 @@ importers:
 
   .:
     dependencies:
-      patchwork:
+      patchwork-view:
         specifier: automerge:4GDfeA2wqw1PBXrv4QAu8CCjXkPc
-        version: automerge:4GDfeA2wqw1PBXrv4QAu8CCjXkPc@2iTrkthyQZfCCE2bd9C5rRgpNumpVkXHKEFae8DGSTqSGtFx2p
+        version: patchwork@automerge:4GDfeA2wqw1PBXrv4QAu8CCjXkPc@2iTrkthyQZfCCE2bd9C5rRgpNumpVkXHKEFae8DGSTqSGtFx2p
     devDependencies:
       '@automerge/automerge-repo':
         specifier: 2.6.0-subduction.13
         version: 2.6.0-subduction.13
+      patchwork-vite-plugin-manifests:
+        specifier: automerge:2YZETGnfiAfcGJ1DFBaBh5mPtrzp
+        version: vite-plugin-patchwork-manifests@automerge:2YZETGnfiAfcGJ1DFBaBh5mPtrzp@4AvS5n3Fk3SL4tVVuoBhamybte7eWpVPvXtB6tLaNr4BmtYbM(vite@5.4.21)
       solid-js:
         specifier: ^1.9.5
         version: 1.9.12
@@ -691,6 +694,12 @@ packages:
     peerDependencies:
       vite: '>2.0.0-0'
 
+  vite-plugin-patchwork-manifests@automerge:2YZETGnfiAfcGJ1DFBaBh5mPtrzp@4AvS5n3Fk3SL4tVVuoBhamybte7eWpVPvXtB6tLaNr4BmtYbM:
+    resolution: {automergeUrl: automerge:2YZETGnfiAfcGJ1DFBaBh5mPtrzp, type: custom:automerge}
+    version: 0.0.0
+    peerDependencies:
+      vite: ^5.4.10
+
   vite-plugin-solid@2.11.12:
     resolution: {integrity: sha512-FgjPcx2OwX9h6f28jli7A4bG7PP3te8uyakE5iqsmpq3Jqi1TWLgSroC9N6cMfGRU2zXsl4Q6ISvTr2VL0QHpA==}
     peerDependencies:
@@ -1320,6 +1329,10 @@ snapshots:
   uuid@9.0.1: {}
 
   vite-plugin-css-injected-by-js@4.0.1(vite@5.4.21):
+    dependencies:
+      vite: 5.4.21
+
+  vite-plugin-patchwork-manifests@automerge:2YZETGnfiAfcGJ1DFBaBh5mPtrzp@4AvS5n3Fk3SL4tVVuoBhamybte7eWpVPvXtB6tLaNr4BmtYbM(vite@5.4.21):
     dependencies:
       vite: 5.4.21
 

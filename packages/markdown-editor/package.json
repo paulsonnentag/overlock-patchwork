@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Component package for the overlock-patchwork demo. Bundled into ./dist/markdown-editor.js by Vite; the manifest at markdown-editor.json points at the built file.",
+  "description": "Component package for the overlock-patchwork demo. Vite builds the src manifest into a dist manifest and JS bundle.",
   "scripts": {
     "build": "vite build",
     "watch": "vite build --watch"
@@ -23,8 +23,9 @@
   "devDependencies": {
     "@automerge/automerge": "3.2.5",
     "@automerge/automerge-repo": "2.6.0-subduction.13",
-    "patchwork": "automerge:4GDfeA2wqw1PBXrv4QAu8CCjXkPc",
-    "solid-patchwork": "automerge:3XY44mYiGQDhjZi1NS3vH2332jJJ",
+    "patchwork-solid": "automerge:3XY44mYiGQDhjZi1NS3vH2332jJJ",
+    "patchwork-view": "automerge:4GDfeA2wqw1PBXrv4QAu8CCjXkPc",
+    "patchwork-vite-plugin-manifests": "automerge:2YZETGnfiAfcGJ1DFBaBh5mPtrzp",
     "solid-js": "^1.9.5",
     "typescript": "^5.6.3",
     "vite": "^5.4.10",

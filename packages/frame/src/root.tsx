@@ -2,7 +2,7 @@ import { render } from "solid-js/web";
 
 import type { Repo } from "@automerge/automerge-repo";
 
-import { defineView } from "patchwork";
+import { defineView } from "patchwork-view";
 
 // Bundled into root.js by `vite-plugin-css-injected-by-js`; the frame
 // owns its `<app-root>` host styling the same way `markdown-editor`
@@ -10,7 +10,7 @@ import { defineView } from "patchwork";
 import "./styles.css";
 
 const MARKDOWN_EDITOR_SRC =
-  "automerge:ktem5LsqihaRgoZbz9SXQ9uJ5J4/markdown-editor.json";
+  "automerge:ktem5LsqihaRgoZbz9SXQ9uJ5J4/dist/markdown-editor.json";
 
 const STORAGE_KEY = "overlock-patchwork:root:markdown-url";
 

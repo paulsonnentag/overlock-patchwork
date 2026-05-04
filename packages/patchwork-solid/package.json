@@ -1,16 +1,16 @@
 {
-  "name": "solid-patchwork",
+  "name": "patchwork-solid",
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Solid wrapper around patchwork: defineView with a registerView that returns a <Dynamic>-backed component.",
-  "main": "./dist/solid-patchwork.js",
-  "module": "./dist/solid-patchwork.js",
+  "description": "Solid wrapper around patchwork-view: defineView with a registerView that returns a <Dynamic>-backed component.",
+  "main": "./dist/patchwork-solid.js",
+  "module": "./dist/patchwork-solid.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/solid-patchwork.js"
+      "import": "./dist/patchwork-solid.js"
     }
   },
   "files": ["dist", "src"],
@@ -21,12 +21,12 @@
     "server": "wss://subduction.sync.inkandswitch.com"
   },
   "peerDependencies": {
-    "patchwork": "*",
+    "patchwork-view": "*",
     "solid-js": "^1.9.5"
   },
   "devDependencies": {
     "@automerge/automerge-repo": "2.6.0-subduction.13",
-    "patchwork": "automerge:4GDfeA2wqw1PBXrv4QAu8CCjXkPc",
+    "patchwork-view": "automerge:4GDfeA2wqw1PBXrv4QAu8CCjXkPc",
     "solid-js": "^1.9.5",
     "typescript": "^5.6.3",
     "vite": "^5.4.10",

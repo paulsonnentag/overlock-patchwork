@@ -5,7 +5,7 @@ import {
   defineView as baseDefineView,
   type Mount,
   type ViewProps as CoreViewProps,
-} from "patchwork"
+} from "patchwork-view"
 
 export type ViewWrapperProps = JSX.HTMLAttributes<HTMLElement> & {
   url?: string
