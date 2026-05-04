@@ -46,40 +46,54 @@ export function defineView<V = unknown>(viewFn: ViewFn<V>): Mount {
     const repo = repoContext?.value
     if (!repo) throw new Error("no repo found")
 
-    Object.defineProperty(element, "url", {
-      get: () => element.getAttribute("url"),
-      set: (url) => {
-        if (url !== element.getAttribute("url")) {
-          element.setAttribute("url", url)
-        }
-      },
-      configurable: true,
-    })
-
-    const observer = new MutationObserver((mutations) => {
-      for (const m of mutations) {
-        if (m.attributeName === "url") mount()
-      }
-    })
-    observer.observe(element, { attributes: true, attributeFilter: ["url"] })
-
     let unmount: (() => void) | undefined
 
-    const mount = async () => {
-      const url = element.getAttribute("url") as AutomergeUrl | null
+    const unsub = syncProp(element, "url", async (value) => {
+      const url = value as AutomergeUrl | null
       if (url) viewElement.handle = await repo.find(url)
 
       if (unmount) unmount()
       unmount = await viewFn({ element: viewElement, find, repo })
-    }
-
-    mount()
+    })
 
     return () => {
       if (unmount) unmount()
-      observer.disconnect()
+      unsub()
     }
   }
+}
+
+function syncProp(
+  element: HTMLElement,
+  name: string,
+  onChange: (value: string | null) => void,
+): () => void {
+  const pending = (element as unknown as Record<string, unknown>)[name]
+
+  Object.defineProperty(element, name, {
+    get: () => element.getAttribute(name),
+    set: (value) => {
+      if (value == null) {
+        if (element.hasAttribute(name)) element.removeAttribute(name)
+      } else if (value !== element.getAttribute(name)) {
+        element.setAttribute(name, String(value))
+      }
+    },
+    configurable: true,
+  })
+
+  if (pending != null) {
+    ;(element as unknown as Record<string, unknown>)[name] = pending
+  }
+
+  const observer = new MutationObserver(() => {
+    onChange(element.getAttribute(name))
+  })
+  observer.observe(element, { attributes: true, attributeFilter: [name] })
+
+  onChange(element.getAttribute(name))
+
+  return () => observer.disconnect()
 }
 
 function isRepoContext(
