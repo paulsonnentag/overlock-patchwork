@@ -17,7 +17,7 @@ export default defineView<FolderDoc>(({ element, repo }) => {
     const doc = repo.create({
       "@patchwork": { type: "markdown" },
       title: "Untitled",
-      content: "",
+      content: "# Untitled",
     })
     folder.change((d) => {
       d.docs.push({ name: "Untitled", type: "markdown", url: doc.url })
