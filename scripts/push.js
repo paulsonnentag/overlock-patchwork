@@ -183,7 +183,7 @@ async function orderSubfoldersByPackageDeps(subfolders) {
   const alphabetical = [...subfolders].sort((a, b) => a.name.localeCompare(b.name));
 
   for (const sub of alphabetical) visitSubfolder(sub);
-  return ordered;
+  return { ordered, byPackageName, packageBySubfolder };
 
   function visitSubfolder(sub) {
     if (visited.has(sub.name)) return;
@@ -201,6 +201,24 @@ async function orderSubfoldersByPackageDeps(subfolders) {
     visited.add(sub.name);
     ordered.push(sub);
   }
+}
+
+// Walk a failed subfolder's transitive workspace-sibling deps. Excludes
+// the failed sub itself.
+function collectUpstreamSiblings(failedSub, byPackageName, packageBySubfolder) {
+  const result = new Set();
+  const stack = [failedSub];
+  while (stack.length > 0) {
+    const cur = stack.pop();
+    const pkg = packageBySubfolder.get(cur.name);
+    for (const depName of packageDependencyNames(pkg)) {
+      const dep = byPackageName.get(depName);
+      if (!dep || dep.name === failedSub.name || result.has(dep)) continue;
+      result.add(dep);
+      stack.push(dep);
+    }
+  }
+  return result;
 }
 
 function packageDependencyNames(pkg) {
@@ -236,16 +254,20 @@ async function readSubfolderRootUrl(absPath) {
 
 // Names skipped while computing a subfolder's "last touched" mtime. We
 // purposely ignore .pushwork (pushwork rewrites files in there during
-// sync) and .DS_Store (Finder churn is not interesting).
-const MTIME_IGNORED_NAMES = new Set([".pushwork", ".DS_Store"]);
+// sync), .DS_Store (Finder churn is not interesting), and node_modules
+// (pnpm churns it on every install and it's full of symlinks — neither
+// of which says anything about whether source changed since last sync).
+const MTIME_IGNORED_NAMES = new Set([".pushwork", ".DS_Store", "node_modules"]);
 
 // Find the most recent mtime (in ms) anywhere under `rootAbs`, including
 // directory mtimes so that adding/removing files (which doesn't touch
-// existing files' mtimes) still bumps the answer.
+// existing files' mtimes) still bumps the answer. Uses lstat so dangling
+// symlinks (e.g. from a partially-applied pnpm install) don't blow up
+// the walk and so we don't accidentally recurse out of the source tree.
 async function findMaxMtimeMs(rootAbs) {
   let maxMs = 0;
   async function walk(p) {
-    const stat = await fs.stat(p);
+    const stat = await fs.lstat(p);
     if (stat.mtimeMs > maxMs) maxMs = stat.mtimeMs;
     if (!stat.isDirectory()) return;
     const entries = await fs.readdir(p, { withFileTypes: true });
@@ -373,7 +395,16 @@ async function main() {
     process.exit(1);
   }
 
-  subfolders = await orderSubfoldersByPackageDeps(subfolders);
+  const { ordered, byPackageName, packageBySubfolder } =
+    await orderSubfoldersByPackageDeps(subfolders);
+  subfolders = ordered;
+
+  // Subfolders whose build/sync raised in the first pass. We retry them
+  // after `pushwork sync --nuclear`-ing their workspace-sibling deps so
+  // the server gets a fresh copy of upstream docs (which is the usual
+  // reason a downstream `pnpm install` times out fetching `automerge:`
+  // deps).
+  const failedSubs = [];
 
   for (const sub of subfolders) {
     const subSnapshot = path.join(sub.absPath, ".pushwork", "snapshot.json");
@@ -393,8 +424,17 @@ async function main() {
     if (skip) {
       console.log(`(unchanged) skipping pushwork sync for ${sub.name}`);
     } else {
-      await buildSubfolderIfNeeded(sub.absPath);
-      await syncSubfolder(sub.absPath);
+      try {
+        await buildSubfolderIfNeeded(sub.absPath);
+        await syncSubfolder(sub.absPath);
+      } catch (err) {
+        console.warn(
+          `\nwarning: failed to push ${sub.name}: ${err?.message ?? err}\n` +
+          `         will retry after --nuclear-resyncing its upstream workspace deps\n`
+        );
+        failedSubs.push(sub);
+        continue;
+      }
     }
 
     sub.url = await readSubfolderRootUrl(sub.absPath);
@@ -402,6 +442,48 @@ async function main() {
       throw new Error(
         `Subfolder ${sub.name} has no rootDirectoryUrl in .pushwork/snapshot.json after sync`
       );
+    }
+  }
+
+  if (failedSubs.length > 0) {
+    const upstreamsToNuke = new Set();
+    for (const sub of failedSubs) {
+      for (const up of collectUpstreamSiblings(
+        sub,
+        byPackageName,
+        packageBySubfolder
+      )) {
+        upstreamsToNuke.add(up);
+      }
+    }
+
+    console.log(
+      `\n=== retrying ${failedSubs.length} failed subfolder(s) after --nuclear-resyncing ${upstreamsToNuke.size} upstream(s) ===`
+    );
+
+    for (const up of upstreamsToNuke) {
+      console.log(`\n=== pushwork sync --nuclear ${up.absPath} ===`);
+      await runPushwork(["sync", "--nuclear", up.absPath]);
+      // --nuclear preserves rootDirectoryUrl (only child docs are
+      // recreated), but re-read in case the snapshot file was rewritten.
+      up.url = await readSubfolderRootUrl(up.absPath);
+      if (!up.url) {
+        throw new Error(
+          `Upstream ${up.name} has no rootDirectoryUrl after --nuclear sync`
+        );
+      }
+    }
+
+    for (const sub of failedSubs) {
+      console.log(`\n=== retry: pushing ${sub.name} ===`);
+      await buildSubfolderIfNeeded(sub.absPath);
+      await syncSubfolder(sub.absPath);
+      sub.url = await readSubfolderRootUrl(sub.absPath);
+      if (!sub.url) {
+        throw new Error(
+          `Subfolder ${sub.name} has no rootDirectoryUrl after retry`
+        );
+      }
     }
   }
 
