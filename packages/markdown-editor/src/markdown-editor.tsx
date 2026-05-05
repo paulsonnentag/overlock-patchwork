@@ -9,6 +9,7 @@ import { parseAutomergeUrl } from "@automerge/automerge-repo";
 import { defineView, type ViewElement } from "patchwork-solid";
 
 import { CodeMirror } from "./codemirror";
+import { createDiffDecorations } from "./extensions/diffDecorations";
 import { markdownTheme } from "./markdown-theme";
 // `vite-plugin-css-injected-by-js` rewrites this side-effect import at
 // build time: the CSS is bundled into `markdown-editor.js` and a
@@ -32,12 +33,15 @@ export default defineView<TextDoc>(({ element }) => {
     ...markdownTheme("sans"),
   ];
 
+  const decorations = createDiffDecorations(() => handle, PATH);
+
   return render(
     () => (
       <CodeMirror
         handle={handle}
         path={PATH}
         extensions={extensions}
+        decorations={decorations}
       />
     ),
     element,

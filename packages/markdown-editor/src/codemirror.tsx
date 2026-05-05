@@ -1,6 +1,6 @@
 import { onCleanup } from "solid-js";
 
-import { EditorView } from "@codemirror/view";
+import { Decoration, EditorView, type DecorationSet } from "@codemirror/view";
 import { EditorState, type Extension } from "@codemirror/state";
 
 import type { Prop as AutomergeProp } from "@automerge/automerge";
@@ -8,6 +8,7 @@ import type { DocHandle } from "@automerge/automerge-repo";
 
 import { createSyncExtension } from "./extensions/automergeSync";
 import { createReadOnlyExtension } from "./extensions/readOnly";
+import { createDecorationsExtension } from "./extensions/decorations";
 
 const lookup = <T = unknown,>(
   doc: unknown,
@@ -25,6 +26,7 @@ type CodeMirrorProps<T> = {
   handle: DocHandle<T>;
   path: AutomergeProp[];
   extensions?: Extension[];
+  decorations?: () => DecorationSet;
   readOnly?: boolean;
 };
 
@@ -41,8 +43,12 @@ export function CodeMirror<T>(props: CodeMirrorProps<T>) {
   const [readOnlyExtension, createEffectReconfigureReadOnly] =
     createReadOnlyExtension(() => !!props.readOnly);
 
+  const [decorationsExtension, createEffectReconfigureDecorations] =
+    createDecorationsExtension(() => props.decorations?.() ?? Decoration.none);
+
   const extensions = [
     ...(props.extensions ?? []),
+    decorationsExtension,
     syncExtension,
     readOnlyExtension,
   ];
@@ -56,6 +62,7 @@ export function CodeMirror<T>(props: CodeMirrorProps<T>) {
 
   createEffectReconfigureSync(view);
   createEffectReconfigureReadOnly(view);
+  createEffectReconfigureDecorations(view);
 
   onCleanup(() => view.destroy());
 
