@@ -11,7 +11,6 @@ import {
 import { IndexedDBStorageAdapter } from "@automerge/automerge-repo-storage-indexeddb";
 
 import { Loader } from "./loader";
-import { BranchableRepo } from "./branchable-repo";
 import { ModuleWatcher } from "./module-watcher";
 import { ViewRegistry } from "./view-registry";
 
@@ -44,8 +43,6 @@ async function initPatchwork() {
     subductionWebsocketEndpoints: [SUBDUCTION_ENDPOINT],
   });
 
-  const branchableRepo = new BranchableRepo(repo);
-
   const packagesRoot = document
     .querySelector<HTMLMetaElement>('meta[name="overlock-packages-root"]')
     ?.content?.trim();
@@ -59,7 +56,7 @@ async function initPatchwork() {
   });
 
   const moduleWatcher = new ModuleWatcher({
-    repo: branchableRepo,
+    repo,
     import: (url) => loader.import(url),
   });
 
@@ -69,7 +66,7 @@ async function initPatchwork() {
   });
 
   const repoEl = document.createElement("repo-context");
-  Object.assign(repoEl, { value: branchableRepo });
+  Object.assign(repoEl, { value: repo });
   repoEl.style.display = "contents";
 
   const registryEl = document.createElement("view-registry-context");

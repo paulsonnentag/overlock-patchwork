@@ -1,11 +1,10 @@
-import { type DocHandle } from "@automerge/automerge-repo/slim";
+import { type DocHandle, type Repo } from "@automerge/automerge-repo/slim";
 import {
   findHandleInFolderHandle,
   type FolderDoc,
   type UnixFileEntry,
 } from "@inkandswitch/patchwork-filesystem";
 
-import { BranchableRepo } from "./branchable-repo";
 import { parseAutomergeUrlWithPath, pinUrl, splitPath } from "./loader";
 import { TypedEventTarget } from "./typed-event-target";
 
@@ -40,7 +39,7 @@ export type ModuleWatcherEventMap = {
 };
 
 export type ModuleWatcherOptions = {
-  repo: BranchableRepo;
+  repo: Repo;
   import: Loader;
 };
 
@@ -51,7 +50,7 @@ type ModuleRecord = {
 };
 
 export class ModuleWatcher extends TypedEventTarget<ModuleWatcherEventMap> {
-  readonly #repo: BranchableRepo;
+  readonly #repo: Repo;
   readonly #import: Loader;
   readonly #loaded = new Map<string, ModuleRecord>();
   readonly #loading = new Map<string, Promise<ModuleRecord>>();
@@ -128,8 +127,7 @@ export class ModuleWatcher extends TypedEventTarget<ModuleWatcherEventMap> {
       parentParts.length === 0
         ? rootHandle
         : ((await findHandleInFolderHandle<FolderDoc>(
-            // Module resolution should never see branched docs.
-            this.#repo.repo,
+            this.#repo,
             rootHandle,
             parentParts,
           )) as DocHandle<FolderDoc> | undefined);
@@ -189,7 +187,7 @@ export class ModuleWatcher extends TypedEventTarget<ModuleWatcherEventMap> {
     manifestName: string,
   ): Promise<LoadedModule> {
     const manifestHandle = await findHandleInFolderHandle<UnixFileEntry>(
-      this.#repo.repo,
+      this.#repo,
       parentFolderHandle,
       [manifestName],
     );
@@ -202,7 +200,7 @@ export class ModuleWatcher extends TypedEventTarget<ModuleWatcherEventMap> {
     );
 
     const absoluteImportUrl = resolveImportUrl(url, manifest.importUrl);
-    const pinnedImportUrl = await pinUrl(this.#repo.repo, absoluteImportUrl);
+    const pinnedImportUrl = await pinUrl(this.#repo, absoluteImportUrl);
     const module = await this.#import(pinnedImportUrl);
 
     return {

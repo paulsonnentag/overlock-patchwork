@@ -192,8 +192,6 @@ export class ViewRegistry extends TypedEventTarget<ViewRegistryEventMap> {
       this.#unmountByElement.delete(el);
     }
     this.#mountFnByElement.delete(el);
-
-    el.replaceChildren();
     el.dispatchEvent(new CustomEvent("patchwork:unmounted", { bubbles: true }));
   }
 }
