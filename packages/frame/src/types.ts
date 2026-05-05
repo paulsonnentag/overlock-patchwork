@@ -3,6 +3,7 @@ import { StateHandle } from "patchwork-solid"
 
 export type AccountDoc = {
   rootFolderUrl: AutomergeUrl
+  packagesFolderUrl: AutomergeUrl
 }
 
 export type DocLink = {
@@ -25,5 +26,18 @@ export type DocumentSelection = {
 export function isDocumentSelectionHandle(
   value: unknown,
 ): value is StateHandle<DocumentSelection> {
+  return value instanceof StateHandle
+}
+
+export type Manifest = {
+  name: string
+  importUrl: string
+  url: string
+  [key: string]: unknown
+}
+
+export function isPackageRegistryHandle(
+  value: unknown,
+): value is StateHandle<Manifest[]> {
   return value instanceof StateHandle
 }

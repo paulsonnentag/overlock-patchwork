@@ -211,6 +211,10 @@ export class ModuleWatcher extends TypedEventTarget<ModuleWatcherEventMap> {
   }
 }
 
+export function isModuleWatcher(value: unknown): value is ModuleWatcher {
+  return value instanceof ModuleWatcher;
+}
+
 type RawManifest = {
   name: string;
   importUrl: string;

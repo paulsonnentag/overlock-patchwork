@@ -14,6 +14,7 @@ export default defineConfig({
         "document-selection-context": "src/document-selection-context.json",
         "document-selection-url-sync": "src/document-selection-url-sync.json",
         "folder-list": "src/folder-list.json",
+        "package-registry-context": "src/package-registry-context.json",
         "single-view": "src/single-view.json",
       },
       formats: ["es"],

@@ -75,8 +75,13 @@ async function initPatchwork() {
 
   repoEl.appendChild(registryEl);
 
+  const moduleWatcherEl = document.createElement("module-watcher-context");
+  Object.assign(moduleWatcherEl, { value: moduleWatcher });
+  moduleWatcherEl.style.display = "contents";
+  registryEl.appendChild(moduleWatcherEl);
+
   const rootName = await viewRegistry.registerView(ROOT_MANIFEST_URL);
-  registryEl.appendChild(document.createElement(rootName));
+  moduleWatcherEl.appendChild(document.createElement(rootName));
 
   document.body.appendChild(repoEl);
 }

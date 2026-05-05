@@ -10,6 +10,23 @@ document-selection-context {
   display: contents;
 }
 
+checked-out-branch-context {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.frame__branch-bar {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid #e5e5e5;
+  background: #fafafa;
+  flex: 0 0 auto;
+}
+
 .frame__sidebar {
   display: flex;
   flex-direction: column;
