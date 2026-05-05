@@ -316,7 +316,10 @@ export class BranchedDocHandle<T> {
   diff(first?: UrlHeads | DocHandle<T>, second?: UrlHeads): Patch[] {
     if (first === undefined) {
       if (!this.#cloneHandle || !this.#forkHeads) return []
-      return this.#cloneHandle.diff(this.#forkHeads)
+      // Patches go forkHeads → current so additions on the branch appear
+      // as `splice` and deletions as `del`. The single-arg form of
+      // `DocHandle.diff` is `from=current, to=heads` (i.e. reversed).
+      return this.#cloneHandle.diff(this.#forkHeads, this.#cloneHandle.heads())
     }
     return this.#active.diff(first as UrlHeads | DocHandle<T>, second)
   }
