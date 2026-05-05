@@ -46,7 +46,6 @@ const MARKDOWN_STYLES: Record<string, Record<string, string | number>> = {
     lineHeight: "1.5rem",
     color: "var(--color-base-content)",
     caretColor: "var(--color-base-content)",
-    marginBlock: "2rem",
     marginInline: "auto",
     paddingInline: "1rem",
     maxWidth: "var(--max-text-line-width)",
