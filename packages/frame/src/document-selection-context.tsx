@@ -1,10 +1,10 @@
 import type { AutomergeUrl } from "@automerge/automerge-repo"
 
-import { defineView, StateHandle } from "patchwork-solid"
+import { defineView, StateHandle, ViewElement } from "patchwork-solid"
 
 import type { DocumentSelection } from "./types"
 
-export default defineView(({ element }) => {
+export default (element: ViewElement) => {
   const handle = new StateHandle<DocumentSelection>(
     { activeDocumentUrl: null, openedDocumentUrls: [] },
     selectionEquals,
@@ -42,7 +42,7 @@ export default defineView(({ element }) => {
     element.removeEventListener("open-document", onOpen)
     element.removeEventListener("close-document", onClose)
   }
-})
+}
 
 function selectionEquals(a: DocumentSelection, b: DocumentSelection): boolean {
   if (a.activeDocumentUrl !== b.activeDocumentUrl) return false

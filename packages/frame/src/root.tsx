@@ -31,8 +31,6 @@ export default defineView(({ element, registerView }) => {
   const SingleView = registerView(SINGLE_VIEW_SRC)
   const NewMarkdownButton = registerView(NEW_MARKDOWN_BUTTON_SRC)
 
-  // Hold the raw handle and project inside the Show's render scope so
-  // makeDocumentProjection's onCleanup runs in a tracked Solid context.
   const [accountHandle, setAccountHandle] =
     createSignal<DocHandle<AccountDoc>>()
 
