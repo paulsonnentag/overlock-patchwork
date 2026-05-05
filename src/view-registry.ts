@@ -1,26 +1,48 @@
-import {
-  type ModuleUpdatedEvent,
-  type ModuleWatcher,
-} from "./module-watcher";
+import { type ModuleUpdatedEvent, type ModuleWatcher } from "./module-watcher";
+import { TypedEventTarget } from "./typed-event-target";
 
 export type MountFn = (
-  element: HTMLElement,
+  element: HTMLElement
 ) => undefined | (() => void) | Promise<undefined | (() => void)>;
-
-export const MOUNTED_EVENT = "patchwork:mounted";
-export const UNMOUNTED_EVENT = "patchwork:unmounted";
 
 export type ViewRegistryOptions = {
   root: HTMLElement;
   moduleWatcher: ModuleWatcher;
 };
 
-export class ViewRegistry {
+export type ViewRegistryLoadedEvent = CustomEvent<{
+  viewUrl: string;
+  view: { name: string; mount: MountFn; [key: string]: unknown };
+}>;
+
+export type ViewRegistryUpdatedEvent = CustomEvent<{
+  viewUrl: string;
+  previous: { name: string; mount: MountFn; [key: string]: unknown };
+  next: { name: string; mount: MountFn; [key: string]: unknown };
+}>;
+
+export type ViewRegistryRemovedEvent = CustomEvent<{
+  viewUrl: string;
+  name: string;
+}>;
+
+export type ViewRegistryEvent =
+  | ViewRegistryLoadedEvent
+  | ViewRegistryUpdatedEvent
+  | ViewRegistryRemovedEvent;
+
+export type ViewRegistryEventMap = {
+  loaded: ViewRegistryLoadedEvent;
+  updated: ViewRegistryUpdatedEvent;
+  removed: ViewRegistryRemovedEvent;
+};
+
+export class ViewRegistry extends TypedEventTarget<ViewRegistryEventMap> {
   readonly #root: HTMLElement;
   readonly #moduleWatcher: ModuleWatcher;
 
   readonly #mountFnByViewName = new Map<string, MountFn>();
-  readonly #elementsByViewName = new Map<string, Set<HTMLElement>>();
+  readonly #mountFnByElement = new WeakMap<HTMLElement, MountFn>();
   readonly #unmountByElement = new WeakMap<HTMLElement, () => void>();
   readonly #nameByManifestUrl = new Map<string, string>();
   readonly #abort = new AbortController();
@@ -28,11 +50,14 @@ export class ViewRegistry {
   #observer: MutationObserver;
 
   constructor({ root, moduleWatcher }: ViewRegistryOptions) {
+    super();
     this.#root = root;
     this.#moduleWatcher = moduleWatcher;
 
     const signal = this.#abort.signal;
-    this.#root.addEventListener(MOUNTED_EVENT, this.#onMounted, { signal });
+    this.#root.addEventListener("patchwork:mounted", this.#onMounted, {
+      signal,
+    });
     this.#moduleWatcher.addEventListener("updated", this.#onModuleUpdated, {
       signal,
     });
@@ -61,7 +86,7 @@ export class ViewRegistry {
     const mount = (module.module as { default?: MountFn }).default;
     if (typeof mount !== "function") {
       throw new Error(
-        `[overlock-patchwork] manifest "${url}" has no default-export mount fn`,
+        `[overlock-patchwork] manifest "${url}" has no default-export mount fn`
       );
     }
     this.#nameByManifestUrl.set(url, module.name);
@@ -72,19 +97,8 @@ export class ViewRegistry {
   #registerNamed(name: string, mount: MountFn): void {
     const tag = name.toLowerCase();
 
-    const existing = this.#elementsByViewName.get(tag);
-    if (existing) {
-      for (const element of [...existing]) this.#unmountElement(element);
-    }
-
     this.#mountFnByViewName.set(tag, mount);
-
-    if (this.#root.tagName.toLowerCase() === tag) {
-      this.#tryMount(this.#root);
-    }
-    for (const el of this.#root.querySelectorAll(tag)) {
-      if (el instanceof HTMLElement) this.#tryMount(el);
-    }
+    this.#scanSubtree(this.#root, { matchTag: name });
   }
 
   #onModuleUpdated = (event: ModuleUpdatedEvent): void => {
@@ -114,43 +128,52 @@ export class ViewRegistry {
     }
   };
 
-  #scanSubtree(root: HTMLElement): void {
-    if (this.#mountFnByViewName.has(root.tagName.toLowerCase())) {
+  #scanSubtree(root: HTMLElement, opts?: { matchTag: string }): void {
+    // when root matches a registered view mount it and return immediately
+    // if root contains sub views they will be mounted once the mounted event is triggered on root
+    const normalizedTagName = root.tagName.toLowerCase();
+    if (
+      (!opts?.matchTag || opts.matchTag == normalizedTagName) &&
+      this.#mountFnByViewName.has(normalizedTagName)
+    ) {
       this.#tryMount(root);
       return;
     }
+
+    // when root is just a regular html element we can immediately mount the children
     for (const child of root.children) {
-      if (child instanceof HTMLElement) this.#scanSubtree(child);
+      if (child instanceof HTMLElement) this.#scanSubtree(child, opts);
     }
   }
 
-  async #tryMount(el: HTMLElement): Promise<void> {
+  #tryMount(el: HTMLElement): Promise<void> | undefined {
     if (this.#abort.signal.aborted) return;
-    if (this.#unmountByElement.has(el)) return;
 
     const tag = el.tagName.toLowerCase();
     const mount = this.#mountFnByViewName.get(tag);
     if (!mount) return;
 
-    let bucket = this.#elementsByViewName.get(tag);
-    if (!bucket) {
-      bucket = new Set();
-      this.#elementsByViewName.set(tag, bucket);
-    }
-    bucket.add(el);
+    if (this.#mountFnByElement.get(el) === mount) return Promise.resolve();
 
-    const unmount = await mount(el);
-
-    if (this.#abort.signal.aborted || !el.isConnected) {
-      if (unmount) unmount();
-      bucket.delete(el);
-      if (bucket.size === 0) this.#elementsByViewName.delete(tag);
-      return;
+    const previous = this.#unmountByElement.get(el);
+    if (previous) {
+      previous();
+      this.#unmountByElement.delete(el);
     }
 
-    if (unmount) this.#unmountByElement.set(el, unmount);
+    this.#mountFnByElement.set(el, mount);
 
-    el.dispatchEvent(new CustomEvent(MOUNTED_EVENT, { bubbles: true }));
+    return Promise.resolve(mount(el)).then((unmount) => {
+      if (
+        this.#abort.signal.aborted ||
+        this.#mountFnByElement.get(el) !== mount
+      ) {
+        if (unmount) unmount();
+        return;
+      }
+      if (unmount) this.#unmountByElement.set(el, unmount);
+      el.dispatchEvent(new CustomEvent("patchwork:mounted", { bubbles: true }));
+    });
   }
 
   #unmountSubtree(root: HTMLElement): void {
@@ -168,14 +191,9 @@ export class ViewRegistry {
       unmount();
       this.#unmountByElement.delete(el);
     }
+    this.#mountFnByElement.delete(el);
 
-    const tag = el.tagName.toLowerCase();
-    const bucket = this.#elementsByViewName.get(tag);
-    if (bucket) {
-      bucket.delete(el);
-      if (bucket.size === 0) this.#elementsByViewName.delete(tag);
-    }
-
-    el.dispatchEvent(new CustomEvent(UNMOUNTED_EVENT, { bubbles: true }));
+    el.replaceChildren();
+    el.dispatchEvent(new CustomEvent("patchwork:unmounted", { bubbles: true }));
   }
 }
