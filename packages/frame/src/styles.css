@@ -1,6 +1,68 @@
 app-root {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   flex: 1 1 auto;
+  min-height: 0;
+}
+
+document-selection-context {
+  display: contents;
+}
+
+.frame__sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  width: 240px;
+  border-right: 1px solid #e5e5e5;
+  background: #fafafa;
+  overflow-y: auto;
+  flex: 0 0 auto;
+}
+
+.new-markdown-button {
+  align-self: flex-start;
+  padding: 4px 10px;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.new-markdown-button:hover {
+  background: #f0f0f0;
+}
+
+.folder-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.folder-list__item {
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.folder-list__item:hover {
+  background: #ececec;
+}
+
+single-view {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+single-view markdown-editor {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
 }

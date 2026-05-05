@@ -6,9 +6,15 @@ import { patchworkManifests } from "patchwork-vite-plugin-manifests";
 export default defineConfig({
   plugins: [patchworkManifests(), solid(), cssInjectedByJsPlugin()],
   build: {
+    sourcemap: true,
     lib: {
       entry: {
         root: "src/root.json",
+        "account-context": "src/account-context.json",
+        "document-selection-context": "src/document-selection-context.json",
+        "document-selection-url-sync": "src/document-selection-url-sync.json",
+        "folder-list": "src/folder-list.json",
+        "single-view": "src/single-view.json",
       },
       formats: ["es"],
     },

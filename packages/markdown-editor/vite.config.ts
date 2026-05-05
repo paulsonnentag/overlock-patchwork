@@ -9,6 +9,7 @@ export default defineConfig({
     lib: {
       entry: {
         "markdown-editor": "src/markdown-editor.json",
+        "new-markdown-button": "src/new-markdown-button.json",
       },
       formats: ["es"],
     },
