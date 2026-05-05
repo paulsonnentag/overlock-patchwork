@@ -26,7 +26,14 @@ export type DocumentSelection = {
 export function isDocumentSelectionHandle(
   value: unknown,
 ): value is StateHandle<DocumentSelection> {
-  return value instanceof StateHandle
+  if (!(value instanceof StateHandle)) return false
+  const v = value.value as unknown
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    "activeDocumentUrl" in v &&
+    "openedDocumentUrls" in v
+  )
 }
 
 export type Manifest = {
@@ -39,5 +46,5 @@ export type Manifest = {
 export function isPackageRegistryHandle(
   value: unknown,
 ): value is StateHandle<Manifest[]> {
-  return value instanceof StateHandle
+  return value instanceof StateHandle && Array.isArray(value.value)
 }
