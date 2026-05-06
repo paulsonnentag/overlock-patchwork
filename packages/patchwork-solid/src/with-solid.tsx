@@ -1,12 +1,20 @@
-import { Show, createResource, splitProps, type Component, type JSX } from "solid-js"
+import {
+  Show,
+  createResource,
+  splitProps,
+  type Component,
+  type JSX,
+} from "solid-js"
 import { Dynamic } from "solid-js/web"
 
 import {
-  defineView as baseDefineView,
+  withContext,
+  type Ctx,
+  type Handler,
   type Mount,
   type ViewElement,
-  type ViewProps as CoreViewProps,
-} from "patchwork-view"
+  type WithContextCtx,
+} from "patchwork-dom"
 
 export const MOUNTED_EVENT = "patchwork:mounted"
 export const UNMOUNTED_EVENT = "patchwork:unmounted"
@@ -20,25 +28,22 @@ export type RegisterView = <V = unknown>(
   manifestUrl: string,
 ) => Component<ViewWrapperProps<V>>
 
-export type ViewProps<V = unknown> = Omit<CoreViewProps<V>, "registerView"> & {
+export type WithSolidCtx = Omit<WithContextCtx, "registerView"> & {
   registerView: RegisterView
 }
 
-export type ViewFn<V = unknown> = (
-  props: ViewProps<V>,
-) => undefined | (() => void) | Promise<undefined | (() => void)>
-
-export function defineView<V = unknown>(viewFn: ViewFn<V>): Mount {
-  return baseDefineView<V>((coreProps) => {
-    const { registerView: coreRegister, ...rest } = coreProps
-
+export function withSolid<C extends Ctx>(
+  next: Handler<C & WithSolidCtx>,
+): Mount<C> {
+  return withContext<C>((ctx) => {
+    const baseRegister = ctx.registerView
     const registerView: RegisterView = <W = unknown,>(manifestUrl: string) => {
-      const promise = coreRegister(manifestUrl).catch((err) => {
-        console.error("[solid-patchwork] registerView failed", manifestUrl, err)
+      const promise = baseRegister(manifestUrl).catch((err) => {
+        console.error("[patchwork-solid] registerView failed", manifestUrl, err)
         return undefined
       })
 
-      return (props: ViewWrapperProps<W>) => {
+      return (props: ViewWrapperProps<W>): JSX.Element => {
         const [tag] = createResource(() => promise)
         const [local, rest] = splitProps(props, ["onMounted"])
 
@@ -61,6 +66,6 @@ export function defineView<V = unknown>(viewFn: ViewFn<V>): Mount {
       }
     }
 
-    return viewFn({ ...rest, registerView } as ViewProps<V>)
+    return next({ ...ctx, registerView })
   })
 }

@@ -17,6 +17,7 @@ export default defineConfig({
       external: [
         "solid-js",
         "solid-js/web",
+        "solid-js/store",
         "@automerge/automerge",
         "@automerge/automerge-repo",
       ],
@@ -26,6 +27,7 @@ export default defineConfig({
         paths: {
           "solid-js": "https://esm.sh/solid-js@1.9.5",
           "solid-js/web": "https://esm.sh/solid-js@1.9.5/web",
+          "solid-js/store": "https://esm.sh/solid-js@1.9.5/store",
         },
       },
     },

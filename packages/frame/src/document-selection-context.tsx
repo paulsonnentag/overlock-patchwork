@@ -1,6 +1,6 @@
 import type { AutomergeUrl } from "@automerge/automerge-repo"
 
-import { defineView, StateHandle, ViewElement } from "patchwork-solid"
+import { StateHandle, type ViewElement } from "patchwork-dom"
 
 import type { DocumentSelection } from "./types"
 
@@ -9,7 +9,7 @@ export default (element: ViewElement) => {
     { activeDocumentUrl: null, openedDocumentUrls: [] },
     selectionEquals,
   )
-  Object.assign(element, { value: handle })
+  Object.assign(element, { handle })
   element.style.display = "contents"
 
   const onOpen = (e: Event) => {

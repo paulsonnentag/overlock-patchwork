@@ -5,7 +5,7 @@ export default defineConfig({
     lib: {
       entry: "src/index.ts",
       formats: ["es"],
-      fileName: () => "patchwork-view.js",
+      fileName: () => "patchwork-dom.js",
     },
   },
 });

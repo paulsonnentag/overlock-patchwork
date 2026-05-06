@@ -1,16 +1,16 @@
 {
-  "name": "patchwork-view",
+  "name": "patchwork-dom",
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Shared runtime + types for patchwork view packages (defineView, ViewElement, ViewFn).",
-  "main": "./dist/patchwork-view.js",
-  "module": "./dist/patchwork-view.js",
+  "description": "DOM-level mounting middlewares for patchwork views (withRepo, withRegistry, withContext, withDocHandle).",
+  "main": "./dist/patchwork-dom.js",
+  "module": "./dist/patchwork-dom.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/patchwork-view.js"
+      "import": "./dist/patchwork-dom.js"
     }
   },
   "files": ["dist", "src"],

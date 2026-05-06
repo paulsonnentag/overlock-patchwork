@@ -1,33 +1,18 @@
-import type { AutomergeUrl, Repo } from "@automerge/automerge-repo"
+import type { AutomergeUrl } from "@automerge/automerge-repo"
 
-import { findContext, type ViewElement } from "patchwork-solid"
+import { withContext } from "patchwork-dom"
 
 import { BranchableRepo } from "./branchable-repo"
 import { isBranchableRepo, type ForkOpts } from "./types"
 
-function isRepoLike(value: unknown): value is Repo {
-  return (
-    !!value &&
-    typeof value === "object" &&
-    typeof (value as { find?: unknown }).find === "function" &&
-    typeof (value as { create?: unknown }).create === "function"
-  )
-}
-
-export default (element: ViewElement) => {
-  const outer = findContext(element, isRepoLike)
-  if (!outer) {
-    throw new Error(
-      "checked-out-branch-context: no <repo-context> ancestor",
-    )
-  }
-  if (isBranchableRepo(outer)) {
+export default withContext(({ element, repo }) => {
+  if (isBranchableRepo(repo)) {
     throw new Error(
       "checked-out-branch-context: nested branching is not supported",
     )
   }
 
-  const branchable = new BranchableRepo(outer)
+  const branchable = new BranchableRepo(repo)
 
   const inner = document.createElement("repo-context")
   Object.assign(inner, { value: branchable })
@@ -55,4 +40,4 @@ export default (element: ViewElement) => {
     element.removeEventListener("branch:checkout", onCheckout)
     element.removeEventListener("branch:reset", onReset)
   }
-}
+})

@@ -1,12 +1,12 @@
 import type { AutomergeUrl } from "@automerge/automerge-repo"
 
-import { defineView } from "patchwork-solid"
+import { withContext } from "patchwork-dom"
 
 import type { AccountDoc, FolderDoc } from "./types"
 
 const STORAGE_KEY = "overlock-patchwork:root:account-url"
 
-export default defineView<AccountDoc>(async ({ element, repo }) => {
+export default withContext(async ({ element, repo }) => {
   let url = localStorage.getItem(STORAGE_KEY) as AutomergeUrl | null
   if (!url) {
     const rootFolder = repo.create<FolderDoc>({ title: "root", docs: [] })
@@ -23,7 +23,6 @@ export default defineView<AccountDoc>(async ({ element, repo }) => {
   }
 
   const handle = await repo.find<AccountDoc>(url)
-  Object.assign(element, { value: handle, handle, url })
+  Object.assign(element, { handle })
   element.style.display = "contents"
-  return undefined
 })

@@ -14,11 +14,8 @@ import {
   type DocHandle,
 } from "@automerge/automerge-repo"
 
-import {
-  defineView,
-  findContext,
-  makeDocumentProjection,
-} from "patchwork-solid"
+import { withDocHandle } from "patchwork-dom"
+import { useHandle } from "patchwork-solid"
 
 import {
   BRANCH_MARKER,
@@ -32,22 +29,16 @@ function canonicalUrl(url: AutomergeUrl): AutomergeUrl {
   return stringifyAutomergeUrl({ documentId })
 }
 
-export default defineView<DocWithBranchIndex>(({ element }) => {
-  const handle = element.handle
-  if (!handle) return
-
-  const branchable = findContext(element, isBranchableRepo)
-  if (!branchable) {
-    throw new Error(
-      "branch-picker: no <checked-out-branch-context> ancestor",
-    )
+export default withDocHandle<DocWithBranchIndex>(({ element, repo, handle }) => {
+  if (!isBranchableRepo(repo)) {
+    throw new Error("branch-picker: no <checked-out-branch-context> ancestor")
   }
-
+  const branchable = repo
   const rawRepo = branchable.repo
   const originalUrl = handle.url
 
   const Picker = () => {
-    const doc = makeDocumentProjection(handle)
+    const doc = useHandle(handle)
 
     const [branchState, setBranchState] = createSignal({
       url: branchable.branchHandle?.url ?? null,
@@ -92,9 +83,7 @@ export default defineView<DocWithBranchIndex>(({ element }) => {
 
     let lastIndexUrl: AutomergeUrl | null = null
     createEffect(() => {
-      const url =
-        (doc() as DocWithBranchIndex | undefined)?.[BRANCH_MARKER]
-          ?.branchIndexUrl ?? null
+      const url = doc[BRANCH_MARKER]?.branchIndexUrl ?? null
       if (url === lastIndexUrl) return
       lastIndexUrl = url
       void attachIndex(url)

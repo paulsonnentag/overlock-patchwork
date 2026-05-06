@@ -1,5 +1,5 @@
 import type { AutomergeUrl } from "@automerge/automerge-repo"
-import { StateHandle } from "patchwork-solid"
+import { StateHandle } from "patchwork-dom"
 
 export type AccountDoc = {
   rootFolderUrl: AutomergeUrl

@@ -10,7 +10,12 @@ export default defineConfig({
       fileName: () => "patchwork-solid.js",
     },
     rollupOptions: {
-      external: ["solid-js", "solid-js/web", "patchwork-view"],
+      external: [
+        "solid-js",
+        "solid-js/web",
+        "solid-js/store",
+        "patchwork-dom",
+      ],
     },
   },
 })

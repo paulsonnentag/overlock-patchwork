@@ -3,13 +3,8 @@ import { render } from "solid-js/web"
 
 import type { DocHandle } from "@automerge/automerge-repo"
 
-import {
-  defineView,
-  makeDocumentProjection,
-  makeStateProjection,
-  StateHandle,
-  type ViewElement,
-} from "patchwork-solid"
+import { StateHandle, type ViewElement } from "patchwork-dom"
+import { useHandle, withSolid } from "patchwork-solid"
 
 import "./styles.css"
 
@@ -30,7 +25,7 @@ const NEW_MARKDOWN_BUTTON_SRC = `${MD_PKG}/new-markdown-button.json`
 const CHECKED_OUT_BRANCH_CONTEXT_SRC = `${BRANCHES_PKG}/checked-out-branch-context.json`
 const BRANCH_PICKER_SRC = `${BRANCHES_PKG}/branch-picker.json`
 
-export default defineView(({ element, registerView }) => {
+export default withSolid(({ element, registerView }) => {
   const AccountContext = registerView<AccountDoc>(ACCOUNT_CONTEXT_SRC)
   const SelectionContext = registerView(SELECTION_CONTEXT_SRC)
   const SelectionUrlSync = registerView(SELECTION_URL_SYNC_SRC)
@@ -47,8 +42,8 @@ export default defineView(({ element, registerView }) => {
     createSignal<StateHandle<DocumentSelection>>()
 
   const onSelectionMounted = (el: ViewElement) => {
-    const value = (el as HTMLElement & { value?: unknown }).value
-    if (isDocumentSelectionHandle(value)) setSelectionHandle(value)
+    const handle = (el as HTMLElement & { handle?: unknown }).handle
+    if (isDocumentSelectionHandle(handle)) setSelectionHandle(handle)
   }
 
   return render(
@@ -60,19 +55,19 @@ export default defineView(({ element, registerView }) => {
       >
         <Show when={accountHandle()}>
           {(handle) => {
-            const account = makeDocumentProjection(handle())
+            const account = useHandle(handle())
             return (
               <SelectionContext onMounted={onSelectionMounted}>
                 <SelectionUrlSync />
-                <PackageRegistryContext url={account().packagesFolderUrl}>
+                <PackageRegistryContext url={account.packagesFolderUrl}>
                   <div class="frame__sidebar">
-                    <NewMarkdownButton url={account().rootFolderUrl} />
-                    <FolderList url={account().rootFolderUrl} />
+                    <NewMarkdownButton url={account.rootFolderUrl} />
+                    <FolderList url={account.rootFolderUrl} />
                   </div>
                   <CheckedOutBranchContext>
                     <Show when={selectionHandle()}>
                       {(sel) => {
-                        const selection = makeStateProjection(sel())
+                        const selection = useHandle(sel())
                         return (
                           <Show when={selection().activeDocumentUrl}>
                             {(url) => (

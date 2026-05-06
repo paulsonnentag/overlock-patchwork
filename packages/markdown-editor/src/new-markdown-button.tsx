@@ -2,24 +2,21 @@ import { render } from "solid-js/web"
 
 import type { AutomergeUrl } from "@automerge/automerge-repo"
 
-import { defineView } from "patchwork-solid"
+import { withDocHandle } from "patchwork-dom"
 
 type FolderDoc = {
   title: string
   docs: { name: string; type: string; url: AutomergeUrl; icon?: string }[]
 }
 
-export default defineView<FolderDoc>(({ element, repo }) => {
-  const folder = element.handle
-  if (!folder) return
-
+export default withDocHandle<FolderDoc>(({ element, repo, handle }) => {
   const onClick = () => {
     const doc = repo.create({
       "@patchwork": { type: "markdown" },
       title: "Untitled",
       content: "# Untitled",
     })
-    folder.change((d) => {
+    handle.change((d) => {
       d.docs.push({ name: "Untitled", type: "markdown", url: doc.url })
     })
     element.dispatchEvent(

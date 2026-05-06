@@ -1,20 +1,18 @@
 import { For } from "solid-js"
 import { render } from "solid-js/web"
 
-import { defineView, makeDocumentProjection } from "patchwork-solid"
+import { withDocHandle } from "patchwork-dom"
+import { useHandle } from "patchwork-solid"
 
 import type { FolderDoc } from "./types"
 
-export default defineView<FolderDoc>(({ element }) => {
-  const handle = element.handle
-  if (!handle) return
-
-  const folder = makeDocumentProjection(handle)
+export default withDocHandle<FolderDoc>(({ element, handle }) => {
+  const folder = useHandle(handle)
 
   return render(
     () => (
       <ul class="folder-list">
-        <For each={folder().docs}>
+        <For each={folder.docs}>
           {(link) => (
             <li
               class="folder-list__item"

@@ -6,7 +6,7 @@ import {
   type Repo,
 } from "@automerge/automerge-repo"
 
-import { defineView, StateHandle } from "patchwork-solid"
+import { withContext, StateHandle } from "patchwork-dom"
 
 import { type FolderDoc, type Manifest } from "./types"
 
@@ -17,20 +17,19 @@ type UnixFileEntry = {
 
 const PATCHWORK_CONDITIONS = ["patchwork", "browser", "import"]
 
-export default defineView<FolderDoc>(({ element, repo }) => {
-  const root = element.handle
-  if (!root) return
-
+export default withContext(({ element, repo }) => {
   const state = new StateHandle<Manifest[]>([], manifestsEqual)
-  Object.assign(element, { value: state })
+  Object.assign(element, { handle: state })
   element.style.display = "contents"
 
   const folders = new Map<string, DocHandle<FolderDoc>>()
   const pkgJsons = new Map<string, DocHandle<UnixFileEntry>>()
   const manifestDocs = new Map<string, DocHandle<UnixFileEntry>>()
 
+  let cancelled = false
   let scheduled = false
   let runId = 0
+  let rootHandle: DocHandle<FolderDoc> | undefined
 
   const onChange = () => {
     if (scheduled) return
@@ -42,13 +41,14 @@ export default defineView<FolderDoc>(({ element, repo }) => {
   }
 
   async function rebuild(): Promise<void> {
+    if (cancelled || !rootHandle) return
     const myRunId = ++runId
     const nextFolders = new Map<string, DocHandle<FolderDoc>>()
     const nextPkgJsons = new Map<string, DocHandle<UnixFileEntry>>()
     const nextManifestDocs = new Map<string, DocHandle<UnixFileEntry>>()
     const nextManifests: Manifest[] = []
 
-    const queue: DocHandle<FolderDoc>[] = [root!]
+    const queue: DocHandle<FolderDoc>[] = [rootHandle]
     while (queue.length > 0) {
       const folder = queue.shift()!
       const folderKey = canonicalKey(folder.url)
@@ -109,10 +109,37 @@ export default defineView<FolderDoc>(({ element, repo }) => {
     state.change(nextManifests)
   }
 
-  void rebuild()
+  const onUrl = async (raw: string | null) => {
+    runId++
+    for (const handle of folders.values()) handle.off("change", onChange)
+    for (const handle of pkgJsons.values()) handle.off("change", onChange)
+    for (const handle of manifestDocs.values()) handle.off("change", onChange)
+    folders.clear()
+    pkgJsons.clear()
+    manifestDocs.clear()
+
+    if (!raw) {
+      rootHandle = undefined
+      state.change([])
+      return
+    }
+    const next = await repo.find<FolderDoc>(raw as AutomergeUrl)
+    if (cancelled) return
+    rootHandle = next
+    void rebuild()
+  }
+
+  void onUrl(element.getAttribute("url"))
+
+  const observer = new MutationObserver(() => {
+    void onUrl(element.getAttribute("url"))
+  })
+  observer.observe(element, { attributes: true, attributeFilter: ["url"] })
 
   return () => {
+    cancelled = true
     runId++
+    observer.disconnect()
     for (const handle of folders.values()) handle.off("change", onChange)
     for (const handle of pkgJsons.values()) handle.off("change", onChange)
     for (const handle of manifestDocs.values()) handle.off("change", onChange)

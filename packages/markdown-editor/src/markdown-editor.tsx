@@ -4,9 +4,7 @@ import { EditorView, keymap } from "@codemirror/view";
 import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 
-import { parseAutomergeUrl } from "@automerge/automerge-repo";
-
-import { defineView, type ViewElement } from "patchwork-solid";
+import { withDocHandle } from "patchwork-dom";
 
 import { CodeMirror } from "./codemirror";
 import { createDiffDecorations } from "./extensions/diffDecorations";
@@ -21,10 +19,7 @@ type TextDoc = { content?: string };
 
 const PATH = ["content"];
 
-export default defineView<TextDoc>(({ element }) => {
-  const handle = element.handle;
-  if (!handle) return;
-
+export default withDocHandle<TextDoc>(({ element, handle }) => {
   const extensions = [
     markdown(),
     history(),
