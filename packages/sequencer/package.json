@@ -11,8 +11,8 @@
   "patchwork": {
     "server": "wss://subduction.sync.inkandswitch.com"
   },
-  "contributions": {
-    "components": [
+  "plugins": {
+    "component": [
       { "name": "sequencer", "module": "./src/sequencer.tsx" },
       {
         "name": "new-sequencer-button",

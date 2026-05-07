@@ -11,8 +11,8 @@
   "patchwork": {
     "server": "wss://subduction.sync.inkandswitch.com"
   },
-  "contributions": {
-    "components": [
+  "plugins": {
+    "component": [
       {
         "name": "markdown-editor",
         "module": "./src/markdown-editor.tsx",

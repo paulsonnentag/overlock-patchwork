@@ -9,8 +9,8 @@
   "patchwork": {
     "server": "wss://subduction.sync.inkandswitch.com"
   },
-  "contributions": {
-    "components": [
+  "plugins": {
+    "component": [
       {
         "name": "checked-out-branch-provider",
         "module": "./src/checked-out-branch-provider.tsx"

@@ -9,8 +9,8 @@
   "patchwork": {
     "server": "wss://subduction.sync.inkandswitch.com"
   },
-  "contributions": {
-    "components": [
+  "plugins": {
+    "component": [
       {
         "name": "app-root",
         "module": "./src/root.tsx"
