@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Solid bindings for patchwork-dom: registerView (Solid-flavored Component factory) and useHandle for StateHandle / DocHandle.",
+  "description": "Solid bindings for patchwork-dom: registerComponent (Solid-flavored Component factory) and useHandle for StateHandle / DocHandle.",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",

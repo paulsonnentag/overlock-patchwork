@@ -1,24 +1,16 @@
 import { defineConfig } from "vite";
 import solid from "vite-plugin-solid";
 import cssInjectedByJsPlugin from "vite-plugin-css-injected-by-js";
-import { patchworkManifests } from "patchwork-vite-plugin-manifests";
+import { patchwork } from "patchwork-vite-plugin";
 
 export default defineConfig({
-  plugins: [patchworkManifests(), solid(), cssInjectedByJsPlugin()],
+  plugins: [
+    patchwork({ components: ["module"] }),
+    solid(),
+    cssInjectedByJsPlugin(),
+  ],
   build: {
     sourcemap: true,
-    lib: {
-      entry: {
-        root: "src/root.json",
-        "account-provider": "src/account-provider.json",
-        "document-selection-provider": "src/document-selection-provider.json",
-        "document-selection-url-sync": "src/document-selection-url-sync.json",
-        "folder-list": "src/folder-list.json",
-        "package-registry-provider": "src/package-registry-provider.json",
-        "single-view": "src/single-view.json",
-      },
-      formats: ["es"],
-    },
     rollupOptions: {
       external: [
         "solid-js",

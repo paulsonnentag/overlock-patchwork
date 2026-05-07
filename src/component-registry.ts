@@ -5,51 +5,51 @@ export type MountFn = (
   element: HTMLElement
 ) => undefined | (() => void) | Promise<undefined | (() => void)>;
 
-export type ViewRegistryOptions = {
+export type ComponentRegistryOptions = {
   root: HTMLElement;
   moduleWatcher: ModuleWatcher;
 };
 
-export type ViewRegistryLoadedEvent = CustomEvent<{
-  viewUrl: string;
-  view: { name: string; mount: MountFn; [key: string]: unknown };
+export type ComponentRegistryLoadedEvent = CustomEvent<{
+  componentUrl: string;
+  component: { name: string; mount: MountFn; [key: string]: unknown };
 }>;
 
-export type ViewRegistryUpdatedEvent = CustomEvent<{
-  viewUrl: string;
+export type ComponentRegistryUpdatedEvent = CustomEvent<{
+  componentUrl: string;
   previous: { name: string; mount: MountFn; [key: string]: unknown };
   next: { name: string; mount: MountFn; [key: string]: unknown };
 }>;
 
-export type ViewRegistryRemovedEvent = CustomEvent<{
-  viewUrl: string;
+export type ComponentRegistryRemovedEvent = CustomEvent<{
+  componentUrl: string;
   name: string;
 }>;
 
-export type ViewRegistryEvent =
-  | ViewRegistryLoadedEvent
-  | ViewRegistryUpdatedEvent
-  | ViewRegistryRemovedEvent;
+export type ComponentRegistryEvent =
+  | ComponentRegistryLoadedEvent
+  | ComponentRegistryUpdatedEvent
+  | ComponentRegistryRemovedEvent;
 
-export type ViewRegistryEventMap = {
-  loaded: ViewRegistryLoadedEvent;
-  updated: ViewRegistryUpdatedEvent;
-  removed: ViewRegistryRemovedEvent;
+export type ComponentRegistryEventMap = {
+  loaded: ComponentRegistryLoadedEvent;
+  updated: ComponentRegistryUpdatedEvent;
+  removed: ComponentRegistryRemovedEvent;
 };
 
-export class ViewRegistry extends TypedEventTarget<ViewRegistryEventMap> {
+export class ComponentRegistry extends TypedEventTarget<ComponentRegistryEventMap> {
   readonly #root: HTMLElement;
   readonly #moduleWatcher: ModuleWatcher;
 
-  readonly #mountFnByViewName = new Map<string, MountFn>();
+  readonly #mountFnByComponentName = new Map<string, MountFn>();
   readonly #mountFnByElement = new WeakMap<HTMLElement, MountFn>();
   readonly #unmountByElement = new WeakMap<HTMLElement, () => void>();
-  readonly #nameByManifestUrl = new Map<string, string>();
+  readonly #nameByComponentUrl = new Map<string, string>();
   readonly #abort = new AbortController();
 
   #observer: MutationObserver;
 
-  constructor({ root, moduleWatcher }: ViewRegistryOptions) {
+  constructor({ root, moduleWatcher }: ComponentRegistryOptions) {
     super();
     this.#root = root;
     this.#moduleWatcher = moduleWatcher;
@@ -78,33 +78,33 @@ export class ViewRegistry extends TypedEventTarget<ViewRegistryEventMap> {
     this.#root.replaceChildren();
   }
 
-  async registerView(url: string): Promise<string> {
-    const cached = this.#nameByManifestUrl.get(url);
+  async registerComponent(url: string): Promise<string> {
+    const cached = this.#nameByComponentUrl.get(url);
     if (cached) return cached;
 
-    const module = await this.#moduleWatcher.load(url);
-    const mount = (module.module as { default?: MountFn }).default;
+    const loaded = await this.#moduleWatcher.load(url);
+    const mount = (loaded.exports as { default?: MountFn }).default;
     if (typeof mount !== "function") {
       throw new Error(
-        `[overlock-patchwork] manifest "${url}" has no default-export mount fn`
+        `[overlock-patchwork] component "${url}" has no default-export mount fn`
       );
     }
-    this.#nameByManifestUrl.set(url, module.name);
-    this.#registerNamed(module.name, mount);
-    return module.name;
+    this.#nameByComponentUrl.set(url, loaded.name);
+    this.#registerNamed(loaded.name, mount);
+    return loaded.name;
   }
 
   #registerNamed(name: string, mount: MountFn): void {
     const tag = name.toLowerCase();
 
-    this.#mountFnByViewName.set(tag, mount);
+    this.#mountFnByComponentName.set(tag, mount);
     this.#scanSubtree(this.#root, { matchTag: name });
   }
 
   #onModuleUpdated = (event: ModuleUpdatedEvent): void => {
     const { moduleUrl, next } = event.detail;
-    if (!this.#nameByManifestUrl.has(moduleUrl)) return;
-    const mount = (next.module as { default?: MountFn }).default;
+    if (!this.#nameByComponentUrl.has(moduleUrl)) return;
+    const mount = (next.exports as { default?: MountFn }).default;
     if (typeof mount !== "function") return;
     this.#registerNamed(next.name, mount);
   };
@@ -129,12 +129,12 @@ export class ViewRegistry extends TypedEventTarget<ViewRegistryEventMap> {
   };
 
   #scanSubtree(root: HTMLElement, opts?: { matchTag: string }): void {
-    // when root matches a registered view mount it and return immediately
-    // if root contains sub views they will be mounted once the mounted event is triggered on root
+    // when root matches a registered component mount it and return immediately
+    // if root contains sub components they will be mounted once the mounted event is triggered on root
     const normalizedTagName = root.tagName.toLowerCase();
     if (
       (!opts?.matchTag || opts.matchTag == normalizedTagName) &&
-      this.#mountFnByViewName.has(normalizedTagName)
+      this.#mountFnByComponentName.has(normalizedTagName)
     ) {
       this.#tryMount(root);
       return;
@@ -150,7 +150,7 @@ export class ViewRegistry extends TypedEventTarget<ViewRegistryEventMap> {
     if (this.#abort.signal.aborted) return;
 
     const tag = el.tagName.toLowerCase();
-    const mount = this.#mountFnByViewName.get(tag);
+    const mount = this.#mountFnByComponentName.get(tag);
     if (!mount) return;
 
     if (this.#mountFnByElement.get(el) === mount) return Promise.resolve();

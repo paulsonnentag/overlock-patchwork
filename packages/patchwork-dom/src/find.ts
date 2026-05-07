@@ -1,6 +1,6 @@
 import type { Repo } from "@automerge/automerge-repo"
 
-type Registry = { registerView(manifestUrl: string): Promise<string> }
+type Registry = { registerComponent(componentUrl: string): Promise<string> }
 
 export function findElement<T extends HTMLElement>(
   start: HTMLElement,
@@ -42,10 +42,12 @@ export function getRepo(element: HTMLElement): Repo {
   return repo
 }
 
-export function getViewRegistry(element: HTMLElement): Registry {
+export function getComponentRegistry(element: HTMLElement): Registry {
   const registry = findValue(element, hasRegistryProvider)
   if (!registry) {
-    throw new Error("getViewRegistry: no <view-registry-provider> ancestor")
+    throw new Error(
+      "getComponentRegistry: no <component-registry-provider> ancestor",
+    )
   }
   return registry
 }
@@ -65,8 +67,9 @@ export function isRegistryProvider(value: unknown): value is Registry {
   return (
     typeof value === "object" &&
     value !== null &&
-    "registerView" in value &&
-    typeof (value as { registerView?: unknown }).registerView === "function"
+    "registerComponent" in value &&
+    typeof (value as { registerComponent?: unknown }).registerComponent ===
+      "function"
   )
 }
 

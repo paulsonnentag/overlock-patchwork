@@ -42,9 +42,9 @@ importers:
       patchwork-solid:
         specifier: link:../patchwork-solid
         version: link:../patchwork-solid
-      patchwork-vite-plugin-manifests:
-        specifier: link:../patchwork-vite-plugin-manifests
-        version: link:../patchwork-vite-plugin-manifests
+      patchwork-vite-plugin:
+        specifier: link:../patchwork-vite-plugin
+        version: link:../patchwork-vite-plugin
       solid-js:
         specifier: ^1.9.5
         version: 1.9.12

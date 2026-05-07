@@ -12,12 +12,12 @@ import { IndexedDBStorageAdapter } from "@automerge/automerge-repo-storage-index
 
 import { Loader } from "./loader";
 import { ModuleWatcher } from "./module-watcher";
-import { ViewRegistry } from "./view-registry";
+import { ComponentRegistry } from "./component-registry";
 
 import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
 
-const ROOT_MANIFEST_URL =
-  "automerge:2Q6XWP6H1soyS1RFW7bzm6rabjnZ/dist/root.json";
+const ROOT_COMPONENT_URL =
+  "automerge:2Q6XWP6H1soyS1RFW7bzm6rabjnZ/dist/package.json#components/root";
 
 const SUBDUCTION_ENDPOINT = "wss://subduction.sync.inkandswitch.com";
 
@@ -60,7 +60,7 @@ async function initPatchwork() {
     import: (url) => loader.import(url),
   });
 
-  const viewRegistry = new ViewRegistry({
+  const componentRegistry = new ComponentRegistry({
     root: document.body,
     moduleWatcher,
   });
@@ -69,8 +69,8 @@ async function initPatchwork() {
   Object.assign(repoEl, { value: repo });
   repoEl.style.display = "contents";
 
-  const registryEl = document.createElement("view-registry-provider");
-  Object.assign(registryEl, { value: viewRegistry });
+  const registryEl = document.createElement("component-registry-provider");
+  Object.assign(registryEl, { value: componentRegistry });
   registryEl.style.display = "contents";
 
   repoEl.appendChild(registryEl);
@@ -80,7 +80,9 @@ async function initPatchwork() {
   moduleWatcherEl.style.display = "contents";
   registryEl.appendChild(moduleWatcherEl);
 
-  const rootName = await viewRegistry.registerView(ROOT_MANIFEST_URL);
+  const rootName = await componentRegistry.registerComponent(
+    ROOT_COMPONENT_URL,
+  );
   moduleWatcherEl.appendChild(document.createElement(rootName));
 
   document.body.appendChild(repoEl);

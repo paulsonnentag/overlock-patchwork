@@ -9,6 +9,12 @@
   "patchwork": {
     "server": "wss://subduction.sync.inkandswitch.com"
   },
+  "contributions": {
+    "components": [
+      { "name": "checked-out-branch-provider", "module": "./src/checked-out-branch-provider.tsx" },
+      { "name": "branch-picker", "module": "./src/branch-picker.tsx" }
+    ]
+  },
   "dependencies": {
     "patchwork-solid": "link:../patchwork-solid",
     "patchwork-dom": "link:../patchwork-dom"
@@ -19,7 +25,7 @@
     "typescript": "^5.6.3",
     "vite": "^5.4.10",
     "vite-plugin-css-injected-by-js": "^4.0.1",
-    "patchwork-vite-plugin-manifests": "link:../patchwork-vite-plugin-manifests",
+    "patchwork-vite-plugin": "link:../patchwork-vite-plugin",
     "vite-plugin-solid": "^2.11.0"
   }
 }

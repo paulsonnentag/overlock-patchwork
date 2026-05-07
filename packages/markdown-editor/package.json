@@ -8,6 +8,15 @@
     "build": "vite build",
     "watch": "vite build --watch"
   },
+  "patchwork": {
+    "server": "wss://subduction.sync.inkandswitch.com"
+  },
+  "contributions": {
+    "components": [
+      { "name": "markdown-editor", "module": "./src/markdown-editor.tsx" },
+      { "name": "new-markdown-button", "module": "./src/new-markdown-button.tsx" }
+    ]
+  },
   "dependencies": {
     "@automerge/automerge-codemirror": "^0.2.0",
     "@codemirror/commands": "^6.6.0",
@@ -17,15 +26,12 @@
     "@codemirror/view": "^6.41.0",
     "@lezer/highlight": "^1.2.0"
   },
-  "patchwork": {
-    "server": "wss://subduction.sync.inkandswitch.com"
-  },
   "devDependencies": {
     "@automerge/automerge": "3.2.5",
     "@automerge/automerge-repo": "2.6.0-subduction.13",
     "patchwork-solid": "link:../patchwork-solid",
     "patchwork-dom": "link:../patchwork-dom",
-    "patchwork-vite-plugin-manifests": "link:../patchwork-vite-plugin-manifests",
+    "patchwork-vite-plugin": "link:../patchwork-vite-plugin",
     "solid-js": "^1.9.5",
     "typescript": "^5.6.3",
     "vite": "^5.4.10",

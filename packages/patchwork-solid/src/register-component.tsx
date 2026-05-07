@@ -7,27 +7,33 @@ import {
 } from "solid-js"
 import { Dynamic } from "solid-js/web"
 
-import { getViewRegistry } from "patchwork-dom"
+import { getComponentRegistry } from "patchwork-dom"
 
 export const MOUNTED_EVENT = "patchwork:mounted"
 export const UNMOUNTED_EVENT = "patchwork:unmounted"
 
-export type ViewWrapperProps = JSX.HTMLAttributes<HTMLElement> & {
+export type ComponentWrapperProps = JSX.HTMLAttributes<HTMLElement> & {
   url?: string
   onMounted?: (element: HTMLElement) => void
 }
 
-export function registerView(
+export function registerComponent(
   element: HTMLElement,
-  manifestUrl: string,
-): Component<ViewWrapperProps> {
-  const registry = getViewRegistry(element)
-  const promise = registry.registerView(manifestUrl).catch((err: unknown) => {
-    console.error("[patchwork-solid] registerView failed", manifestUrl, err)
-    return undefined
-  })
+  componentUrl: string,
+): Component<ComponentWrapperProps> {
+  const registry = getComponentRegistry(element)
+  const promise = registry
+    .registerComponent(componentUrl)
+    .catch((err: unknown) => {
+      console.error(
+        "[patchwork-solid] registerComponent failed",
+        componentUrl,
+        err,
+      )
+      return undefined
+    })
 
-  return (props: ViewWrapperProps): JSX.Element => {
+  return (props: ComponentWrapperProps): JSX.Element => {
     const [tag] = createResource(() => promise)
     const [local, rest] = splitProps(props, ["onMounted"])
 

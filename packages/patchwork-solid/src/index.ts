@@ -1,2 +1,2 @@
-export * from "./register-view"
+export * from "./register-component"
 export * from "./use-handle"

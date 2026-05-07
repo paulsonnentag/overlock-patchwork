@@ -1,4 +1,8 @@
-import { type DocHandle, type Repo } from "@automerge/automerge-repo/slim";
+import {
+  type AutomergeUrl,
+  type DocHandle,
+  type Repo,
+} from "@automerge/automerge-repo/slim";
 import {
   findHandleInFolderHandle,
   type FolderDoc,
@@ -10,27 +14,32 @@ import { TypedEventTarget } from "./typed-event-target";
 
 type Loader = (url: string) => Promise<unknown>;
 
-export type LoadedModule = {
+export type LoadedComponent = {
   name: string;
-  importUrl: string;
-  module: unknown;
-  [key: string]: unknown;
+  module: string;
+  exports: unknown;
 };
 
-export type ModuleLoadedEvent = CustomEvent<{ moduleUrl: string; module: LoadedModule }>;
+export type ModuleLoadedEvent = CustomEvent<{
+  moduleUrl: string;
+  module: LoadedComponent;
+}>;
 
 export type ModuleUpdatedEvent = CustomEvent<{
   moduleUrl: string;
-  previous: LoadedModule;
-  next: LoadedModule;
+  previous: LoadedComponent;
+  next: LoadedComponent;
 }>;
 
-export type ModuleRemovedEvent = CustomEvent<{ moduleUrl: string; name: string }>;
+export type ModuleRemovedEvent = CustomEvent<{
+  moduleUrl: string;
+  name: string;
+}>;
 
 export type ModuleEvent =
   | ModuleLoadedEvent
   | ModuleUpdatedEvent
-  | ModuleRemovedEvent
+  | ModuleRemovedEvent;
 
 export type ModuleWatcherEventMap = {
   loaded: ModuleLoadedEvent;
@@ -43,9 +52,19 @@ export type ModuleWatcherOptions = {
   import: Loader;
 };
 
+type ComponentEntry = { name: string; module: string };
+
+type ParsedComponentUrl = {
+  rootUrl: AutomergeUrl;
+  packageJsonPath: string;
+  packageJsonUrl: string;
+  kind: string;
+  name: string;
+};
+
 type ModuleRecord = {
-  module: LoadedModule;
-  parentFolderHandle: DocHandle<FolderDoc>;
+  module: LoadedComponent;
+  packageJsonHandle: DocHandle<UnixFileEntry>;
   unsubscribe: () => void;
 };
 
@@ -62,7 +81,7 @@ export class ModuleWatcher extends TypedEventTarget<ModuleWatcherEventMap> {
     this.#import = options.import;
   }
 
-  async load(url: string): Promise<LoadedModule> {
+  async load(url: string): Promise<LoadedComponent> {
     if (this.#destroyed) {
       throw new Error("[overlock-patchwork] ModuleWatcher has been destroyed");
     }
@@ -112,42 +131,20 @@ export class ModuleWatcher extends TypedEventTarget<ModuleWatcherEventMap> {
   }
 
   async #loadFresh(url: string): Promise<ModuleRecord> {
-    const { rootUrl, path } = parseAutomergeUrlWithPath(url);
-    const parts = splitPath(path);
-    if (parts.length === 0) {
-      throw new Error(
-        `[overlock-patchwork] manifest URL must reference a file: ${url}`,
-      );
-    }
-
-    const rootHandle = await this.#repo.find<FolderDoc>(rootUrl);
-    const parentParts = parts.slice(0, -1);
-    const manifestName = parts[parts.length - 1];
-    const parentFolderHandle =
-      parentParts.length === 0
-        ? rootHandle
-        : ((await findHandleInFolderHandle<FolderDoc>(
-            this.#repo,
-            rootHandle,
-            parentParts,
-          )) as DocHandle<FolderDoc> | undefined);
-    if (!parentFolderHandle) {
-      throw new Error(
-        `[overlock-patchwork] could not resolve parent folder for ${url}`,
-      );
-    }
-
-    const module = await this.#fetchModule(url, parentFolderHandle, manifestName);
+    const parsed = parseComponentUrl(url);
+    const packageJsonHandle = await this.#findPackageJson(parsed);
+    const entry = readContribution(packageJsonHandle, parsed);
+    const module = await this.#fetchAndImport(parsed.packageJsonUrl, entry);
 
     const onChange = (): void => {
       void this.#reload(url);
     };
-    parentFolderHandle.on("change", onChange);
+    packageJsonHandle.on("change", onChange);
     const unsubscribe = (): void => {
-      parentFolderHandle.off("change", onChange);
+      packageJsonHandle.off("change", onChange);
     };
 
-    return { module, parentFolderHandle, unsubscribe };
+    return { module, packageJsonHandle, unsubscribe };
   }
 
   async #reload(url: string): Promise<void> {
@@ -155,13 +152,11 @@ export class ModuleWatcher extends TypedEventTarget<ModuleWatcherEventMap> {
     const old = this.#loaded.get(url);
     if (!old) return;
 
-    const { path } = parseAutomergeUrlWithPath(url);
-    const parts = splitPath(path);
-    const manifestName = parts[parts.length - 1];
-
-    let next: LoadedModule;
+    const parsed = parseComponentUrl(url);
+    let next: LoadedComponent;
     try {
-      next = await this.#fetchModule(url, old.parentFolderHandle, manifestName);
+      const entry = readContribution(old.packageJsonHandle, parsed);
+      next = await this.#fetchAndImport(parsed.packageJsonUrl, entry);
     } catch (err) {
       console.error(
         `[overlock-patchwork] HMR reload failed for ${url}:`,
@@ -177,36 +172,46 @@ export class ModuleWatcher extends TypedEventTarget<ModuleWatcherEventMap> {
     old.module = next;
 
     this.dispatchEvent(
-      new CustomEvent("updated", { detail: { moduleUrl: url, previous, next } }),
+      new CustomEvent("updated", {
+        detail: { moduleUrl: url, previous, next },
+      }),
     );
   }
 
-  async #fetchModule(
-    url: string,
-    parentFolderHandle: DocHandle<FolderDoc>,
-    manifestName: string,
-  ): Promise<LoadedModule> {
-    const manifestHandle = await findHandleInFolderHandle<UnixFileEntry>(
-      this.#repo,
-      parentFolderHandle,
-      [manifestName],
-    );
-    if (!manifestHandle) {
-      throw new Error(`[overlock-patchwork] manifest not found: ${url}`);
+  async #findPackageJson(
+    parsed: ParsedComponentUrl,
+  ): Promise<DocHandle<UnixFileEntry>> {
+    const parts = splitPath(parsed.packageJsonPath);
+    if (parts.length === 0) {
+      throw new Error(
+        `[overlock-patchwork] component URL must reference a package.json file: ${parsed.packageJsonUrl}`,
+      );
     }
-    const manifest = readManifest(
-      manifestHandle as DocHandle<UnixFileEntry>,
-      url,
+    const rootHandle = await this.#repo.find<FolderDoc>(parsed.rootUrl);
+    const handle = await findHandleInFolderHandle<UnixFileEntry>(
+      this.#repo,
+      rootHandle,
+      parts,
     );
+    if (!handle) {
+      throw new Error(
+        `[overlock-patchwork] could not find ${parsed.packageJsonPath} in ${parsed.rootUrl}`,
+      );
+    }
+    return handle as DocHandle<UnixFileEntry>;
+  }
 
-    const absoluteImportUrl = resolveImportUrl(url, manifest.importUrl);
+  async #fetchAndImport(
+    packageJsonUrl: string,
+    entry: ComponentEntry,
+  ): Promise<LoadedComponent> {
+    const absoluteImportUrl = resolveImportUrl(packageJsonUrl, entry.module);
     const pinnedImportUrl = await pinUrl(this.#repo, absoluteImportUrl);
-    const module = await this.#import(pinnedImportUrl);
-
+    const exports = await this.#import(pinnedImportUrl);
     return {
-      ...manifest,
-      importUrl: absoluteImportUrl,
-      module,
+      name: entry.name,
+      module: absoluteImportUrl,
+      exports,
     };
   }
 }
@@ -215,63 +220,109 @@ export function isModuleWatcher(value: unknown): value is ModuleWatcher {
   return value instanceof ModuleWatcher;
 }
 
-type RawManifest = {
-  name: string;
-  importUrl: string;
-  [key: string]: unknown;
-};
+// Component URL = `<automerge-url-with-optional-heads>/<path/to/package.json>#<kind>/<name>`.
+// Heads also use `#` (`automerge:<docId>#<head1|head2>`) so split via the
+// path returned by `parseAutomergeUrlWithPath` rather than naive `#`-search.
+function parseComponentUrl(url: string): ParsedComponentUrl {
+  const { rootUrl, path } = parseAutomergeUrlWithPath(url);
+  const hashIdx = path.lastIndexOf("#");
+  if (hashIdx === -1) {
+    throw new Error(
+      `[overlock-patchwork] component URL must include a "#<kind>/<name>" fragment: ${url}`,
+    );
+  }
+  const packageJsonPath = path.slice(0, hashIdx);
+  const fragment = path.slice(hashIdx + 1);
+  const slash = fragment.indexOf("/");
+  if (slash <= 0 || slash >= fragment.length - 1) {
+    throw new Error(
+      `[overlock-patchwork] component URL fragment must be "<kind>/<name>": ${url}`,
+    );
+  }
+  const packageJsonUrl = packageJsonPath
+    ? `${rootUrl}/${packageJsonPath}`
+    : (rootUrl as string);
+  return {
+    rootUrl,
+    packageJsonPath,
+    packageJsonUrl,
+    kind: fragment.slice(0, slash),
+    name: fragment.slice(slash + 1),
+  };
+}
 
-function readManifest(
-  handle: DocHandle<UnixFileEntry>,
-  moduleUrl: string,
-): RawManifest {
-  const doc = handle.doc();
+function readContribution(
+  packageJsonHandle: DocHandle<UnixFileEntry>,
+  parsed: ParsedComponentUrl,
+): ComponentEntry {
+  const doc = packageJsonHandle.doc();
   const content = doc?.content;
   if (content == null) {
-    throw new Error(`[overlock-patchwork] manifest has no content: ${moduleUrl}`);
+    throw new Error(
+      `[overlock-patchwork] package.json has no content: ${parsed.packageJsonUrl}`,
+    );
   }
-  const text = contentToText(content);
-  let parsed: unknown;
+  let pkgJson: unknown;
   try {
-    parsed = JSON.parse(text);
+    pkgJson = JSON.parse(contentToText(content));
   } catch (err) {
     throw new Error(
-      `[overlock-patchwork] invalid JSON in manifest ${moduleUrl}: ${(err as Error).message}`,
+      `[overlock-patchwork] invalid JSON in package.json for ${parsed.packageJsonUrl}: ${(err as Error).message}`,
     );
   }
-  if (
-    typeof parsed !== "object" ||
-    parsed === null ||
-    typeof (parsed as { name?: unknown }).name !== "string" ||
-    typeof (parsed as { importUrl?: unknown }).importUrl !== "string"
-  ) {
+  const contributions = (pkgJson as { contributions?: Record<string, unknown> })
+    ?.contributions;
+  const entries = contributions?.[parsed.kind];
+  if (!Array.isArray(entries)) {
     throw new Error(
-      `[overlock-patchwork] manifest missing "name" or "importUrl": ${moduleUrl}`,
+      `[overlock-patchwork] no contributions.${parsed.kind} array in ${parsed.packageJsonUrl}`,
     );
   }
-  return parsed as RawManifest;
+  const entry = entries.find(
+    (e): e is ComponentEntry =>
+      e != null &&
+      typeof e === "object" &&
+      typeof (e as { name?: unknown }).name === "string" &&
+      typeof (e as { module?: unknown }).module === "string" &&
+      (e as { name: string }).name === parsed.name,
+  );
+  if (!entry) {
+    throw new Error(
+      `[overlock-patchwork] no contributions.${parsed.kind} entry named "${parsed.name}" in ${parsed.packageJsonUrl}`,
+    );
+  }
+  if (!entry.module.startsWith("./") && !entry.module.startsWith("../")) {
+    throw new Error(
+      `[overlock-patchwork] contribution "${parsed.name}" module must start with "./" or "../" (got "${entry.module}")`,
+    );
+  }
+  return { name: entry.name, module: entry.module };
 }
 
 function contentToText(content: UnixFileEntry["content"]): string {
   if (typeof content === "string") return content;
   if (content instanceof ArrayBuffer) return new TextDecoder().decode(content);
   if (ArrayBuffer.isView(content)) return new TextDecoder().decode(content);
-  if (Array.isArray(content)) return new TextDecoder().decode(Uint8Array.from(content));
+  if (Array.isArray(content))
+    return new TextDecoder().decode(Uint8Array.from(content));
   return String(content);
 }
 
-function resolveImportUrl(manifestUrl: string, importUrl: string): string {
-  if (!importUrl.startsWith("./")) {
+// `automerge:` isn't a hierarchical scheme the URL parser understands, so
+// borrow `http:` to do the path math, then swap the scheme back.
+function resolveImportUrl(packageJsonUrl: string, importUrl: string): string {
+  if (!packageJsonUrl.startsWith("automerge:")) {
     throw new Error(
-      `[overlock-patchwork] manifest "importUrl" must start with "./" (got "${importUrl}")`,
+      `[overlock-patchwork] expected automerge: URL, got "${packageJsonUrl}"`,
     );
   }
-  const lastSlash = manifestUrl.lastIndexOf("/");
-  if (lastSlash === -1 || lastSlash <= "automerge:".length) {
+  const FAKE = "http://overlock.invalid/";
+  const base = `${FAKE}${packageJsonUrl.slice("automerge:".length)}`;
+  const resolved = new URL(importUrl, base).href;
+  if (!resolved.startsWith(FAKE)) {
     throw new Error(
-      `[overlock-patchwork] cannot resolve "${importUrl}" against root URL`,
+      `[overlock-patchwork] resolved URL escaped package root: "${importUrl}" from ${packageJsonUrl}`,
     );
   }
-  const dir = manifestUrl.slice(0, lastSlash);
-  return `${dir}/${importUrl.slice(2)}`;
+  return `automerge:${resolved.slice(FAKE.length)}`;
 }

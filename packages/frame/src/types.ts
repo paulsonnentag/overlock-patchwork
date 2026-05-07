@@ -51,9 +51,9 @@ export function hasDocumentSelection(
   )
 }
 
-export type Manifest = {
+export type Component = {
   name: string
-  importUrl: string
+  module: string
   url: string
   [key: string]: unknown
 }

@@ -3,29 +3,31 @@ import {
   stringifyAutomergeUrl,
   type AutomergeUrl,
   type DocHandle,
-  type Repo,
 } from "@automerge/automerge-repo"
 
 import { getRepo, StateHandle } from "patchwork-dom"
 
-import { type FolderDoc, type Manifest } from "./types"
+import { type Component, type FolderDoc } from "./types"
 
 type UnixFileEntry = {
   content: string | Uint8Array | ArrayBuffer | ArrayLike<number>
   [key: string]: unknown
 }
 
-const PATCHWORK_CONDITIONS = ["patchwork", "browser", "import"]
+type ComponentEntry = {
+  name: string
+  module: string
+  [key: string]: unknown
+}
 
 export default (element: HTMLElement) => {
   const repo = getRepo(element)
-  const state = new StateHandle<Manifest[]>([], manifestsEqual)
+  const state = new StateHandle<Component[]>([], componentsEqual)
   Object.assign(element, { handle: state })
   element.style.display = "contents"
 
   const folders = new Map<string, DocHandle<FolderDoc>>()
   const pkgJsons = new Map<string, DocHandle<UnixFileEntry>>()
-  const manifestDocs = new Map<string, DocHandle<UnixFileEntry>>()
 
   let cancelled = false
   let scheduled = false
@@ -46,8 +48,7 @@ export default (element: HTMLElement) => {
     const myRunId = ++runId
     const nextFolders = new Map<string, DocHandle<FolderDoc>>()
     const nextPkgJsons = new Map<string, DocHandle<UnixFileEntry>>()
-    const nextManifestDocs = new Map<string, DocHandle<UnixFileEntry>>()
-    const nextManifests: Manifest[] = []
+    const nextComponents: Component[] = []
 
     const queue: DocHandle<FolderDoc>[] = [rootHandle]
     while (queue.length > 0) {
@@ -61,31 +62,18 @@ export default (element: HTMLElement) => {
       if (pkgLink) {
         const pkgHandle = (await repo.find(pkgLink.url)) as DocHandle<UnixFileEntry>
         if (myRunId !== runId) return
-        nextPkgJsons.set(canonicalKey(pkgHandle.url), pkgHandle)
+        const pkgJsonKey = canonicalKey(pkgHandle.url)
+        nextPkgJsons.set(pkgJsonKey, pkgHandle)
 
         const pkgJson = parseJson(pkgHandle.doc()?.content)
-        if (pkgJson && typeof pkgJson === "object") {
-          const exportsField = (pkgJson as { exports?: unknown }).exports
-          for (const exportTarget of exportTargets(exportsField)) {
-            if (!exportTarget.endsWith(".json")) continue
-            const targetParts = splitPath(exportTarget)
-            const manifestHandle = await findChild<UnixFileEntry>(
-              repo,
-              folder,
-              targetParts,
-            )
-            if (!manifestHandle) continue
-            if (myRunId !== runId) return
-            nextManifestDocs.set(canonicalKey(manifestHandle.url), manifestHandle)
-
-            const raw = parseJson(manifestHandle.doc()?.content)
-            if (!isManifestShape(raw)) continue
-
-            const manifestUrl = `${canonicalUrl(folder.url)}/${normalizePath(exportTarget)}`
-            nextManifests.push({
-              ...raw,
-              url: manifestUrl,
-              importUrl: resolveImportUrl(manifestUrl, raw.importUrl),
+        const components = readComponentEntries(pkgJson)
+        if (components.length > 0) {
+          const packageJsonUrl = `${canonicalUrl(folder.url)}/package.json`
+          for (const entry of components) {
+            nextComponents.push({
+              ...entry,
+              url: `${packageJsonUrl}#components/${entry.name}`,
+              module: resolveImportUrl(packageJsonUrl, entry.module),
             })
           }
         }
@@ -105,19 +93,16 @@ export default (element: HTMLElement) => {
 
     reconcile(folders, nextFolders, onChange)
     reconcile(pkgJsons, nextPkgJsons, onChange)
-    reconcile(manifestDocs, nextManifestDocs, onChange)
 
-    state.change(nextManifests)
+    state.change(nextComponents)
   }
 
   const onUrl = async (raw: string | null) => {
     runId++
     for (const handle of folders.values()) handle.off("change", onChange)
     for (const handle of pkgJsons.values()) handle.off("change", onChange)
-    for (const handle of manifestDocs.values()) handle.off("change", onChange)
     folders.clear()
     pkgJsons.clear()
-    manifestDocs.clear()
 
     if (!raw) {
       rootHandle = undefined
@@ -143,56 +128,24 @@ export default (element: HTMLElement) => {
     observer.disconnect()
     for (const handle of folders.values()) handle.off("change", onChange)
     for (const handle of pkgJsons.values()) handle.off("change", onChange)
-    for (const handle of manifestDocs.values()) handle.off("change", onChange)
     folders.clear()
     pkgJsons.clear()
-    manifestDocs.clear()
   }
 }
 
-async function findChild<T>(
-  repo: Repo,
-  folder: DocHandle<FolderDoc>,
-  parts: string[],
-): Promise<DocHandle<T> | undefined> {
-  let cur: DocHandle<unknown> = folder
-  for (const part of parts) {
-    const doc = (cur as DocHandle<FolderDoc>).doc()
-    const link = doc?.docs?.find((d) => d.name === part)
-    if (!link) return undefined
-    cur = await repo.find(link.url)
-  }
-  return cur as DocHandle<T>
-}
-
-function* exportTargets(value: unknown): Iterable<string> {
-  if (value == null) return
-  if (typeof value === "string") {
-    yield value
-    return
-  }
-  if (typeof value !== "object") return
-  for (const v of Object.values(value as Record<string, unknown>)) {
-    const target = resolveExportTarget(v, PATCHWORK_CONDITIONS)
-    if (target) yield target
-  }
-}
-
-function resolveExportTarget(
-  value: unknown,
-  conditions: readonly string[],
-): string | undefined {
-  if (typeof value === "string") return value
-  if (typeof value !== "object" || value === null) return undefined
-  const obj = value as Record<string, unknown>
-  for (const c of conditions) {
-    if (c in obj) {
-      const sub = resolveExportTarget(obj[c], conditions)
-      if (sub) return sub
-    }
-  }
-  if ("default" in obj) return resolveExportTarget(obj.default, conditions)
-  return undefined
+function readComponentEntries(pkgJson: unknown): ComponentEntry[] {
+  if (pkgJson == null || typeof pkgJson !== "object") return []
+  const contributions = (pkgJson as { contributions?: unknown }).contributions
+  if (contributions == null || typeof contributions !== "object") return []
+  const components = (contributions as { components?: unknown }).components
+  if (!Array.isArray(components)) return []
+  return components.filter(
+    (c): c is ComponentEntry =>
+      c != null &&
+      typeof c === "object" &&
+      typeof (c as { name?: unknown }).name === "string" &&
+      typeof (c as { module?: unknown }).module === "string",
+  )
 }
 
 function reconcile<T>(
@@ -210,17 +163,6 @@ function reconcile<T>(
   for (const [key, handle] of next) current.set(key, handle)
 }
 
-function isManifestShape(
-  value: unknown,
-): value is Record<string, unknown> & { name: string; importUrl: string } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as { name?: unknown }).name === "string" &&
-    typeof (value as { importUrl?: unknown }).importUrl === "string"
-  )
-}
-
 function isFolderDocHandle(handle: DocHandle<unknown>): boolean {
   const doc = handle.doc()
   return (
@@ -230,13 +172,13 @@ function isFolderDocHandle(handle: DocHandle<unknown>): boolean {
   )
 }
 
-function manifestsEqual(a: readonly Manifest[], b: readonly Manifest[]): boolean {
+function componentsEqual(a: readonly Component[], b: readonly Component[]): boolean {
   if (a === b) return true
   if (a.length !== b.length) return false
   for (let i = 0; i < a.length; i++) {
     const x = a[i]
     const y = b[i]
-    if (x.url !== y.url || x.name !== y.name || x.importUrl !== y.importUrl) {
+    if (x.url !== y.url || x.name !== y.name || x.module !== y.module) {
       return false
     }
   }
@@ -260,30 +202,23 @@ function contentToText(content: UnixFileEntry["content"]): string {
   return String(content)
 }
 
-function resolveImportUrl(manifestUrl: string, importUrl: string): string {
-  if (!importUrl.startsWith("./")) {
+// `automerge:` isn't hierarchical for the URL parser, so swap in `http:`
+// to do the path math then swap the scheme back.
+function resolveImportUrl(packageJsonUrl: string, importUrl: string): string {
+  if (!importUrl.startsWith("./") && !importUrl.startsWith("../")) {
     throw new Error(
-      `package-registry: manifest "importUrl" must start with "./" (got "${importUrl}")`,
+      `package-registry: contribution "module" must start with "./" or "../" (got "${importUrl}")`,
     )
   }
-  const lastSlash = manifestUrl.lastIndexOf("/")
-  if (lastSlash === -1 || lastSlash <= "automerge:".length) {
+  const FAKE = "http://overlock.invalid/"
+  const base = `${FAKE}${packageJsonUrl.slice("automerge:".length)}`
+  const resolved = new URL(importUrl, base).href
+  if (!resolved.startsWith(FAKE)) {
     throw new Error(
-      `package-registry: cannot resolve "${importUrl}" against root URL`,
+      `package-registry: resolved URL escaped package root: "${importUrl}" from ${packageJsonUrl}`,
     )
   }
-  return `${manifestUrl.slice(0, lastSlash)}/${importUrl.slice(2)}`
-}
-
-function splitPath(p: string): string[] {
-  return p
-    .replace(/^\.\//, "")
-    .split("/")
-    .filter(Boolean)
-}
-
-function normalizePath(p: string): string {
-  return p.replace(/^\.\//, "").replace(/^\/+/, "")
+  return `automerge:${resolved.slice(FAKE.length)}`
 }
 
 // Strip heads so the same doc seen via different snapshots dedups.

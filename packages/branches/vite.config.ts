@@ -1,19 +1,16 @@
 import { defineConfig } from "vite";
 import solid from "vite-plugin-solid";
 import cssInjectedByJsPlugin from "vite-plugin-css-injected-by-js";
-import { patchworkManifests } from "patchwork-vite-plugin-manifests";
+import { patchwork } from "patchwork-vite-plugin";
 
 export default defineConfig({
-  plugins: [patchworkManifests(), solid(), cssInjectedByJsPlugin()],
+  plugins: [
+    patchwork({ components: ["module"] }),
+    solid(),
+    cssInjectedByJsPlugin(),
+  ],
   build: {
     sourcemap: true,
-    lib: {
-      entry: {
-        "checked-out-branch-provider": "src/checked-out-branch-provider.json",
-        "branch-picker": "src/branch-picker.json",
-      },
-      formats: ["es"],
-    },
     rollupOptions: {
       external: [
         "solid-js",

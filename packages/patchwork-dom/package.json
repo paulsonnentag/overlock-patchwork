@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "DOM-level helpers for patchwork views: find* / getRepo / getViewRegistry, withDocHandle, StateHandle.",
+  "description": "DOM-level helpers for patchwork components: find* / getRepo / getComponentRegistry, withDocHandle, StateHandle.",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
