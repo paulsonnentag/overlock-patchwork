@@ -72,15 +72,20 @@ checked-out-branch-provider {
 }
 
 single-view {
-  display: flex;
+  display: block;
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
+  overflow: auto;
+  position: relative;
 }
 
-single-view markdown-editor {
+single-view > * {
+  display: block;
+  min-width: 100%;
+  min-height: 100%;
+}
+
+single-view > markdown-editor {
   display: flex;
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
 }
