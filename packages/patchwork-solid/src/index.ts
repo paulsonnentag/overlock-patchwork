@@ -1,2 +1,2 @@
-export * from "./with-solid"
+export * from "./register-view"
 export * from "./use-handle"

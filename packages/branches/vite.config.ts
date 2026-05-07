@@ -9,7 +9,7 @@ export default defineConfig({
     sourcemap: true,
     lib: {
       entry: {
-        "checked-out-branch-context": "src/checked-out-branch-context.json",
+        "checked-out-branch-provider": "src/checked-out-branch-provider.json",
         "branch-picker": "src/branch-picker.json",
       },
       formats: ["es"],

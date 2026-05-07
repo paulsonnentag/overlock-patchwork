@@ -6,11 +6,11 @@ app-root {
   min-height: 0;
 }
 
-document-selection-context {
+document-selection-provider {
   display: contents;
 }
 
-checked-out-branch-context {
+checked-out-branch-provider {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;

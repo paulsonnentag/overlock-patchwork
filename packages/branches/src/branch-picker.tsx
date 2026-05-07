@@ -31,7 +31,7 @@ function canonicalUrl(url: AutomergeUrl): AutomergeUrl {
 
 export default withDocHandle<DocWithBranchIndex>(({ element, repo, handle }) => {
   if (!isBranchableRepo(repo)) {
-    throw new Error("branch-picker: no <checked-out-branch-context> ancestor")
+    throw new Error("branch-picker: no <checked-out-branch-provider> ancestor")
   }
   const branchable = repo
   const rawRepo = branchable.repo

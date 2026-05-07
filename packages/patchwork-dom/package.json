@@ -3,14 +3,14 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "DOM-level mounting middlewares for patchwork views (withRepo, withRegistry, withContext, withDocHandle).",
-  "main": "./dist/patchwork-dom.js",
-  "module": "./dist/patchwork-dom.js",
+  "description": "DOM-level helpers for patchwork views: find* / getRepo / getViewRegistry, withDocHandle, StateHandle.",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/patchwork-dom.js"
+      "import": "./dist/index.js"
     }
   },
   "files": ["dist", "src"],

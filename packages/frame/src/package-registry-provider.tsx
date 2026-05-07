@@ -6,7 +6,7 @@ import {
   type Repo,
 } from "@automerge/automerge-repo"
 
-import { withContext, StateHandle } from "patchwork-dom"
+import { getRepo, StateHandle } from "patchwork-dom"
 
 import { type FolderDoc, type Manifest } from "./types"
 
@@ -17,7 +17,8 @@ type UnixFileEntry = {
 
 const PATCHWORK_CONDITIONS = ["patchwork", "browser", "import"]
 
-export default withContext(({ element, repo }) => {
+export default (element: HTMLElement) => {
+  const repo = getRepo(element)
   const state = new StateHandle<Manifest[]>([], manifestsEqual)
   Object.assign(element, { handle: state })
   element.style.display = "contents"
@@ -147,7 +148,7 @@ export default withContext(({ element, repo }) => {
     pkgJsons.clear()
     manifestDocs.clear()
   }
-})
+}
 
 async function findChild<T>(
   repo: Repo,

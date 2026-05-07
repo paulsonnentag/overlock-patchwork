@@ -10,11 +10,11 @@ export default defineConfig({
     lib: {
       entry: {
         root: "src/root.json",
-        "account-context": "src/account-context.json",
-        "document-selection-context": "src/document-selection-context.json",
+        "account-provider": "src/account-provider.json",
+        "document-selection-provider": "src/document-selection-provider.json",
         "document-selection-url-sync": "src/document-selection-url-sync.json",
         "folder-list": "src/folder-list.json",
-        "package-registry-context": "src/package-registry-context.json",
+        "package-registry-provider": "src/package-registry-provider.json",
         "single-view": "src/single-view.json",
       },
       formats: ["es"],

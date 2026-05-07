@@ -3,14 +3,14 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Solid bindings for patchwork-dom: withSolid (Solid-flavored registerView) and useHandle for StateHandle / DocHandle.",
-  "main": "./dist/patchwork-solid.js",
-  "module": "./dist/patchwork-solid.js",
+  "description": "Solid bindings for patchwork-dom: registerView (Solid-flavored Component factory) and useHandle for StateHandle / DocHandle.",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/patchwork-solid.js"
+      "import": "./dist/index.js"
     }
   },
   "files": [

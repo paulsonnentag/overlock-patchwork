@@ -1,20 +1,21 @@
 import type { AutomergeUrl } from "@automerge/automerge-repo"
 
-import { withContext } from "patchwork-dom"
+import { getRepo } from "patchwork-dom"
 
 import { BranchableRepo } from "./branchable-repo"
 import { isBranchableRepo, type ForkOpts } from "./types"
 
-export default withContext(({ element, repo }) => {
+export default (element: HTMLElement) => {
+  const repo = getRepo(element)
   if (isBranchableRepo(repo)) {
     throw new Error(
-      "checked-out-branch-context: nested branching is not supported",
+      "checked-out-branch-provider: nested branching is not supported",
     )
   }
 
   const branchable = new BranchableRepo(repo)
 
-  const inner = document.createElement("repo-context")
+  const inner = document.createElement("repo-provider")
   Object.assign(inner, { value: branchable })
   inner.style.display = "contents"
   while (element.firstChild) inner.appendChild(element.firstChild)
@@ -40,4 +41,4 @@ export default withContext(({ element, repo }) => {
     element.removeEventListener("branch:checkout", onCheckout)
     element.removeEventListener("branch:reset", onReset)
   }
-})
+}

@@ -65,17 +65,17 @@ async function initPatchwork() {
     moduleWatcher,
   });
 
-  const repoEl = document.createElement("repo-context");
+  const repoEl = document.createElement("repo-provider");
   Object.assign(repoEl, { value: repo });
   repoEl.style.display = "contents";
 
-  const registryEl = document.createElement("view-registry-context");
+  const registryEl = document.createElement("view-registry-provider");
   Object.assign(registryEl, { value: viewRegistry });
   registryEl.style.display = "contents";
 
   repoEl.appendChild(registryEl);
 
-  const moduleWatcherEl = document.createElement("module-watcher-context");
+  const moduleWatcherEl = document.createElement("module-watcher-provider");
   Object.assign(moduleWatcherEl, { value: moduleWatcher });
   moduleWatcherEl.style.display = "contents";
   registryEl.appendChild(moduleWatcherEl);

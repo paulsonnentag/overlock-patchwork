@@ -1,0 +1,4 @@
+{
+  "name": "document-selection-provider",
+  "importUrl": "./document-selection-provider.tsx"
+}

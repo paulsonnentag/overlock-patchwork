@@ -1,4 +1,4 @@
 {
   "name": "package-registry-provider",
-  "url": "./package-registry-provider.tsx"
+  "importUrl": "./package-registry-provider.tsx"
 }

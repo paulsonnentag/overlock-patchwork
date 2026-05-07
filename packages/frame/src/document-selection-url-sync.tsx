@@ -1,20 +1,16 @@
 import type { AutomergeUrl } from "@automerge/automerge-repo"
 
-import { withContext, type StateHandle } from "patchwork-dom"
+import { findHandle } from "patchwork-dom"
 
-import { isDocumentSelectionHandle, type DocumentSelection } from "./types"
+import { hasDocumentSelection } from "./types"
 
 const HASH_PREFIX = "#doc="
 
-export default withContext(({ element, find }) => {
-  const selectionEl = find((el) =>
-    isDocumentSelectionHandle((el as HTMLElement & { handle?: unknown }).handle),
-  )
-  if (!selectionEl) {
+export default (element: HTMLElement) => {
+  const selection = findHandle(element, hasDocumentSelection)
+  if (!selection) {
     throw new Error("document-selection-url-sync: no selection ancestor")
   }
-  const selection = (selectionEl as HTMLElement & { handle: StateHandle<DocumentSelection> })
-    .handle
 
   const fromHash = (): AutomergeUrl | null => {
     const hash = location.hash
@@ -46,4 +42,4 @@ export default withContext(({ element, find }) => {
     selection.removeEventListener("change", applyToHash)
     window.removeEventListener("hashchange", applyFromHash)
   }
-})
+}

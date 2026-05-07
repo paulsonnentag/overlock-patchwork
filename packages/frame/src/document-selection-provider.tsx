@@ -1,10 +1,10 @@
 import type { AutomergeUrl } from "@automerge/automerge-repo"
 
-import { StateHandle, type ViewElement } from "patchwork-dom"
+import { StateHandle } from "patchwork-dom"
 
 import type { DocumentSelection } from "./types"
 
-export default (element: ViewElement) => {
+export default (element: HTMLElement) => {
   const handle = new StateHandle<DocumentSelection>(
     { activeDocumentUrl: null, openedDocumentUrls: [] },
     selectionEquals,

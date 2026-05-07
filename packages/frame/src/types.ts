@@ -1,9 +1,23 @@
-import type { AutomergeUrl } from "@automerge/automerge-repo"
+import type { AutomergeUrl, DocHandle } from "@automerge/automerge-repo"
 import { StateHandle } from "patchwork-dom"
 
 export type AccountDoc = {
   rootFolderUrl: AutomergeUrl
   packagesFolderUrl: AutomergeUrl
+}
+
+export function hasAccountHandle(
+  el: HTMLElement,
+): el is HTMLElement & { handle: DocHandle<AccountDoc> } {
+  const handle = (el as HTMLElement & { handle?: unknown }).handle
+  if (!handle || typeof handle !== "object") return false
+  const doc = (handle as DocHandle<unknown>).doc?.() as
+    | { rootFolderUrl?: unknown; packagesFolderUrl?: unknown }
+    | undefined
+  return (
+    typeof doc?.rootFolderUrl === "string" &&
+    typeof doc?.packagesFolderUrl === "string"
+  )
 }
 
 export type DocLink = {
@@ -23,11 +37,12 @@ export type DocumentSelection = {
   openedDocumentUrls: AutomergeUrl[]
 }
 
-export function isDocumentSelectionHandle(
-  value: unknown,
-): value is StateHandle<DocumentSelection> {
-  if (!(value instanceof StateHandle)) return false
-  const v = value.value as unknown
+export function hasDocumentSelection(
+  el: HTMLElement,
+): el is HTMLElement & { handle: StateHandle<DocumentSelection> } {
+  const handle = (el as HTMLElement & { handle?: unknown }).handle
+  if (!(handle instanceof StateHandle)) return false
+  const v = handle.value as unknown
   return (
     typeof v === "object" &&
     v !== null &&
@@ -41,10 +56,4 @@ export type Manifest = {
   importUrl: string
   url: string
   [key: string]: unknown
-}
-
-export function isPackageRegistryHandle(
-  value: unknown,
-): value is StateHandle<Manifest[]> {
-  return value instanceof StateHandle && Array.isArray(value.value)
 }

@@ -1,4 +1,4 @@
 export * from "./types"
-export * from "./with-context"
+export * from "./find"
 export * from "./with-doc-handle"
 export * from "./state-handle"

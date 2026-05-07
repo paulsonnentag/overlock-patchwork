@@ -1,23 +1,19 @@
 import { Show } from "solid-js"
 import { render } from "solid-js/web"
 
-import type { StateHandle } from "patchwork-dom"
-import { useHandle, withSolid } from "patchwork-solid"
+import { findHandle } from "patchwork-dom"
+import { registerView, useHandle } from "patchwork-solid"
 
-import { isDocumentSelectionHandle, type DocumentSelection } from "./types"
+import { hasDocumentSelection } from "./types"
 
 const MARKDOWN_EDITOR_SRC =
   "automerge:MgZABPTTW3m3xzAyBhEX4SMJ5ao/dist/markdown-editor.json"
 
-export default withSolid(({ element, registerView, find }) => {
-  const selectionEl = find((el) =>
-    isDocumentSelectionHandle((el as HTMLElement & { handle?: unknown }).handle),
-  )
-  if (!selectionEl) throw new Error("single-view: no selection ancestor")
-  const sel = (selectionEl as HTMLElement & { handle: StateHandle<DocumentSelection> })
-    .handle
+export default (element: HTMLElement) => {
+  const sel = findHandle(element, hasDocumentSelection)
+  if (!sel) throw new Error("single-view: no selection ancestor")
 
-  const MarkdownEditor = registerView(MARKDOWN_EDITOR_SRC)
+  const MarkdownEditor = registerView(element, MARKDOWN_EDITOR_SRC)
   const state = useHandle(sel)
 
   return render(
@@ -28,4 +24,4 @@ export default withSolid(({ element, registerView, find }) => {
     ),
     element,
   )
-})
+}

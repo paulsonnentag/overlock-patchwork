@@ -1,18 +1,25 @@
-import type { AutomergeUrl, DocHandle } from "@automerge/automerge-repo"
+import type { AutomergeUrl, DocHandle, Repo } from "@automerge/automerge-repo"
 
-import { withContext, type WithContextCtx } from "./with-context"
-import { type Ctx, type Mount, type MountResult, type ViewElement } from "./types"
+import { getRepo } from "./find"
+import type { MountFn, MountResult } from "./types"
 
-export type DocHandleCtx<V> = WithContextCtx & {
-  url: AutomergeUrl
+export type ElementWithDocHandle<V = unknown> = HTMLElement & {
+  url: AutomergeUrl | null
+  handle: DocHandle<V> | undefined
+}
+
+export type DocHandleCtx<V> = {
+  element: ElementWithDocHandle<V>
   handle: DocHandle<V>
+  repo: Repo
 }
 
 export function withDocHandle<V = unknown>(
   next: (ctx: DocHandleCtx<V>) => MountResult,
-): Mount<Ctx> {
-  return withContext<Ctx>(async (ctx) => {
-    const element = ctx.element as ViewElement<V>
+): MountFn {
+  return async (input) => {
+    const element = input as ElementWithDocHandle<V>
+    const repo = getRepo(element)
     mirrorUrlAttribute(element)
 
     let unmount: (() => void) | undefined
@@ -22,14 +29,13 @@ export function withDocHandle<V = unknown>(
       unmount = undefined
 
       const url = raw as AutomergeUrl | null
-      element.handle = url ? await ctx.repo.find<V>(url) : undefined
+      element.handle = url ? await repo.find<V>(url) : undefined
       if (!element.handle || !url) return
 
       const result = await next({
-        ...ctx,
         element,
         handle: element.handle,
-        url,
+        repo,
       })
       unmount = typeof result === "function" ? result : undefined
     }
@@ -48,7 +54,7 @@ export function withDocHandle<V = unknown>(
       if (unmount) unmount()
       observer.disconnect()
     }
-  })
+  }
 }
 
 // Captures any value already assigned before the property was redefined
