@@ -14,13 +14,18 @@
   "contributions": {
     "components": [
       { "name": "sequencer", "module": "./src/sequencer.tsx" },
-      { "name": "new-sequencer-button", "module": "./src/new-sequencer-button.tsx" }
+      {
+        "name": "new-sequencer-button",
+        "module": "./src/new-sequencer-button.tsx",
+        "schema": "./src/schemas/folder.ts"
+      }
     ]
   },
   "dependencies": {
     "classnames": "^2.5.1",
     "jszip": "^3.10.1",
-    "lodash": "^4.17.21"
+    "lodash": "^4.17.21",
+    "patchwork-schemas": "link:../patchwork-schemas"
   },
   "devDependencies": {
     "@automerge/automerge": "3.2.5",

@@ -1,9 +1,9 @@
 {
-  "name": "patchwork-dom",
+  "name": "patchwork-schemas",
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "DOM-level helpers for patchwork components: find* / getRepo / getComponentRegistry, withDocHandle, StateHandle.",
+  "description": "Common Standard-Schema validators for patchwork docs (any, folder).",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -20,12 +20,12 @@
   "scripts": {
     "build": "vite build && tsc -p tsconfig.build.json"
   },
+  "dependencies": {
+    "@standard-schema/spec": "^1.1.0",
+    "zod": "^3.25.76"
+  },
   "devDependencies": {
-    "@automerge/automerge-repo": "2.6.0-subduction.13",
     "typescript": "^5.6.3",
     "vite": "^5.4.10"
-  },
-  "dependencies": {
-    "@standard-schema/spec": "^1.1.0"
   }
 }

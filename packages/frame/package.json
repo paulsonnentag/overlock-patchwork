@@ -11,26 +11,50 @@
   },
   "contributions": {
     "components": [
-      { "name": "root", "module": "./src/root.tsx" },
-      { "name": "account-provider", "module": "./src/account-provider.tsx" },
-      { "name": "document-selection-provider", "module": "./src/document-selection-provider.tsx" },
-      { "name": "document-selection-url-sync", "module": "./src/document-selection-url-sync.tsx" },
-      { "name": "folder-list", "module": "./src/folder-list.tsx" },
-      { "name": "package-registry-provider", "module": "./src/package-registry-provider.tsx" },
-      { "name": "single-view", "module": "./src/single-view.tsx" }
+      {
+        "name": "app-root",
+        "module": "./src/root.tsx"
+      },
+      {
+        "name": "account-provider",
+        "module": "./src/account-provider.tsx"
+      },
+      {
+        "name": "document-selection-provider",
+        "module": "./src/document-selection-provider.tsx"
+      },
+      {
+        "name": "document-selection-url-sync",
+        "module": "./src/document-selection-url-sync.tsx"
+      },
+      {
+        "name": "folder-list",
+        "module": "./src/folder-list.tsx",
+        "schema": "./src/schemas/folder.ts"
+      },
+      {
+        "name": "package-registry-provider",
+        "module": "./src/package-registry-provider.tsx"
+      },
+      {
+        "name": "patchwork-view",
+        "module": "./src/patchwork-view.tsx"
+      }
     ]
   },
   "dependencies": {
-    "patchwork-solid": "link:../patchwork-solid",
-    "patchwork-dom": "link:../patchwork-dom"
+    "@standard-schema/spec": "^1.1.0",
+    "patchwork-dom": "link:../patchwork-dom",
+    "patchwork-schemas": "link:../patchwork-schemas",
+    "patchwork-solid": "link:../patchwork-solid"
   },
   "devDependencies": {
     "@automerge/automerge-repo": "2.6.0-subduction.13",
+    "patchwork-vite-plugin": "link:../patchwork-vite-plugin",
     "solid-js": "^1.9.5",
     "typescript": "^5.6.3",
     "vite": "^5.4.10",
     "vite-plugin-css-injected-by-js": "^4.0.1",
-    "patchwork-vite-plugin": "link:../patchwork-vite-plugin",
     "vite-plugin-solid": "^2.11.0"
   }
 }

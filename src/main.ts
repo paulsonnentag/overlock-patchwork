@@ -17,7 +17,7 @@ import { ComponentRegistry } from "./component-registry";
 import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
 
 const ROOT_COMPONENT_URL =
-  "automerge:2Q6XWP6H1soyS1RFW7bzm6rabjnZ/dist/package.json#components/root";
+  "automerge:2Q6XWP6H1soyS1RFW7bzm6rabjnZ/dist/package.json#components/app-root";
 
 const SUBDUCTION_ENDPOINT = "wss://subduction.sync.inkandswitch.com";
 

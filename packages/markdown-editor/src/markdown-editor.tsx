@@ -1,34 +1,34 @@
-import { render } from "solid-js/web";
+import { render } from "solid-js/web"
 
-import { EditorView, keymap } from "@codemirror/view";
-import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
-import { markdown } from "@codemirror/lang-markdown";
+import { EditorView, keymap } from "@codemirror/view"
+import { history, defaultKeymap, historyKeymap } from "@codemirror/commands"
+import { markdown } from "@codemirror/lang-markdown"
 
-import { withDocHandle } from "patchwork-dom";
+import { withDocHandle } from "patchwork-dom"
 
-import { CodeMirror } from "./codemirror";
-import { createDiffDecorations } from "./extensions/diffDecorations";
-import { markdownTheme } from "./markdown-theme";
+import { CodeMirror } from "./codemirror"
+import { createDiffDecorations } from "./extensions/diffDecorations"
+import { markdownTheme } from "./markdown-theme"
 // `vite-plugin-css-injected-by-js` rewrites this side-effect import at
 // build time: the CSS is bundled into `markdown-editor.js` and a
 // `<style>` tag is inserted on first import. Keeps the package a
 // single self-contained JS file for the loader to fetch.
-import "./styles.css";
+import "./styles.css"
 
-type TextDoc = { content?: string };
+type MarkdownDoc = { content?: string }
 
-const PATH = ["content"];
+const PATH = ["content"]
 
-export default withDocHandle<TextDoc>(({ element, handle }) => {
+export default withDocHandle<MarkdownDoc>(({ element, handle }) => {
   const extensions = [
     markdown(),
     history(),
     keymap.of([...defaultKeymap, ...historyKeymap]),
     EditorView.lineWrapping,
     ...markdownTheme("sans"),
-  ];
+  ]
 
-  const decorations = createDiffDecorations(() => handle, PATH);
+  const decorations = createDiffDecorations(() => handle, PATH)
 
   return render(
     () => (
@@ -40,6 +40,5 @@ export default withDocHandle<TextDoc>(({ element, handle }) => {
       />
     ),
     element,
-  );
-});
-
+  )
+})

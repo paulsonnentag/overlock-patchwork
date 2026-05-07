@@ -1,4 +1,5 @@
 import type { AutomergeUrl, DocHandle } from "@automerge/automerge-repo"
+import type { StandardSchemaV1 } from "@standard-schema/spec"
 import { StateHandle } from "patchwork-dom"
 
 export type AccountDoc = {
@@ -55,5 +56,14 @@ export type Component = {
   name: string
   module: string
   url: string
+  schema?: StandardSchemaV1
   [key: string]: unknown
+}
+
+export function hasComponentRegistry(
+  el: HTMLElement,
+): el is HTMLElement & { handle: StateHandle<Component[]> } {
+  const handle = (el as HTMLElement & { handle?: unknown }).handle
+  if (!(handle instanceof StateHandle)) return false
+  return Array.isArray(handle.value)
 }

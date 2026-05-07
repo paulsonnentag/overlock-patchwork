@@ -24,12 +24,16 @@ import {
   type DocWithBranchIndex,
 } from "./types"
 
+type BranchPickerDoc = {
+  [BRANCH_MARKER]?: { branchIndexUrl?: AutomergeUrl }
+}
+
 function canonicalUrl(url: AutomergeUrl): AutomergeUrl {
   const { documentId } = parseAutomergeUrl(url)
   return stringifyAutomergeUrl({ documentId })
 }
 
-export default withDocHandle<DocWithBranchIndex>(({ element, repo, handle }) => {
+export default withDocHandle<BranchPickerDoc>(({ element, repo, handle }) => {
   if (!isBranchableRepo(repo)) {
     throw new Error("branch-picker: no <checked-out-branch-provider> ancestor")
   }
@@ -38,7 +42,7 @@ export default withDocHandle<DocWithBranchIndex>(({ element, repo, handle }) => 
   const originalUrl = handle.url
 
   const Picker = () => {
-    const doc = useHandle(handle)
+    const doc = useHandle(handle) as BranchPickerDoc
 
     const [branchState, setBranchState] = createSignal({
       url: branchable.branchHandle?.url ?? null,
@@ -83,7 +87,8 @@ export default withDocHandle<DocWithBranchIndex>(({ element, repo, handle }) => 
 
     let lastIndexUrl: AutomergeUrl | null = null
     createEffect(() => {
-      const url = doc[BRANCH_MARKER]?.branchIndexUrl ?? null
+      const raw = doc[BRANCH_MARKER]?.branchIndexUrl ?? null
+      const url = raw as AutomergeUrl | null
       if (url === lastIndexUrl) return
       lastIndexUrl = url
       void attachIndex(url)
@@ -259,3 +264,4 @@ export default withDocHandle<DocWithBranchIndex>(({ element, repo, handle }) => 
 
   return render(() => <Picker />, element)
 })
+

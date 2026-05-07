@@ -5,7 +5,7 @@ import { patchwork } from "patchwork-vite-plugin";
 
 export default defineConfig({
   plugins: [
-    patchwork({ components: ["module"] }),
+    patchwork({ components: ["module", "schema"] }),
     solid(),
     cssInjectedByJsPlugin(),
   ],

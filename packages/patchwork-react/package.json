@@ -1,9 +1,9 @@
 {
-  "name": "patchwork-dom",
+  "name": "patchwork-react",
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "DOM-level helpers for patchwork components: find* / getRepo / getComponentRegistry, withDocHandle, StateHandle.",
+  "description": "React bindings for patchwork-dom: registerComponent (React component factory) and useHandle for StateHandle / DocHandle.",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -20,12 +20,20 @@
   "scripts": {
     "build": "vite build && tsc -p tsconfig.build.json"
   },
+  "patchwork": {
+    "server": "wss://subduction.sync.inkandswitch.com"
+  },
+  "peerDependencies": {
+    "patchwork-dom": "*",
+    "react": "^18"
+  },
   "devDependencies": {
     "@automerge/automerge-repo": "2.6.0-subduction.13",
+    "@types/react": "^18.3.3",
+    "@vitejs/plugin-react": "^4.3.1",
+    "patchwork-dom": "link:../patchwork-dom",
+    "react": "^18.3.1",
     "typescript": "^5.6.3",
     "vite": "^5.4.10"
-  },
-  "dependencies": {
-    "@standard-schema/spec": "^1.1.0"
   }
 }

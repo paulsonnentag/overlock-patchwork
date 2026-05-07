@@ -1,3 +1,5 @@
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+
 import { type ModuleUpdatedEvent, type ModuleWatcher } from "./module-watcher";
 import { TypedEventTarget } from "./typed-event-target";
 
@@ -10,15 +12,22 @@ export type ComponentRegistryOptions = {
   moduleWatcher: ModuleWatcher;
 };
 
+export type RegistryComponent = {
+  name: string;
+  mount: MountFn;
+  schema?: StandardSchemaV1;
+  [key: string]: unknown;
+};
+
 export type ComponentRegistryLoadedEvent = CustomEvent<{
   componentUrl: string;
-  component: { name: string; mount: MountFn; [key: string]: unknown };
+  component: RegistryComponent;
 }>;
 
 export type ComponentRegistryUpdatedEvent = CustomEvent<{
   componentUrl: string;
-  previous: { name: string; mount: MountFn; [key: string]: unknown };
-  next: { name: string; mount: MountFn; [key: string]: unknown };
+  previous: RegistryComponent;
+  next: RegistryComponent;
 }>;
 
 export type ComponentRegistryRemovedEvent = CustomEvent<{

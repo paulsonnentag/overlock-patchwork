@@ -3,8 +3,7 @@ import { render } from "solid-js/web"
 
 import { withDocHandle } from "patchwork-dom"
 import { useHandle } from "patchwork-solid"
-
-import type { FolderDoc } from "./types"
+import type { FolderDoc } from "patchwork-schemas"
 
 export default withDocHandle<FolderDoc>(({ element, handle }) => {
   const folder = useHandle(handle)

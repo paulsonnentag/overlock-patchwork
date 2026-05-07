@@ -3,6 +3,7 @@ import {
   type DocHandle,
   type Repo,
 } from "@automerge/automerge-repo/slim";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import {
   findHandleInFolderHandle,
   type FolderDoc,
@@ -18,6 +19,7 @@ export type LoadedComponent = {
   name: string;
   module: string;
   exports: unknown;
+  schema?: StandardSchemaV1;
 };
 
 export type ModuleLoadedEvent = CustomEvent<{
@@ -52,7 +54,7 @@ export type ModuleWatcherOptions = {
   import: Loader;
 };
 
-type ComponentEntry = { name: string; module: string };
+type ComponentEntry = { name: string; module: string; schema?: string };
 
 type ParsedComponentUrl = {
   rootUrl: AutomergeUrl;
@@ -208,16 +210,47 @@ export class ModuleWatcher extends TypedEventTarget<ModuleWatcherEventMap> {
     const absoluteImportUrl = resolveImportUrl(packageJsonUrl, entry.module);
     const pinnedImportUrl = await pinUrl(this.#repo, absoluteImportUrl);
     const exports = await this.#import(pinnedImportUrl);
+    const schema = entry.schema
+      ? await this.#fetchSchema(packageJsonUrl, entry.schema)
+      : undefined;
     return {
       name: entry.name,
       module: absoluteImportUrl,
       exports,
+      schema,
     };
+  }
+
+  async #fetchSchema(
+    packageJsonUrl: string,
+    schemaPath: string,
+  ): Promise<StandardSchemaV1 | undefined> {
+    const absolute = resolveImportUrl(packageJsonUrl, schemaPath);
+    const pinned = await pinUrl(this.#repo, absolute);
+    const exports = await this.#import(pinned);
+    const candidate = (exports as { default?: unknown } | null | undefined)
+      ?.default;
+    if (!isStandardSchema(candidate)) {
+      console.warn(
+        `[overlock-patchwork] schema at ${schemaPath} is not a Standard Schema (must default-export one)`,
+      );
+      return undefined;
+    }
+    return candidate;
   }
 }
 
 export function isModuleWatcher(value: unknown): value is ModuleWatcher {
   return value instanceof ModuleWatcher;
+}
+
+function isStandardSchema(value: unknown): value is StandardSchemaV1 {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    "~standard" in value &&
+    typeof (value as { "~standard"?: unknown })["~standard"] === "object"
+  );
 }
 
 // Component URL = `<automerge-url-with-optional-heads>/<path/to/package.json>#<kind>/<name>`.
@@ -291,12 +324,27 @@ function readContribution(
       `[overlock-patchwork] no contributions.${parsed.kind} entry named "${parsed.name}" in ${parsed.packageJsonUrl}`,
     );
   }
-  if (!entry.module.startsWith("./") && !entry.module.startsWith("../")) {
+  assertRelativePath(entry.module, `${parsed.name}.module`);
+  const schemaRaw = (entry as { schema?: unknown }).schema;
+  let schema: string | undefined;
+  if (schemaRaw !== undefined) {
+    if (typeof schemaRaw !== "string") {
+      throw new Error(
+        `[overlock-patchwork] contribution "${parsed.name}" schema must be a string`,
+      );
+    }
+    assertRelativePath(schemaRaw, `${parsed.name}.schema`);
+    schema = schemaRaw;
+  }
+  return { name: entry.name, module: entry.module, schema };
+}
+
+function assertRelativePath(path: string, label: string): void {
+  if (!path.startsWith("./") && !path.startsWith("../")) {
     throw new Error(
-      `[overlock-patchwork] contribution "${parsed.name}" module must start with "./" or "../" (got "${entry.module}")`,
+      `[overlock-patchwork] contribution "${label}" must start with "./" or "../" (got "${path}")`,
     );
   }
-  return { name: entry.name, module: entry.module };
 }
 
 function contentToText(content: UnixFileEntry["content"]): string {

@@ -13,6 +13,7 @@ import { hasAccountHandle, hasDocumentSelection } from "./types"
 
 const FRAME_PKG = "automerge:2Q6XWP6H1soyS1RFW7bzm6rabjnZ/dist/package.json"
 const MD_PKG = "automerge:MgZABPTTW3m3xzAyBhEX4SMJ5ao/dist/package.json"
+const SEQ_PKG = "automerge:3W3MzsQTqGqw9cpuHEezd7EAB365/dist/package.json"
 const BRANCHES_PKG = "automerge:YPhgkbKsr2zAzZgc5h9UuauZCux/dist/package.json"
 
 const ACCOUNT_PROVIDER_URL = `${FRAME_PKG}#components/account-provider`
@@ -20,8 +21,9 @@ const SELECTION_PROVIDER_URL = `${FRAME_PKG}#components/document-selection-provi
 const SELECTION_URL_SYNC_URL = `${FRAME_PKG}#components/document-selection-url-sync`
 const FOLDER_LIST_URL = `${FRAME_PKG}#components/folder-list`
 const PACKAGE_REGISTRY_PROVIDER_URL = `${FRAME_PKG}#components/package-registry-provider`
-const SINGLE_VIEW_URL = `${FRAME_PKG}#components/single-view`
+const PATCHWORK_VIEW_URL = `${FRAME_PKG}#components/patchwork-view`
 const NEW_MARKDOWN_BUTTON_URL = `${MD_PKG}#components/new-markdown-button`
+const NEW_SEQUENCER_BUTTON_URL = `${SEQ_PKG}#components/new-sequencer-button`
 const CHECKED_OUT_BRANCH_PROVIDER_URL = `${BRANCHES_PKG}#components/checked-out-branch-provider`
 const BRANCH_PICKER_URL = `${BRANCHES_PKG}#components/branch-picker`
 
@@ -34,8 +36,12 @@ export default (element: HTMLElement) => {
     element,
     PACKAGE_REGISTRY_PROVIDER_URL,
   )
-  const SingleView = registerComponent(element, SINGLE_VIEW_URL)
+  const PatchworkView = registerComponent(element, PATCHWORK_VIEW_URL)
   const NewMarkdownButton = registerComponent(element, NEW_MARKDOWN_BUTTON_URL)
+  const NewSequencerButton = registerComponent(
+    element,
+    NEW_SEQUENCER_BUTTON_URL,
+  )
   const CheckedOutBranchProvider = registerComponent(
     element,
     CHECKED_OUT_BRANCH_PROVIDER_URL,
@@ -67,6 +73,7 @@ export default (element: HTMLElement) => {
                 <PackageRegistryProvider url={account.packagesFolderUrl}>
                   <div class="frame__sidebar">
                     <NewMarkdownButton url={account.rootFolderUrl} />
+                    <NewSequencerButton url={account.rootFolderUrl} />
                     <FolderList url={account.rootFolderUrl} />
                   </div>
                   <CheckedOutBranchProvider>
@@ -76,15 +83,17 @@ export default (element: HTMLElement) => {
                         return (
                           <Show when={selection().activeDocumentUrl}>
                             {(url) => (
-                              <div class="frame__branch-bar">
-                                <BranchPicker url={url()} />
-                              </div>
+                              <>
+                                <div class="frame__branch-bar">
+                                  <BranchPicker url={url()} />
+                                </div>
+                                <PatchworkView url={url()} />
+                              </>
                             )}
                           </Show>
                         )
                       }}
                     </Show>
-                    <SingleView />
                   </CheckedOutBranchProvider>
                 </PackageRegistryProvider>
               </SelectionProvider>

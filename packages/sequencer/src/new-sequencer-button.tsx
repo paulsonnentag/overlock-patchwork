@@ -1,15 +1,9 @@
 import { createRoot } from "react-dom/client"
 
-import type { AutomergeUrl } from "@automerge/automerge-repo"
-
 import { withDocHandle } from "patchwork-dom"
+import type { FolderDoc } from "patchwork-schemas"
 
 import { defaultSequencerDoc } from "./datatype"
-
-type FolderDoc = {
-  title: string
-  docs: { name: string; type: string; url: AutomergeUrl; icon?: string }[]
-}
 
 export default withDocHandle<FolderDoc>(({ element, repo, handle }) => {
   const onClick = () => {

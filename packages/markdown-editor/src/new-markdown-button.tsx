@@ -1,13 +1,7 @@
 import { render } from "solid-js/web"
 
-import type { AutomergeUrl } from "@automerge/automerge-repo"
-
 import { withDocHandle } from "patchwork-dom"
-
-type FolderDoc = {
-  title: string
-  docs: { name: string; type: string; url: AutomergeUrl; icon?: string }[]
-}
+import type { FolderDoc } from "patchwork-schemas"
 
 export default withDocHandle<FolderDoc>(({ element, repo, handle }) => {
   const onClick = () => {
