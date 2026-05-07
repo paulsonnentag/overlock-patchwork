@@ -37,7 +37,7 @@ export function withContext<C extends Ctx>(
     return next({
       ...ctx,
       repo,
-      registerView: registry.registerView,
+      registerView: registry.registerView.bind(registry),
       find,
     })
   }

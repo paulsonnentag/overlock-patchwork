@@ -17,7 +17,7 @@ import { ViewRegistry } from "./view-registry";
 import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
 
 const ROOT_MANIFEST_URL =
-  "automerge:3t8ivUxWittXbhnmz5ZLVCMPqxJC/dist/root.json";
+  "automerge:2Q6XWP6H1soyS1RFW7bzm6rabjnZ/dist/root.json";
 
 const SUBDUCTION_ENDPOINT = "wss://subduction.sync.inkandswitch.com";
 

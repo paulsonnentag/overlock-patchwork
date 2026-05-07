@@ -7,7 +7,7 @@ import { useHandle, withSolid } from "patchwork-solid"
 import { isDocumentSelectionHandle, type DocumentSelection } from "./types"
 
 const MARKDOWN_EDITOR_SRC =
-  "automerge:ktem5LsqihaRgoZbz9SXQ9uJ5J4/dist/markdown-editor.json"
+  "automerge:MgZABPTTW3m3xzAyBhEX4SMJ5ao/dist/markdown-editor.json"
 
 export default withSolid(({ element, registerView, find }) => {
   const selectionEl = find((el) =>

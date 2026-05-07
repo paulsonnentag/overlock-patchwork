@@ -11,9 +11,9 @@ import "./styles.css"
 import type { AccountDoc, DocumentSelection } from "./types"
 import { isDocumentSelectionHandle } from "./types"
 
-const FRAME_PKG = "automerge:3t8ivUxWittXbhnmz5ZLVCMPqxJC/dist"
-const MD_PKG = "automerge:ktem5LsqihaRgoZbz9SXQ9uJ5J4/dist"
-const BRANCHES_PKG = "automerge:2A8Z1TgGe2C5cVcvvnZHNZ53X6no/dist"
+const FRAME_PKG = "automerge:2Q6XWP6H1soyS1RFW7bzm6rabjnZ/dist"
+const MD_PKG = "automerge:MgZABPTTW3m3xzAyBhEX4SMJ5ao/dist"
+const BRANCHES_PKG = "automerge:YPhgkbKsr2zAzZgc5h9UuauZCux/dist"
 
 const ACCOUNT_CONTEXT_SRC = `${FRAME_PKG}/account-context.json`
 const SELECTION_CONTEXT_SRC = `${FRAME_PKG}/document-selection-context.json`
