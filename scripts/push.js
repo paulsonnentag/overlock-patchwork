@@ -87,9 +87,9 @@ async function pathExists(p) {
   }
 }
 
-function runPushwork(args) {
+function runPushwork(args, cwd) {
   return new Promise((resolve, reject) => {
-    const child = spawn("pushwork", args, { stdio: "inherit" });
+    const child = spawn("pushwork", args, { stdio: "inherit", cwd });
     child.on("error", (err) => {
       if (err.code === "ENOENT") {
         reject(
@@ -106,7 +106,7 @@ function runPushwork(args) {
       else
         reject(
           new Error(
-            `pushwork ${args.join(" ")} exited with ${code ?? `signal ${signal}`}`
+            `pushwork ${args.join(" ")} (in ${cwd ?? process.cwd()}) exited with ${code ?? `signal ${signal}`}`
           )
         );
     });
@@ -117,10 +117,15 @@ async function syncSubfolder(absPath) {
   const pushworkDir = path.join(absPath, ".pushwork");
   if (await pathExists(pushworkDir)) {
     console.log(`\n=== pushwork sync ${absPath} ===`);
-    await runPushwork(["sync", absPath]);
+    await runPushwork(["sync"], absPath);
   } else {
-    console.log(`\n=== pushwork init --sub ${absPath} ===`);
-    await runPushwork(["init", "--sub", absPath]);
+    console.log(
+      `\n=== pushwork init --sub --no-branches --shape patchwork-folder ${absPath} ===`
+    );
+    await runPushwork(
+      ["init", "--sub", "--no-branches", "--shape", "patchwork-folder"],
+      absPath
+    );
   }
 }
 
@@ -183,7 +188,7 @@ async function orderSubfoldersByPackageDeps(subfolders) {
   const alphabetical = [...subfolders].sort((a, b) => a.name.localeCompare(b.name));
 
   for (const sub of alphabetical) visitSubfolder(sub);
-  return { ordered, byPackageName, packageBySubfolder };
+  return ordered;
 
   function visitSubfolder(sub) {
     if (visited.has(sub.name)) return;
@@ -201,24 +206,6 @@ async function orderSubfoldersByPackageDeps(subfolders) {
     visited.add(sub.name);
     ordered.push(sub);
   }
-}
-
-// Walk a failed subfolder's transitive workspace-sibling deps. Excludes
-// the failed sub itself.
-function collectUpstreamSiblings(failedSub, byPackageName, packageBySubfolder) {
-  const result = new Set();
-  const stack = [failedSub];
-  while (stack.length > 0) {
-    const cur = stack.pop();
-    const pkg = packageBySubfolder.get(cur.name);
-    for (const depName of packageDependencyNames(pkg)) {
-      const dep = byPackageName.get(depName);
-      if (!dep || dep.name === failedSub.name || result.has(dep)) continue;
-      result.add(dep);
-      stack.push(dep);
-    }
-  }
-  return result;
 }
 
 function packageDependencyNames(pkg) {
@@ -245,11 +232,20 @@ async function buildSubfolderIfNeeded(absPath) {
 }
 
 async function readSubfolderRootUrl(absPath) {
-  const snapshotPath = path.join(absPath, ".pushwork", "snapshot.json");
-  if (!(await pathExists(snapshotPath))) return null;
-  const raw = await fs.readFile(snapshotPath, "utf8");
+  const configPath = path.join(absPath, ".pushwork", "config.json");
+  if (!(await pathExists(configPath))) return null;
+  const raw = await fs.readFile(configPath, "utf8");
   const data = JSON.parse(raw);
-  return data.rootDirectoryUrl ?? null;
+  return data.rootUrl ?? null;
+}
+
+const LAST_PUSHED_MARKER = ".last-pushed";
+
+async function touchLastPushedMarker(absPath) {
+  const markerPath = path.join(absPath, ".pushwork", LAST_PUSHED_MARKER);
+  const now = new Date();
+  await fs.writeFile(markerPath, "", "utf8");
+  await fs.utimes(markerPath, now, now);
 }
 
 // Names skipped while computing a subfolder's "last touched" mtime. We
@@ -395,28 +391,21 @@ async function main() {
     process.exit(1);
   }
 
-  const { ordered, byPackageName, packageBySubfolder } =
-    await orderSubfoldersByPackageDeps(subfolders);
-  subfolders = ordered;
-
-  // Subfolders whose build/sync raised in the first pass. We retry them
-  // after `pushwork sync --nuclear`-ing their workspace-sibling deps so
-  // the server gets a fresh copy of upstream docs (which is the usual
-  // reason a downstream `pnpm install` times out fetching `automerge:`
-  // deps).
-  const failedSubs = [];
+  subfolders = await orderSubfoldersByPackageDeps(subfolders);
 
   for (const sub of subfolders) {
-    const subSnapshot = path.join(sub.absPath, ".pushwork", "snapshot.json");
-    const hasSnapshot = await pathExists(subSnapshot);
+    const lastPushedMarker = path.join(
+      sub.absPath,
+      ".pushwork",
+      LAST_PUSHED_MARKER
+    );
+    const hasMarker = await pathExists(lastPushedMarker);
 
     let skip = false;
-    if (!force && hasSnapshot) {
-      // Pushwork rewrites snapshot.json on every sync run, so its file
-      // mtime is a reliable "last successful sync" marker. The
-      // `timestamp` field *inside* it only moves when an entry is
-      // actually added/updated/removed, so it isn't.
-      const lastPushMs = (await fs.stat(subSnapshot)).mtimeMs;
+    if (!force && hasMarker) {
+      // We touch this marker ourselves after every successful sync, so
+      // its mtime is a reliable "last successful sync" timestamp.
+      const lastPushMs = (await fs.stat(lastPushedMarker)).mtimeMs;
       const maxMs = await findMaxMtimeMs(sub.absPath);
       if (maxMs <= lastPushMs) skip = true;
     }
@@ -424,66 +413,16 @@ async function main() {
     if (skip) {
       console.log(`(unchanged) skipping pushwork sync for ${sub.name}`);
     } else {
-      try {
-        await buildSubfolderIfNeeded(sub.absPath);
-        await syncSubfolder(sub.absPath);
-      } catch (err) {
-        console.warn(
-          `\nwarning: failed to push ${sub.name}: ${err?.message ?? err}\n` +
-          `         will retry after --nuclear-resyncing its upstream workspace deps\n`
-        );
-        failedSubs.push(sub);
-        continue;
-      }
+      await buildSubfolderIfNeeded(sub.absPath);
+      await syncSubfolder(sub.absPath);
+      await touchLastPushedMarker(sub.absPath);
     }
 
     sub.url = await readSubfolderRootUrl(sub.absPath);
     if (!sub.url) {
       throw new Error(
-        `Subfolder ${sub.name} has no rootDirectoryUrl in .pushwork/snapshot.json after sync`
+        `Subfolder ${sub.name} has no rootUrl in .pushwork/config.json after sync`
       );
-    }
-  }
-
-  if (failedSubs.length > 0) {
-    const upstreamsToNuke = new Set();
-    for (const sub of failedSubs) {
-      for (const up of collectUpstreamSiblings(
-        sub,
-        byPackageName,
-        packageBySubfolder
-      )) {
-        upstreamsToNuke.add(up);
-      }
-    }
-
-    console.log(
-      `\n=== retrying ${failedSubs.length} failed subfolder(s) after --nuclear-resyncing ${upstreamsToNuke.size} upstream(s) ===`
-    );
-
-    for (const up of upstreamsToNuke) {
-      console.log(`\n=== pushwork sync --nuclear ${up.absPath} ===`);
-      await runPushwork(["sync", "--nuclear", up.absPath]);
-      // --nuclear preserves rootDirectoryUrl (only child docs are
-      // recreated), but re-read in case the snapshot file was rewritten.
-      up.url = await readSubfolderRootUrl(up.absPath);
-      if (!up.url) {
-        throw new Error(
-          `Upstream ${up.name} has no rootDirectoryUrl after --nuclear sync`
-        );
-      }
-    }
-
-    for (const sub of failedSubs) {
-      console.log(`\n=== retry: pushing ${sub.name} ===`);
-      await buildSubfolderIfNeeded(sub.absPath);
-      await syncSubfolder(sub.absPath);
-      sub.url = await readSubfolderRootUrl(sub.absPath);
-      if (!sub.url) {
-        throw new Error(
-          `Subfolder ${sub.name} has no rootDirectoryUrl after retry`
-        );
-      }
     }
   }
 

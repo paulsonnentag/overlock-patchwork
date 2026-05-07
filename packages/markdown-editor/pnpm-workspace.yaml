@@ -1,5 +1,3 @@
 allowBuilds:
   cbor-extract: true
   esbuild: true
-configDependencies:
-  pnpm-plugin-patchwork: 0.2.0

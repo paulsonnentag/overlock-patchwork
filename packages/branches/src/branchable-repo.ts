@@ -407,8 +407,21 @@ export class BranchedDocHandle<T> {
     // Synthetic nudge so reactive consumers (makeDocumentProjection,
     // plain `handle.on("change", refresh)`) re-read `doc()` immediately
     // instead of waiting for an incidental change on the new inner.
-    this.emit("change", { handle: this })
-    this.emit("heads-changed", { handle: this })
+    //
+    // The payload mirrors the shape automerge-repo uses for real change
+    // events so that consumers like solid-primitives' makeDocumentProjection
+    // (which iterates `payload.patches`) don't crash. `patches: []` is
+    // semantically correct for the fork case, where the clone is a snapshot
+    // of the original and content is unchanged at the moment of swap.
+    const before = previousActive.doc()
+    const after = nextActive.doc()
+    this.emit("change", {
+      handle: this,
+      doc: after,
+      patches: [] as Patch[],
+      patchInfo: { before, after, source: "change" },
+    })
+    this.emit("heads-changed", { handle: this, doc: after })
   }
 
   #triggerCOW(): void {
