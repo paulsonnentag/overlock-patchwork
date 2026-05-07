@@ -10,8 +10,8 @@
  * `<folder>/.pushwork/snapshot.json`.
  *
  * Usage:
- *   pnpm push <folder>
- *   pnpm push <folder> --force
+ *   yarn push <folder>
+ *   yarn push <folder> --force
  *
  *   --force      Always run pushwork on every subfolder. By default a
  *                subfolder is skipped when no file under it has been
@@ -20,7 +20,7 @@
  *
  * Whenever a subfolder *is* about to be synced (i.e. not skipped) and
  * has a top-level `package.json` with a `scripts.build` entry, we run
- * `pnpm install` followed by `pnpm build` in that subfolder first so
+ * `yarn install` followed by `yarn build` in that subfolder first so
  * any generated output (e.g. `dist/`) is part of the push.
  */
 
@@ -30,7 +30,7 @@ import { spawn } from "node:child_process";
 
 // Heavy Automerge deps are loaded lazily inside main() so that `--help`,
 // usage errors and the top-level "non-folder entry" check work even
-// before `pnpm install` has been run (the new
+// before `yarn install` has been run (the new
 // @automerge/automerge-repo-storage-nodefs dev-dep ships with this
 // script).
 
@@ -42,7 +42,7 @@ const TOLERATED_TOP_LEVEL_ENTRIES = new Set([".pushwork", ".DS_Store"]);
 
 function printHelpAndExit(code) {
   const msg = [
-    "Usage: pnpm push <folder> [--force]",
+    "Usage: yarn push <folder> [--force]",
     "",
     "  <folder>     Folder containing subfolders to push (required).",
     "  --force      Run pushwork on every subfolder even if no local files",
@@ -94,7 +94,7 @@ function runPushwork(args, cwd) {
       if (err.code === "ENOENT") {
         reject(
           new Error(
-            "Could not find `pushwork` on PATH. Build and link it from /Users/paulsonnentag/repos/pushwork (`pnpm install && pnpm build && pnpm link --global`)."
+            "Could not find `pushwork` on PATH. Build and link it from /Users/paulsonnentag/repos/pushwork (`yarn install && yarn build && yarn link`)."
           )
         );
       } else {
@@ -129,12 +129,12 @@ async function syncSubfolder(absPath) {
   }
 }
 
-function runPnpm(args, cwd) {
+function runYarn(args, cwd) {
   return new Promise((resolve, reject) => {
-    const child = spawn("pnpm", args, { stdio: "inherit", cwd });
+    const child = spawn("yarn", args, { stdio: "inherit", cwd });
     child.on("error", (err) => {
       if (err.code === "ENOENT") {
-        reject(new Error("Could not find `pnpm` on PATH."));
+        reject(new Error("Could not find `yarn` on PATH."));
       } else {
         reject(err);
       }
@@ -144,7 +144,7 @@ function runPnpm(args, cwd) {
       else
         reject(
           new Error(
-            `pnpm ${args.join(" ")} (in ${cwd}) exited with ${code ?? `signal ${signal}`}`
+            `yarn ${args.join(" ")} (in ${cwd}) exited with ${code ?? `signal ${signal}`}`
           )
         );
     });
@@ -218,17 +218,17 @@ function packageDependencyNames(pkg) {
   ];
 }
 
-// Run `pnpm install` then `pnpm build` in the subfolder if its
+// Run `yarn install` then `yarn build` in the subfolder if its
 // package.json has a build script. Called only when we've already
 // decided to sync — building when nothing changed would just churn the
 // dist mtimes and force a noop sync next time.
 async function buildSubfolderIfNeeded(absPath) {
   const pkg = await readPackageJson(absPath);
   if (!pkg || typeof pkg.scripts?.build !== "string") return;
-  console.log(`\n=== pnpm install ${absPath} ===`);
-  await runPnpm(["install"], absPath);
-  console.log(`\n=== pnpm build ${absPath} ===`);
-  await runPnpm(["build"], absPath);
+  console.log(`\n=== yarn install ${absPath} ===`);
+  await runYarn(["install"], absPath);
+  console.log(`\n=== yarn build ${absPath} ===`);
+  await runYarn(["build"], absPath);
 }
 
 async function readSubfolderRootUrl(absPath) {
@@ -251,14 +251,14 @@ async function touchLastPushedMarker(absPath) {
 // Names skipped while computing a subfolder's "last touched" mtime. We
 // purposely ignore .pushwork (pushwork rewrites files in there during
 // sync), .DS_Store (Finder churn is not interesting), and node_modules
-// (pnpm churns it on every install and it's full of symlinks — neither
+// (yarn churns it on every install and it's full of symlinks — neither
 // of which says anything about whether source changed since last sync).
 const MTIME_IGNORED_NAMES = new Set([".pushwork", ".DS_Store", "node_modules"]);
 
 // Find the most recent mtime (in ms) anywhere under `rootAbs`, including
 // directory mtimes so that adding/removing files (which doesn't touch
 // existing files' mtimes) still bumps the answer. Uses lstat so dangling
-// symlinks (e.g. from a partially-applied pnpm install) don't blow up
+// symlinks (e.g. from a partially-applied yarn install) don't blow up
 // the walk and so we don't accidentally recurse out of the source tree.
 async function findMaxMtimeMs(rootAbs) {
   let maxMs = 0;
