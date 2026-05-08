@@ -1,6 +1,9 @@
 import type { AutomergeUrl, DocHandle } from "@automerge/automerge-repo"
-import type { StandardSchemaV1 } from "@standard-schema/spec"
-import { StateHandle } from "patchwork-dom"
+import {
+  readHandle,
+  StateHandle,
+  type ElementWithHandle,
+} from "patchwork-dom"
 
 export type AccountDoc = {
   rootFolderUrl: AutomergeUrl
@@ -9,8 +12,8 @@ export type AccountDoc = {
 
 export function hasAccountHandle(
   el: HTMLElement,
-): el is HTMLElement & { handle: DocHandle<AccountDoc> } {
-  const handle = (el as HTMLElement & { handle?: unknown }).handle
+): el is ElementWithHandle<DocHandle<AccountDoc>> {
+  const handle = readHandle(el)
   if (!handle || typeof handle !== "object") return false
   const doc = (handle as DocHandle<unknown>).doc?.() as
     | { rootFolderUrl?: unknown; packagesFolderUrl?: unknown }
@@ -21,18 +24,6 @@ export function hasAccountHandle(
   )
 }
 
-export type DocLink = {
-  name: string
-  type: string
-  url: AutomergeUrl
-  icon?: string
-}
-
-export type FolderDoc = {
-  title: string
-  docs: DocLink[]
-}
-
 export type DocumentSelection = {
   activeDocumentUrl: AutomergeUrl | null
   openedDocumentUrls: AutomergeUrl[]
@@ -40,8 +31,8 @@ export type DocumentSelection = {
 
 export function hasDocumentSelection(
   el: HTMLElement,
-): el is HTMLElement & { handle: StateHandle<DocumentSelection> } {
-  const handle = (el as HTMLElement & { handle?: unknown }).handle
+): el is ElementWithHandle<StateHandle<DocumentSelection>> {
+  const handle = readHandle(el)
   if (!(handle instanceof StateHandle)) return false
   const v = handle.value as unknown
   return (
@@ -50,20 +41,4 @@ export function hasDocumentSelection(
     "activeDocumentUrl" in v &&
     "openedDocumentUrls" in v
   )
-}
-
-export type Component = {
-  name: string
-  module: string
-  url: string
-  schema?: StandardSchemaV1
-  [key: string]: unknown
-}
-
-export function hasComponentRegistry(
-  el: HTMLElement,
-): el is HTMLElement & { handle: StateHandle<Component[]> } {
-  const handle = (el as HTMLElement & { handle?: unknown }).handle
-  if (!(handle instanceof StateHandle)) return false
-  return Array.isArray(handle.value)
 }

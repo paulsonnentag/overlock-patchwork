@@ -28,11 +28,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { spawn } from "node:child_process";
 
-// Heavy Automerge deps are loaded lazily inside main() so that `--help`,
-// usage errors and the top-level "non-folder entry" check work even
-// before `yarn install` has been run (the new
-// @automerge/automerge-repo-storage-nodefs dev-dep ships with this
-// script).
+import { Repo, initSubduction } from "@automerge/automerge-repo";
 
 const SUBDUCTION_ENDPOINT = "wss://subduction.sync.inkandswitch.com";
 
@@ -367,7 +363,6 @@ async function main() {
   const folderName = path.basename(absFolder);
   const rootPushworkDir = path.join(absFolder, ".pushwork");
   const rootSnapshotPath = path.join(rootPushworkDir, "snapshot.json");
-  const automergeStorageDir = path.join(rootPushworkDir, "automerge");
 
   const entries = await fs.readdir(absFolder, { withFileTypes: true });
   let subfolders = [];
@@ -426,15 +421,8 @@ async function main() {
     }
   }
 
-  const { Repo, initSubduction } = await import("@automerge/automerge-repo");
-  const { NodeFSStorageAdapter } = await import(
-    "@automerge/automerge-repo-storage-nodefs"
-  );
-
   await initSubduction();
-  await fs.mkdir(automergeStorageDir, { recursive: true });
   const repo = new Repo({
-    storage: new NodeFSStorageAdapter(automergeStorageDir),
     subductionWebsocketEndpoints: [SUBDUCTION_ENDPOINT],
   });
 

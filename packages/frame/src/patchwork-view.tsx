@@ -10,22 +10,19 @@ import { render } from "solid-js/web"
 import type { AutomergeUrl, DocHandle } from "@automerge/automerge-repo"
 
 import { findHandle, getModuleWatcher, getRepo } from "patchwork-dom"
+import { hasPluginsProvider } from "patchwork-plugins-provider"
 import {
   registerComponent,
   useHandle,
   type ComponentWrapperProps,
 } from "patchwork-solid"
 
-import { hasComponentRegistry } from "./types"
-
 export default (element: HTMLElement) => {
   const repo = getRepo(element)
   const moduleWatcher = getModuleWatcher(element)
-  const registryHandle = findHandle(element, hasComponentRegistry)
-  if (!registryHandle) {
-    throw new Error(
-      "patchwork-view: no <package-registry-provider> ancestor",
-    )
+  const pluginsHandle = findHandle(element, hasPluginsProvider)
+  if (!pluginsHandle) {
+    throw new Error("patchwork-view: no <plugins-provider> ancestor")
   }
 
   mirrorAttribute(element, "url")
@@ -48,7 +45,7 @@ export default (element: HTMLElement) => {
     attributeFilter: ["url", "src"],
   })
 
-  const components = useHandle(registryHandle)
+  const plugins = useHandle(pluginsHandle)
 
   // Re-attach to the live doc on every probe so doc-change events
   // re-trigger discovery; cancellation is handled by `runId`.
@@ -88,23 +85,19 @@ export default (element: HTMLElement) => {
       return
     }
 
-    for (const candidate of components()) {
+    for (const plugin of plugins()) {
       try {
-        const loaded = await moduleWatcher.load(candidate.url)
+        const loaded = await moduleWatcher.load(plugin.url)
         if (myRun !== runId) return
         if (!loaded.schema) continue
         const result = await loaded.schema["~standard"].validate(doc)
         if (myRun !== runId) return
         if (!result.issues) {
-          setWinnerUrl(candidate.url)
+          setWinnerUrl(plugin.url)
           return
         }
       } catch (err) {
-        console.warn(
-          "[patchwork-view] candidate failed:",
-          candidate.url,
-          err,
-        )
+        console.warn("[patchwork-view] candidate failed:", plugin.url, err)
       }
     }
     if (myRun !== runId) return
@@ -114,7 +107,7 @@ export default (element: HTMLElement) => {
   createEffect(() => {
     const u = url()
     const s = src()
-    components()
+    plugins()
     void probe(u, s)
   })
 

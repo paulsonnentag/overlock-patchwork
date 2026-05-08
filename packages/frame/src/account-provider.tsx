@@ -1,8 +1,9 @@
 import type { AutomergeUrl } from "@automerge/automerge-repo"
 
+import type { FolderDoc } from "@inkandswitch/patchwork-filesystem"
 import { getRepo } from "patchwork-dom"
 
-import type { AccountDoc, FolderDoc } from "./types"
+import type { AccountDoc } from "./types"
 
 const STORAGE_KEY = "overlock-patchwork:root:account-url"
 

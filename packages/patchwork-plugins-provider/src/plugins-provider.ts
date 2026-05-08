@@ -5,24 +5,42 @@ import {
   type DocHandle,
 } from "@automerge/automerge-repo"
 
-import { getRepo, StateHandle } from "patchwork-dom"
+import {
+  getRepo,
+  readHandle,
+  StateHandle,
+  type ElementWithHandle,
+} from "patchwork-dom"
 
-import { type Component, type FolderDoc } from "./types"
+import type {
+  FolderDoc,
+  UnixFileEntry,
+} from "@inkandswitch/patchwork-filesystem"
 
-type UnixFileEntry = {
-  content: string | Uint8Array | ArrayBuffer | ArrayLike<number>
+export type Plugin = {
+  name: string
+  module: string
+  url: string
   [key: string]: unknown
 }
 
-type ComponentEntry = {
+type PluginEntry = {
   name: string
   module: string
   [key: string]: unknown
 }
 
+export function hasPluginsProvider(
+  el: HTMLElement,
+): el is ElementWithHandle<StateHandle<Plugin[]>> {
+  const handle = readHandle(el)
+  if (!(handle instanceof StateHandle)) return false
+  return Array.isArray(handle.value)
+}
+
 export default (element: HTMLElement) => {
   const repo = getRepo(element)
-  const state = new StateHandle<Component[]>([], componentsEqual)
+  const state = new StateHandle<Plugin[]>([], pluginsEqual)
   Object.assign(element, { handle: state })
   element.style.display = "contents"
 
@@ -48,7 +66,7 @@ export default (element: HTMLElement) => {
     const myRunId = ++runId
     const nextFolders = new Map<string, DocHandle<FolderDoc>>()
     const nextPkgJsons = new Map<string, DocHandle<UnixFileEntry>>()
-    const nextComponents: Component[] = []
+    const nextPlugins: Plugin[] = []
 
     const queue: DocHandle<FolderDoc>[] = [rootHandle]
     while (queue.length > 0) {
@@ -66,11 +84,11 @@ export default (element: HTMLElement) => {
         nextPkgJsons.set(pkgJsonKey, pkgHandle)
 
         const pkgJson = parseJson(pkgHandle.doc()?.content)
-        const components = readComponentEntries(pkgJson)
-        if (components.length > 0) {
+        const plugins = readPluginEntries(pkgJson)
+        if (plugins.length > 0) {
           const packageJsonUrl = `${canonicalUrl(folder.url)}/package.json`
-          for (const entry of components) {
-            nextComponents.push({
+          for (const entry of plugins) {
+            nextPlugins.push({
               ...entry,
               url: `${packageJsonUrl}#components/${entry.name}`,
               module: resolveImportUrl(packageJsonUrl, entry.module),
@@ -94,7 +112,7 @@ export default (element: HTMLElement) => {
     reconcile(folders, nextFolders, onChange)
     reconcile(pkgJsons, nextPkgJsons, onChange)
 
-    state.change(nextComponents)
+    state.change(nextPlugins)
   }
 
   const onUrl = async (raw: string | null) => {
@@ -133,14 +151,14 @@ export default (element: HTMLElement) => {
   }
 }
 
-function readComponentEntries(pkgJson: unknown): ComponentEntry[] {
+function readPluginEntries(pkgJson: unknown): PluginEntry[] {
   if (pkgJson == null || typeof pkgJson !== "object") return []
   const contributions = (pkgJson as { contributions?: unknown }).contributions
   if (contributions == null || typeof contributions !== "object") return []
   const components = (contributions as { components?: unknown }).components
   if (!Array.isArray(components)) return []
   return components.filter(
-    (c): c is ComponentEntry =>
+    (c): c is PluginEntry =>
       c != null &&
       typeof c === "object" &&
       typeof (c as { name?: unknown }).name === "string" &&
@@ -172,7 +190,7 @@ function isFolderDocHandle(handle: DocHandle<unknown>): boolean {
   )
 }
 
-function componentsEqual(a: readonly Component[], b: readonly Component[]): boolean {
+function pluginsEqual(a: readonly Plugin[], b: readonly Plugin[]): boolean {
   if (a === b) return true
   if (a.length !== b.length) return false
   for (let i = 0; i < a.length; i++) {
@@ -196,9 +214,7 @@ function parseJson(content: unknown): unknown {
 
 function contentToText(content: UnixFileEntry["content"]): string {
   if (typeof content === "string") return content
-  if (content instanceof ArrayBuffer) return new TextDecoder().decode(content)
-  if (ArrayBuffer.isView(content)) return new TextDecoder().decode(content)
-  if (Array.isArray(content)) return new TextDecoder().decode(Uint8Array.from(content))
+  if (content instanceof Uint8Array) return new TextDecoder().decode(content)
   return String(content)
 }
 
@@ -207,7 +223,7 @@ function contentToText(content: UnixFileEntry["content"]): string {
 function resolveImportUrl(packageJsonUrl: string, importUrl: string): string {
   if (!importUrl.startsWith("./") && !importUrl.startsWith("../")) {
     throw new Error(
-      `package-registry: contribution "module" must start with "./" or "../" (got "${importUrl}")`,
+      `plugins-provider: contribution "module" must start with "./" or "../" (got "${importUrl}")`,
     )
   }
   const FAKE = "http://overlock.invalid/"
@@ -215,7 +231,7 @@ function resolveImportUrl(packageJsonUrl: string, importUrl: string): string {
   const resolved = new URL(importUrl, base).href
   if (!resolved.startsWith(FAKE)) {
     throw new Error(
-      `package-registry: resolved URL escaped package root: "${importUrl}" from ${packageJsonUrl}`,
+      `plugins-provider: resolved URL escaped package root: "${importUrl}" from ${packageJsonUrl}`,
     )
   }
   return `automerge:${resolved.slice(FAKE.length)}`

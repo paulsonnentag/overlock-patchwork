@@ -1,0 +1,36 @@
+{
+  "name": "patchwork-plugins-provider",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./src/plugins-provider.ts",
+  "module": "./src/plugins-provider.ts",
+  "types": "./src/plugins-provider.ts",
+  "exports": {
+    ".": "./src/plugins-provider.ts"
+  },
+  "scripts": {
+    "build": "vite build"
+  },
+  "patchwork": {
+    "server": "wss://subduction.sync.inkandswitch.com"
+  },
+  "plugins": {
+    "component": [
+      {
+        "name": "plugins-provider",
+        "module": "./src/plugins-provider.ts"
+      }
+    ]
+  },
+  "dependencies": {
+    "@inkandswitch/patchwork-filesystem": "^0.0.5",
+    "patchwork-dom": "link:../patchwork-dom"
+  },
+  "devDependencies": {
+    "@automerge/automerge-repo": "2.6.0-subduction.13",
+    "patchwork-vite-plugin": "link:../patchwork-vite-plugin",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10"
+  }
+}

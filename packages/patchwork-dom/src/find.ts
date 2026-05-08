@@ -1,77 +1,85 @@
-import type { Repo } from "@automerge/automerge-repo"
-import type { StandardSchemaV1 } from "@standard-schema/spec"
+import type { Repo } from "@automerge/automerge-repo";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 
-type Registry = { registerComponent(componentUrl: string): Promise<string> }
+import {
+  readValue,
+  type ElementWithHandle,
+  type ElementWithValue,
+} from "./types";
+
+type Registry = { registerComponent(componentUrl: string): Promise<string> };
 
 export type LoadedModule = {
-  name: string
-  module: string
-  exports: unknown
-  schema?: StandardSchemaV1
-}
+  name: string;
+  module: string;
+  exports: unknown;
+  schema?: StandardSchemaV1;
+};
 
 export type ModuleWatcher = {
-  load(url: string): Promise<LoadedModule>
-}
+  load(url: string): Promise<LoadedModule>;
+};
 
 export function findElement<T extends HTMLElement>(
   start: HTMLElement,
-  predicate: (element: HTMLElement) => element is T,
-): T | undefined
+  predicate: (element: HTMLElement) => element is T
+): T | undefined;
 export function findElement(
   start: HTMLElement,
-  predicate: (element: HTMLElement) => boolean,
-): HTMLElement | undefined
+  predicate: (element: HTMLElement) => boolean
+): HTMLElement | undefined;
 export function findElement(
   start: HTMLElement,
-  predicate: (element: HTMLElement) => boolean,
+  predicate: (element: HTMLElement) => boolean
 ): HTMLElement | undefined {
-  let current: HTMLElement | null = start.parentElement
+  let current: HTMLElement | null = start.parentElement;
   while (current) {
-    if (predicate(current)) return current
-    current = current.parentElement
+    if (predicate(current)) return current;
+    current = current.parentElement;
   }
-  return undefined
+  return undefined;
 }
 
-export function findHandle<T>(
+// `E` captures the predicate's narrowed element type directly so TS can
+// infer it; the handle type is then projected via indexed access. Keeping
+// `T` inside the intersection breaks inference and falls back to
+// `unknown` at the call site.
+export function findHandle<E extends ElementWithHandle<unknown>>(
   start: HTMLElement,
-  predicate: (element: HTMLElement) => element is HTMLElement & { handle: T },
-): T | undefined {
-  return findElement(start, predicate)?.handle
+  predicate: (element: HTMLElement) => element is E
+): E["handle"] | undefined {
+  return findElement(start, predicate)?.handle;
 }
 
-export function findValue<T>(
+export function findValue<E extends ElementWithValue<unknown>>(
   start: HTMLElement,
-  predicate: (element: HTMLElement) => element is HTMLElement & { value: T },
-): T | undefined {
-  return findElement(start, predicate)?.value
+  predicate: (element: HTMLElement) => element is E
+): E["value"] | undefined {
+  return findElement(start, predicate)?.value;
 }
 
 export function getRepo(element: HTMLElement): Repo {
-  const repo = findValue(element, hasRepoProvider)
-  if (!repo) throw new Error("getRepo: no <repo-provider> ancestor")
-  return repo
+  const repo = findValue(element, hasRepoProvider);
+  if (!repo) throw new Error("getRepo: no <repo-provider> ancestor");
+  return repo;
 }
 
 export function getComponentRegistry(element: HTMLElement): Registry {
-  const registry = findValue(element, hasRegistryProvider)
+  const registry = findValue(element, hasRegistryProvider);
   if (!registry) {
     throw new Error(
-      "getComponentRegistry: no <component-registry-provider> ancestor",
-    )
+      "getComponentRegistry: no <component-registry-provider> ancestor"
+    );
   }
-  return registry
+  return registry;
 }
 
 export function getModuleWatcher(element: HTMLElement): ModuleWatcher {
-  const watcher = findValue(element, hasModuleWatcher)
+  const watcher = findValue(element, hasModuleWatcher);
   if (!watcher) {
-    throw new Error(
-      "getModuleWatcher: no <module-watcher-provider> ancestor",
-    )
+    throw new Error("getModuleWatcher: no <module-watcher-provider> ancestor");
   }
-  return watcher
+  return watcher;
 }
 
 export function isRepoProvider(value: unknown): value is Repo {
@@ -79,20 +87,19 @@ export function isRepoProvider(value: unknown): value is Repo {
     typeof value === "object" &&
     value !== null &&
     "find" in value &&
-    typeof (value as { find?: unknown }).find === "function" &&
+    typeof value.find === "function" &&
     "create" in value &&
-    typeof (value as { create?: unknown }).create === "function"
-  )
+    typeof value.create === "function"
+  );
 }
 
 export function isRegistryProvider(value: unknown): value is Registry {
   return (
     typeof value === "object" &&
     value !== null &&
-    "registerComponent" in value &&
-    typeof (value as { registerComponent?: unknown }).registerComponent ===
-      "function"
-  )
+    "register" in value &&
+    typeof value.register === "function"
+  );
 }
 
 export function isModuleWatcher(value: unknown): value is ModuleWatcher {
@@ -100,24 +107,22 @@ export function isModuleWatcher(value: unknown): value is ModuleWatcher {
     typeof value === "object" &&
     value !== null &&
     "load" in value &&
-    typeof (value as { load?: unknown }).load === "function"
-  )
+    typeof value.load === "function"
+  );
 }
 
-function hasRepoProvider(
-  el: HTMLElement,
-): el is HTMLElement & { value: Repo } {
-  return isRepoProvider((el as HTMLElement & { value?: unknown }).value)
+function hasRepoProvider(el: HTMLElement): el is ElementWithValue<Repo> {
+  return isRepoProvider(readValue(el));
 }
 
 function hasRegistryProvider(
-  el: HTMLElement,
-): el is HTMLElement & { value: Registry } {
-  return isRegistryProvider((el as HTMLElement & { value?: unknown }).value)
+  el: HTMLElement
+): el is ElementWithValue<Registry> {
+  return isRegistryProvider(readValue(el));
 }
 
 function hasModuleWatcher(
-  el: HTMLElement,
-): el is HTMLElement & { value: ModuleWatcher } {
-  return isModuleWatcher((el as HTMLElement & { value?: unknown }).value)
+  el: HTMLElement
+): el is ElementWithValue<ModuleWatcher> {
+  return isModuleWatcher(readValue(el));
 }

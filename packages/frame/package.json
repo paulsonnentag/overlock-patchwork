@@ -33,18 +33,16 @@
         "schema": "./src/schemas/folder.ts"
       },
       {
-        "name": "package-registry-provider",
-        "module": "./src/package-registry-provider.tsx"
-      },
-      {
         "name": "patchwork-view",
         "module": "./src/patchwork-view.tsx"
       }
     ]
   },
   "dependencies": {
+    "@inkandswitch/patchwork-filesystem": "^0.0.5",
     "@standard-schema/spec": "^1.1.0",
     "patchwork-dom": "link:../patchwork-dom",
+    "patchwork-plugins-provider": "link:../patchwork-plugins-provider",
     "patchwork-schemas": "link:../patchwork-schemas",
     "patchwork-solid": "link:../patchwork-solid"
   },
