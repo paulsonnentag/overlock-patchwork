@@ -5,7 +5,8 @@
   "private": true,
   "scripts": {
     "build": "vite build",
-    "serve": "serve dist"
+    "serve": "serve dist",
+    "push": "node scripts/push.js packages"
   },
   "dependencies": {
     "@automerge/automerge": "3.2.5",
