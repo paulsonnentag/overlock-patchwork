@@ -44,6 +44,8 @@ async function main(): Promise<void> {
 
   window.repo = repo;
 
+  await whenDomReady;
+
   const repoProvider = document.querySelector("repo-provider");
   if (!repoProvider) {
     throw new Error("[overlock-patchwork] missing <repo-provider> element");
@@ -67,16 +69,44 @@ async function main(): Promise<void> {
   const src = root.getAttribute("src");
   if (!src) throw new Error("<patchwork-root> is missing src");
 
-  const mod = await import(encodeURIComponent(src));
-  if (typeof mod.default !== "function") {
+  const plugin = await (await fetch(`/${encodeURIComponent(src)}`))
+    .json()
+    .catch(() => {
+      throw new Error("root component plugin could not be loaded at ${src}");
+    });
+
+  const [docId, ...rest] = src.slice("automerge:".length).split("/");
+  const segments = rest.slice(0, -1);
+  for (const part of plugin.module.split("/")) {
+    if (part === "" || part === ".") continue;
+    if (part === "..") segments.pop();
+    else segments.push(part);
+  }
+  const moduleUrl = `automerge:${docId}/${segments.join("/")}`;
+
+  const module = await import(`/${encodeURIComponent(moduleUrl)}`).catch(() => {
+    throw new Error(
+      `root component module could not be loaded at ${moduleUrl}`
+    );
+  });
+  if (typeof module.default !== "function") {
     throw new Error(
       `[overlock-patchwork] root module "${src}" has no default-export mount fn`
     );
   }
 
-  await mod.default(root);
+  await module.default(root);
 }
 
 main().catch((error) => {
   console.error("patchwork boot failed", error);
 });
+
+const whenDomReady =
+  document.readyState === "loading"
+    ? new Promise<void>((resolve) =>
+        document.addEventListener("DOMContentLoaded", () => resolve(), {
+          once: true,
+        })
+      )
+    : Promise.resolve();
