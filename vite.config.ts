@@ -1,14 +1,16 @@
 import { defineConfig } from "vite";
+import type { Plugin } from "vite";
 import wasm from "vite-plugin-wasm";
 import patchwork from "@inkandswitch/patchwork-bootloader/vite";
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const automergeEntryDir = dirname(
-  fileURLToPath(import.meta.resolve("@automerge/automerge")),
+  fileURLToPath(import.meta.resolve("@automerge/automerge"))
 );
 const subductionDir = dirname(
-  fileURLToPath(import.meta.resolve("@automerge/automerge-subduction")),
+  fileURLToPath(import.meta.resolve("@automerge/automerge-subduction"))
 );
 
 export default defineConfig({
