@@ -1,12 +1,9 @@
 import { defineConfig } from "vite";
-import type { Plugin } from "vite";
 import wasm from "vite-plugin-wasm";
+import patchwork from "@inkandswitch/patchwork-bootloader/vite";
 import { dirname, resolve } from "node:path";
-import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
-const require = createRequire(import.meta.url);
 const automergeEntryDir = dirname(
   fileURLToPath(import.meta.resolve("@automerge/automerge")),
 );
@@ -15,7 +12,7 @@ const subductionDir = dirname(
 );
 
 export default defineConfig({
-  plugins: [wasm(), automergeAssets()],
+  plugins: [wasm(), patchwork()],
   worker: {
     format: "es",
     plugins: () => [wasm()],
@@ -43,35 +40,5 @@ export default defineConfig({
     sourcemap: true,
     outDir: "dist",
     emptyOutDir: true,
-    rollupOptions: {
-      input: {
-        app: "index.html",
-        "service-worker": "src/service-worker.ts",
-      },
-      output: {
-        entryFileNames: (chunk) =>
-          chunk.name === "service-worker"
-            ? "service-worker.js"
-            : "assets/[name]-[hash].js",
-      },
-    },
   },
 });
-
-function automergeAssets(): Plugin {
-  return {
-    name: "automerge-assets",
-    buildStart() {
-      this.emitFile({
-        type: "asset",
-        fileName: "automerge.wasm",
-        source: readFileSync(require.resolve("@automerge/automerge/automerge.wasm")),
-      });
-      this.emitFile({
-        type: "asset",
-        fileName: "subduction.wasm",
-        source: readFileSync(require.resolve("@automerge/automerge-subduction/wasm")),
-      });
-    },
-  };
-}

@@ -3,15 +3,34 @@
   "version": "0.0.1",
   "type": "module",
   "private": true,
-  "scripts": {  },
+  "scripts": {
+    "build": "vite build",
+    "serve": "serve dist"
+  },
   "dependencies": {
     "@automerge/automerge": "3.2.5",
     "@automerge/automerge-repo": "2.6.0-subduction.15",
+    "@automerge/automerge-repo-keyhive": "^0.2.0-alpha.1d",
     "@automerge/automerge-repo-network-messagechannel": "2.6.0-subduction.15",
     "@automerge/automerge-repo-storage-indexeddb": "2.6.0-subduction.15",
     "@automerge/automerge-subduction": "0.8.1",
-    "@automerge/vanillajs": "2.6.0-subduction.15"
+    "@automerge/vanillajs": "2.6.0-subduction.15",
+    "@codemirror/language": "^6.12.3",
+    "@codemirror/state": "^6.6.0",
+    "@codemirror/view": "^6.42.1",
+    "@inkandswitch/patchwork-bootloader": "^0.0.9",
+    "@inkandswitch/patchwork-elements": "^0.0.7",
+    "@inkandswitch/patchwork-filesystem": "^0.0.5",
+    "@inkandswitch/patchwork-plugins": "^0.0.7",
+    "@keyhive/keyhive": "^0.0.0-alpha.56",
+    "solid-js": "^1.9.12"
   },
   "devDependencies": {
+    "@types/node": "^25.6.2",
+    "@types/serviceworker": "^0.0.197",
+    "serve": "^14.2.6",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.11",
+    "vite-plugin-wasm": "^3.6.0"
   }
 }
