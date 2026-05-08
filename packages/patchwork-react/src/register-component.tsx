@@ -21,10 +21,10 @@ export function registerComponent(
   element: HTMLElement,
   componentUrl: string,
 ): ComponentType<ComponentWrapperProps> {
-  const registry = getComponentRegistry(element)
+  const componentRegistry = getComponentRegistry(element)
   let resolved: string | undefined
-  const promise = registry
-    .registerComponent(componentUrl)
+  const promise = componentRegistry
+    .register(componentUrl)
     .then((tag) => {
       resolved = tag
       return tag

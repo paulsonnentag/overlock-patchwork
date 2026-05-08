@@ -7,7 +7,9 @@ import {
   type ElementWithValue,
 } from "./types";
 
-type Registry = { registerComponent(componentUrl: string): Promise<string> };
+export type ComponentRegistry = {
+  register(componentUrl: string): Promise<string>;
+};
 
 export type LoadedModule = {
   name: string;
@@ -64,14 +66,14 @@ export function getRepo(element: HTMLElement): Repo {
   return repo;
 }
 
-export function getComponentRegistry(element: HTMLElement): Registry {
-  const registry = findValue(element, hasRegistryProvider);
-  if (!registry) {
+export function getComponentRegistry(element: HTMLElement): ComponentRegistry {
+  const componentRegistry = findValue(element, hasComponentRegistryProvider);
+  if (!componentRegistry) {
     throw new Error(
       "getComponentRegistry: no <component-registry-provider> ancestor"
     );
   }
-  return registry;
+  return componentRegistry;
 }
 
 export function getModuleWatcher(element: HTMLElement): ModuleWatcher {
@@ -93,7 +95,9 @@ export function isRepoProvider(value: unknown): value is Repo {
   );
 }
 
-export function isRegistryProvider(value: unknown): value is Registry {
+export function isComponentRegistryProvider(
+  value: unknown
+): value is ComponentRegistry {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -115,10 +119,10 @@ function hasRepoProvider(el: HTMLElement): el is ElementWithValue<Repo> {
   return isRepoProvider(readValue(el));
 }
 
-function hasRegistryProvider(
+function hasComponentRegistryProvider(
   el: HTMLElement
-): el is ElementWithValue<Registry> {
-  return isRegistryProvider(readValue(el));
+): el is ElementWithValue<ComponentRegistry> {
+  return isComponentRegistryProvider(readValue(el));
 }
 
 function hasModuleWatcher(

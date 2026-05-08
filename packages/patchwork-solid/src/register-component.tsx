@@ -21,9 +21,9 @@ export function registerComponent(
   element: HTMLElement,
   componentUrl: string,
 ): Component<ComponentWrapperProps> {
-  const registry = getComponentRegistry(element)
-  const promise = registry
-    .registerComponent(componentUrl)
+  const componentRegistry = getComponentRegistry(element)
+  const promise = componentRegistry
+    .register(componentUrl)
     .catch((err: unknown) => {
       console.error(
         "[patchwork-solid] registerComponent failed",
