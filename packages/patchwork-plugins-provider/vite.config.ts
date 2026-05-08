@@ -4,7 +4,7 @@ import { patchwork } from "patchwork-vite-plugin";
 export default defineConfig({
   plugins: [patchwork({ component: ["module", "schema"] })],
   build: {
-    sourcemap: true,
+    sourcemap: "inline",
     rollupOptions: {
       external: ["@automerge/automerge-repo"],
       output: {

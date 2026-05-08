@@ -10,7 +10,7 @@ export default defineConfig({
     cssInjectedByJsPlugin(),
   ],
   build: {
-    sourcemap: true,
+    sourcemap: "inline",
     rollupOptions: {
       external: [
         "solid-js",

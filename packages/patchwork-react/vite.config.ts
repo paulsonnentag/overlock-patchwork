@@ -4,7 +4,7 @@ import react from "@vitejs/plugin-react"
 export default defineConfig({
   plugins: [react()],
   build: {
-    sourcemap: true,
+    sourcemap: "inline",
     lib: {
       entry: "src/index.ts",
       formats: ["es"],
