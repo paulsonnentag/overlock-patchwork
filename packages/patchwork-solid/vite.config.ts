@@ -4,6 +4,7 @@ import solid from "vite-plugin-solid"
 export default defineConfig({
   plugins: [solid()],
   build: {
+    sourcemap: true,
     lib: {
       entry: "src/index.ts",
       formats: ["es"],
