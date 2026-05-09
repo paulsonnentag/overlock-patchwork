@@ -1,6 +1,7 @@
 import type { AutomergeUrl, DocHandle, Repo } from "@automerge/automerge-repo"
 
 import { getRepo } from "./find"
+import { observeAttributes } from "./observe-attributes"
 import type { MountFn, MountResult } from "./types"
 
 export type ElementWithDocHandle<V = unknown> = HTMLElement & {
@@ -20,7 +21,6 @@ export function withDocHandle<V = unknown>(
   return async (input) => {
     const element = input as ElementWithDocHandle<V>
     const repo = getRepo(element)
-    mirrorUrlAttribute(element)
 
     let unmount: (() => void) | undefined
 
@@ -40,39 +40,23 @@ export function withDocHandle<V = unknown>(
       unmount = typeof result === "function" ? result : undefined
     }
 
+    // Install the property↔attribute bridge before the initial read so
+    // any pending `el.url = ...` write (e.g. Solid setting the prop
+    // before mount ran) is reflected as an attribute first.
+    const stopObserving = observeAttributes(element, {
+      url: (value) => {
+        void onUrlChange(value)
+      },
+    })
+
     // Run the first mount synchronously so callers awaiting mount(el)
     // (and `patchwork:mounted` listeners that fire afterwards) observe
     // a fully set-up element.
     await onUrlChange(element.getAttribute("url"))
 
-    const observer = new MutationObserver(() => {
-      void onUrlChange(element.getAttribute("url"))
-    })
-    observer.observe(element, { attributes: true, attributeFilter: ["url"] })
-
     return () => {
       if (unmount) unmount()
-      observer.disconnect()
+      stopObserving()
     }
-  }
-}
-
-// Captures any value already assigned before the property was redefined
-// (e.g. by Solid setting `el.url = ...` before mount runs).
-function mirrorUrlAttribute(element: HTMLElement): void {
-  const pending = (element as unknown as Record<string, unknown>)["url"]
-  Object.defineProperty(element, "url", {
-    get: () => element.getAttribute("url"),
-    set: (value) => {
-      if (value == null) {
-        if (element.hasAttribute("url")) element.removeAttribute("url")
-      } else if (value !== element.getAttribute("url")) {
-        element.setAttribute("url", String(value))
-      }
-    },
-    configurable: true,
-  })
-  if (pending != null) {
-    ;(element as unknown as Record<string, unknown>)["url"] = pending
   }
 }

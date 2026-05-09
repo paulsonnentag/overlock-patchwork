@@ -10,7 +10,7 @@ import { render } from "solid-js/web"
 import type { AutomergeUrl, DocHandle } from "@automerge/automerge-repo"
 import type { StandardSchemaV1 } from "@standard-schema/spec"
 
-import { findHandle, getRepo } from "patchwork-dom"
+import { findHandle, getRepo, observeAttributes } from "patchwork-dom"
 import { hasPluginsProvider } from "patchwork-plugins-provider"
 import {
   registerComponent,
@@ -32,25 +32,19 @@ export default (element: HTMLElement) => {
     throw new Error("patchwork-view: no <plugins-provider> ancestor")
   }
 
-  mirrorAttribute(element, "url")
-  mirrorAttribute(element, "src")
-
-  const [url, setUrl] = createSignal<string | null>(
-    element.getAttribute("url"),
-  )
-  const [src, setSrc] = createSignal<string | null>(
-    element.getAttribute("src"),
-  )
+  const [url, setUrl] = createSignal<string | null>(null)
+  const [src, setSrc] = createSignal<string | null>(null)
   const [winnerUrl, setWinnerUrl] = createSignal<string | null>(null)
 
-  const observer = new MutationObserver(() => {
-    setUrl(element.getAttribute("url"))
-    setSrc(element.getAttribute("src"))
+  // Install the property↔attribute bridge before seeding the signals so
+  // any pending property write (e.g. Solid setting `el.url = ...`
+  // before mount) is reflected as an attribute first.
+  const stopObserving = observeAttributes(element, {
+    url: setUrl,
+    src: setSrc,
   })
-  observer.observe(element, {
-    attributes: true,
-    attributeFilter: ["url", "src"],
-  })
+  setUrl(element.getAttribute("url"))
+  setSrc(element.getAttribute("src"))
 
   const plugins = useHandle(pluginsHandle)
 
@@ -168,7 +162,7 @@ export default (element: HTMLElement) => {
   return () => {
     runId++
     detach()
-    observer.disconnect()
+    stopObserving()
     dispose()
   }
 }
@@ -240,22 +234,4 @@ function resolveImportUrl(baseUrl: string, importUrl: string): string {
     )
   }
   return `automerge:${resolved.slice(FAKE.length)}`
-}
-
-function mirrorAttribute(element: HTMLElement, name: string): void {
-  const pending = (element as unknown as Record<string, unknown>)[name]
-  Object.defineProperty(element, name, {
-    get: () => element.getAttribute(name),
-    set: (value) => {
-      if (value == null) {
-        if (element.hasAttribute(name)) element.removeAttribute(name)
-      } else if (value !== element.getAttribute(name)) {
-        element.setAttribute(name, String(value))
-      }
-    },
-    configurable: true,
-  })
-  if (pending != null) {
-    ;(element as unknown as Record<string, unknown>)[name] = pending
-  }
 }

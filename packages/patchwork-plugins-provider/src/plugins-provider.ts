@@ -8,6 +8,7 @@ import {
 import {
   getRepo,
   isStateHandle,
+  observeAttributes,
   readHandle,
   StateHandle,
   type ElementWithHandle,
@@ -144,17 +145,20 @@ export default (element: HTMLElement) => {
     void rebuild()
   }
 
-  void onUrl(element.getAttribute("url"))
-
-  const observer = new MutationObserver(() => {
-    void onUrl(element.getAttribute("url"))
+  // Install the property↔attribute bridge before the initial read so a
+  // pending `el.url = ...` assignment from the framework lands as an
+  // attribute first.
+  const stopObserving = observeAttributes(element, {
+    url: (value) => {
+      void onUrl(value)
+    },
   })
-  observer.observe(element, { attributes: true, attributeFilter: ["url"] })
+  void onUrl(element.getAttribute("url"))
 
   return () => {
     cancelled = true
     runId++
-    observer.disconnect()
+    stopObserving()
     for (const handle of folders.values()) handle.off("change", onChange)
     for (const handle of pkgJsons.values()) handle.off("change", onChange)
     for (const handle of manifestFiles.values()) handle.off("change", onChange)
