@@ -10,7 +10,14 @@ export class ComponentRegistry {
   readonly #root: HTMLElement;
 
   readonly #mountFnByComponentName = new Map<string, MountFn>();
-  readonly #unmountByElement = new WeakMap<HTMLElement, () => void>();
+  // Promise resolves to the unmount fn (or undefined if the mount didn't
+  // return one). Stored synchronously when mount starts so a second
+  // discovery path hitting the same element while mount is in flight can
+  // dedupe on its identity.
+  readonly #unmountByElement = new WeakMap<
+    HTMLElement,
+    Promise<(() => void) | undefined>
+  >();
   readonly #nameByComponentUrl = new Map<string, Promise<string>>();
   readonly #abort = new AbortController();
 
@@ -99,6 +106,7 @@ export class ComponentRegistry {
   #onMounted = (event: Event): void => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
+
     for (const child of target.children) {
       if (child instanceof HTMLElement) this.#scanSubtree(child);
     }
@@ -119,22 +127,28 @@ export class ComponentRegistry {
     }
   }
 
-  #tryMount(el: HTMLElement): Promise<void> | undefined {
+  #tryMount(el: HTMLElement): Promise<unknown> | undefined {
     if (this.#abort.signal.aborted) return;
-    if (this.#unmountByElement.has(el)) return Promise.resolve();
+    const existing = this.#unmountByElement.get(el);
+    if (existing) return existing;
 
     const tag = el.tagName.toLowerCase();
     const mount = this.#mountFnByComponentName.get(tag);
     if (!mount) return;
 
-    return Promise.resolve(mount(el)).then((unmount) => {
-      if (this.#abort.signal.aborted) {
-        if (unmount) unmount();
-        return;
+    const pending = Promise.resolve(mount(el)).then((unmount) => {
+      if (
+        !this.#abort.signal.aborted &&
+        this.#unmountByElement.get(el) === pending
+      ) {
+        el.dispatchEvent(
+          new CustomEvent("patchwork:mounted", { bubbles: true })
+        );
       }
-      if (unmount) this.#unmountByElement.set(el, unmount);
-      el.dispatchEvent(new CustomEvent("patchwork:mounted", { bubbles: true }));
+      return unmount;
     });
+    this.#unmountByElement.set(el, pending);
+    return pending;
   }
 
   #unmountSubtree(root: HTMLElement): void {
@@ -146,13 +160,19 @@ export class ComponentRegistry {
     }
   }
 
+  // Wait for the mount to resolve before running its cleanup so any side
+  // effects it set up still get torn down. Releasing the map slot is
+  // synchronous so an immediate re-add can claim a fresh entry.
   #unmountElement(el: HTMLElement): void {
-    const unmount = this.#unmountByElement.get(el);
-    if (unmount) {
-      unmount();
-      this.#unmountByElement.delete(el);
-    }
-    el.dispatchEvent(new CustomEvent("patchwork:unmounted", { bubbles: true }));
+    const pending = this.#unmountByElement.get(el);
+    if (!pending) return;
+    this.#unmountByElement.delete(el);
+    void pending.then((unmount) => {
+      if (unmount) unmount();
+      el.dispatchEvent(
+        new CustomEvent("patchwork:unmounted", { bubbles: true })
+      );
+    });
   }
 }
 
