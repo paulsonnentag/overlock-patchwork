@@ -40,43 +40,48 @@ export class ComponentRegistry {
     this.#root.replaceChildren();
   }
 
-  async register(url: string): Promise<string> {
+  register(url: string): Promise<string> {
     const cached = this.#nameByComponentUrl.get(url);
     if (cached) return cached;
 
-    const name = new Promise<string>(async (resolve) => {
-      const plugin = await (await fetch(`/${encodeURIComponent(url)}`))
-        .json()
+    const name = (async (): Promise<string> => {
+      const plugin = await fetch(`/${encodeURIComponent(url)}`)
+        .then((r) => r.json())
         .catch(() => {
           throw new Error(`failed to load plugin: ${url}`);
         });
 
       if (!isValidComponentName(plugin.name)) {
-        throw new Error(`${name} in ${url} is not a valid component name`);
+        throw new Error(
+          `${plugin.name} in ${url} is not a valid component name`
+        );
       }
 
-      const registeredUrl = this.#nameByComponentUrl.get(url);
-      if (registeredUrl) {
-        throw new Error();
-      }
-      if (registeredUrl && registeredUrl !== url) {
-      }
-
-      const module = await import(plugin.module).catch(() => {
-        throw new Error(`failed to load module: ${plugin.module}`);
-      });
-
-      if (!module.default || typeof module.default === "function") {
-        throw new Error("component module is missing a mount function");
+      if (this.#mountFnByComponentName.has(plugin.name)) {
+        throw new Error(
+          `component "${plugin.name}" is already registered (from a different url)`
+        );
       }
 
-      this.#nameByComponentUrl.set(url, plugin.name);
+      const moduleUrl = resolveModuleUrl(url, plugin.module);
+      const module = await import(`/${encodeURIComponent(moduleUrl)}`).catch(
+        () => {
+          throw new Error(`failed to load module: ${moduleUrl}`);
+        }
+      );
+
+      if (typeof module.default !== "function") {
+        throw new Error(
+          `component module ${plugin.module} is missing a default-export mount function`
+        );
+      }
+
+      this.#mountFnByComponentName.set(plugin.name, module.default);
       this.#scanSubtree(this.#root, { matchTag: plugin.name });
-      resolve(plugin.name);
-    });
+      return plugin.name;
+    })();
 
     this.#nameByComponentUrl.set(url, name);
-
     return name;
   }
 
@@ -149,6 +154,20 @@ export class ComponentRegistry {
     }
     el.dispatchEvent(new CustomEvent("patchwork:unmounted", { bubbles: true }));
   }
+}
+
+function resolveModuleUrl(pluginUrl: string, modulePath: string): string {
+  if (!pluginUrl.startsWith("automerge:")) {
+    throw new Error(`expected automerge: plugin url, got ${pluginUrl}`);
+  }
+  const [docId, ...rest] = pluginUrl.slice("automerge:".length).split("/");
+  const segments = rest.slice(0, -1);
+  for (const part of modulePath.split("/")) {
+    if (part === "" || part === ".") continue;
+    if (part === "..") segments.pop();
+    else segments.push(part);
+  }
+  return `automerge:${docId}/${segments.join("/")}`;
 }
 
 function isValidComponentName(name: string): boolean {

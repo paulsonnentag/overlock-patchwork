@@ -11,24 +11,23 @@ import "./styles.css"
 import type { AccountDoc, DocumentSelection } from "./types"
 import { hasAccountHandle, hasDocumentSelection } from "./types"
 
-const FRAME_PKG = "automerge:2Q6XWP6H1soyS1RFW7bzm6rabjnZ/dist/package.json"
-const MD_PKG = "automerge:MgZABPTTW3m3xzAyBhEX4SMJ5ao/dist/package.json"
-const SEQ_PKG = "automerge:3W3MzsQTqGqw9cpuHEezd7EAB365/dist/package.json"
-const BRANCHES_PKG = "automerge:YPhgkbKsr2zAzZgc5h9UuauZCux/dist/package.json"
-// Replaced after first `yarn push packages` once the new package has a URL.
-const PLUGINS_PROVIDER_PKG =
-  "automerge:TODO_PLUGINS_PROVIDER_ROOT_URL/dist/package.json"
+const FRAME_PKG = "automerge:2Q6XWP6H1soyS1RFW7bzm6rabjnZ"
+const MD_PKG = "automerge:MgZABPTTW3m3xzAyBhEX4SMJ5ao"
+const SEQ_PKG = "automerge:3W3MzsQTqGqw9cpuHEezd7EAB365"
+const BRANCHES_PKG = "automerge:YPhgkbKsr2zAzZgc5h9UuauZCux"
+const PLUGINS_PROVIDER_PKG = "automerge:3LdPUwM4U8Tbje9YWJoRmKQbDzVm"
+const PATCHWORK_VIEW_PKG = "automerge:xaKTpEarZWtWpeiihMD4XLDkq8g"
 
-const ACCOUNT_PROVIDER_URL = `${FRAME_PKG}#components/account-provider`
-const SELECTION_PROVIDER_URL = `${FRAME_PKG}#components/document-selection-provider`
-const SELECTION_URL_SYNC_URL = `${FRAME_PKG}#components/document-selection-url-sync`
-const FOLDER_LIST_URL = `${FRAME_PKG}#components/folder-list`
-const PLUGINS_PROVIDER_URL = `${PLUGINS_PROVIDER_PKG}#components/plugins-provider`
-const PATCHWORK_VIEW_URL = `${FRAME_PKG}#components/patchwork-view`
-const NEW_MARKDOWN_BUTTON_URL = `${MD_PKG}#components/new-markdown-button`
-const NEW_SEQUENCER_BUTTON_URL = `${SEQ_PKG}#components/new-sequencer-button`
-const CHECKED_OUT_BRANCH_PROVIDER_URL = `${BRANCHES_PKG}#components/checked-out-branch-provider`
-const BRANCH_PICKER_URL = `${BRANCHES_PKG}#components/branch-picker`
+const ACCOUNT_PROVIDER_URL = `${FRAME_PKG}/dist/account-provider-component.json`
+const SELECTION_PROVIDER_URL = `${FRAME_PKG}/dist/document-selection-provider-component.json`
+const SELECTION_URL_SYNC_URL = `${FRAME_PKG}/dist/document-selection-url-sync-component.json`
+const FOLDER_LIST_URL = `${FRAME_PKG}/dist/folder-list-component.json`
+const PLUGINS_PROVIDER_URL = `${PLUGINS_PROVIDER_PKG}/dist/plugins-provider-component.json`
+const PATCHWORK_VIEW_URL = `${PATCHWORK_VIEW_PKG}/dist/patchwork-view-component.json`
+const NEW_MARKDOWN_BUTTON_URL = `${MD_PKG}/dist/new-markdown-button-component.json`
+const NEW_SEQUENCER_BUTTON_URL = `${SEQ_PKG}/dist/new-sequencer-button-component.json`
+const CHECKED_OUT_BRANCH_PROVIDER_URL = `${BRANCHES_PKG}/dist/checked-out-branch-provider-component.json`
+const BRANCH_PICKER_URL = `${BRANCHES_PKG}/dist/branch-picker-component.json`
 
 export default (element: HTMLElement) => {
   const AccountProvider = registerComponent(element, ACCOUNT_PROVIDER_URL)

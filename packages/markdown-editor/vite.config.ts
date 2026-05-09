@@ -7,9 +7,10 @@ export default defineConfig({
   plugins: [
     patchwork({ component: ["module", "schema"] }),
     solid(),
-    cssInjectedByJsPlugin(),
+    cssInjectedByJsPlugin({ relativeCSSInjection: true }),
   ],
   build: {
+    cssCodeSplit: true,
     sourcemap: "inline",
     rollupOptions: {
       external: [

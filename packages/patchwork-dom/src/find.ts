@@ -1,5 +1,4 @@
 import type { Repo } from "@automerge/automerge-repo";
-import type { StandardSchemaV1 } from "@standard-schema/spec";
 
 import {
   readValue,
@@ -9,17 +8,6 @@ import {
 
 export type ComponentRegistry = {
   register(componentUrl: string): Promise<string>;
-};
-
-export type LoadedModule = {
-  name: string;
-  module: string;
-  exports: unknown;
-  schema?: StandardSchemaV1;
-};
-
-export type ModuleWatcher = {
-  load(url: string): Promise<LoadedModule>;
 };
 
 export function findElement<T extends HTMLElement>(
@@ -76,14 +64,6 @@ export function getComponentRegistry(element: HTMLElement): ComponentRegistry {
   return componentRegistry;
 }
 
-export function getModuleWatcher(element: HTMLElement): ModuleWatcher {
-  const watcher = findValue(element, hasModuleWatcher);
-  if (!watcher) {
-    throw new Error("getModuleWatcher: no <module-watcher-provider> ancestor");
-  }
-  return watcher;
-}
-
 export function isRepoProvider(value: unknown): value is Repo {
   return (
     typeof value === "object" &&
@@ -106,15 +86,6 @@ export function isComponentRegistryProvider(
   );
 }
 
-export function isModuleWatcher(value: unknown): value is ModuleWatcher {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "load" in value &&
-    typeof value.load === "function"
-  );
-}
-
 function hasRepoProvider(el: HTMLElement): el is ElementWithValue<Repo> {
   return isRepoProvider(readValue(el));
 }
@@ -123,10 +94,4 @@ function hasComponentRegistryProvider(
   el: HTMLElement
 ): el is ElementWithValue<ComponentRegistry> {
   return isComponentRegistryProvider(readValue(el));
-}
-
-function hasModuleWatcher(
-  el: HTMLElement
-): el is ElementWithValue<ModuleWatcher> {
-  return isModuleWatcher(readValue(el));
 }

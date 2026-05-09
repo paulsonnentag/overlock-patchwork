@@ -8,8 +8,9 @@ import {
 import { render } from "solid-js/web"
 
 import type { AutomergeUrl, DocHandle } from "@automerge/automerge-repo"
+import type { StandardSchemaV1 } from "@standard-schema/spec"
 
-import { findHandle, getModuleWatcher, getRepo } from "patchwork-dom"
+import { findHandle, getRepo } from "patchwork-dom"
 import { hasPluginsProvider } from "patchwork-plugins-provider"
 import {
   registerComponent,
@@ -17,9 +18,15 @@ import {
   type ComponentWrapperProps,
 } from "patchwork-solid"
 
+type ComponentManifest = {
+  type: "component"
+  name: string
+  module: string
+  schema?: string
+} & Record<string, unknown>
+
 export default (element: HTMLElement) => {
   const repo = getRepo(element)
-  const moduleWatcher = getModuleWatcher(element)
   const pluginsHandle = findHandle(element, hasPluginsProvider)
   if (!pluginsHandle) {
     throw new Error("patchwork-view: no <plugins-provider> ancestor")
@@ -46,6 +53,11 @@ export default (element: HTMLElement) => {
   })
 
   const plugins = useHandle(pluginsHandle)
+
+  const schemaCache = new Map<
+    string,
+    Promise<StandardSchemaV1 | undefined>
+  >()
 
   // Re-attach to the live doc on every probe so doc-change events
   // re-trigger discovery; cancellation is handled by `runId`.
@@ -85,19 +97,25 @@ export default (element: HTMLElement) => {
       return
     }
 
-    for (const plugin of plugins()) {
+    for (const [manifestUrl, manifest] of plugins()) {
+      if (!isComponentManifest(manifest)) continue
+      if (typeof manifest.schema !== "string") continue
       try {
-        const loaded = await moduleWatcher.load(plugin.url)
+        const schema = await loadSchema(
+          schemaCache,
+          manifestUrl,
+          manifest.schema,
+        )
         if (myRun !== runId) return
-        if (!loaded.schema) continue
-        const result = await loaded.schema["~standard"].validate(doc)
+        if (!schema) continue
+        const result = await schema["~standard"].validate(doc)
         if (myRun !== runId) return
         if (!result.issues) {
-          setWinnerUrl(plugin.url)
+          setWinnerUrl(manifestUrl)
           return
         }
       } catch (err) {
-        console.warn("[patchwork-view] candidate failed:", plugin.url, err)
+        console.warn("[patchwork-view] candidate failed:", manifestUrl, err)
       }
     }
     if (myRun !== runId) return
@@ -161,6 +179,67 @@ function EmptyState() {
       <em>No component for this document.</em>
     </div>
   )
+}
+
+function isComponentManifest(
+  m: Record<string, unknown>,
+): m is ComponentManifest {
+  return (
+    m.type === "component" &&
+    typeof m.name === "string" &&
+    typeof m.module === "string"
+  )
+}
+
+function loadSchema(
+  cache: Map<string, Promise<StandardSchemaV1 | undefined>>,
+  manifestUrl: string,
+  schemaPath: string,
+): Promise<StandardSchemaV1 | undefined> {
+  const absolute = resolveImportUrl(manifestUrl, schemaPath)
+  const cached = cache.get(absolute)
+  if (cached) return cached
+  const promise = (async (): Promise<StandardSchemaV1 | undefined> => {
+    const mod = await import(`/${encodeURIComponent(absolute)}`)
+    const candidate = (mod as { default?: unknown }).default
+    if (!isStandardSchema(candidate)) {
+      console.warn(
+        `[patchwork-view] schema at ${absolute} is not a Standard Schema (must default-export one)`,
+      )
+      return undefined
+    }
+    return candidate
+  })()
+  cache.set(absolute, promise)
+  return promise
+}
+
+function isStandardSchema(value: unknown): value is StandardSchemaV1 {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    "~standard" in value &&
+    typeof (value as { "~standard"?: unknown })["~standard"] === "object"
+  )
+}
+
+// `automerge:` isn't hierarchical for the URL parser, so swap in `http:`
+// to do the path math then swap the scheme back.
+function resolveImportUrl(baseUrl: string, importUrl: string): string {
+  if (!importUrl.startsWith("./") && !importUrl.startsWith("../")) {
+    throw new Error(
+      `patchwork-view: schema path must start with "./" or "../" (got "${importUrl}")`,
+    )
+  }
+  const FAKE = "http://overlock.invalid/"
+  const base = `${FAKE}${baseUrl.slice("automerge:".length)}`
+  const resolved = new URL(importUrl, base).href
+  if (!resolved.startsWith(FAKE)) {
+    throw new Error(
+      `patchwork-view: resolved URL escaped package root: "${importUrl}" from ${baseUrl}`,
+    )
+  }
+  return `automerge:${resolved.slice(FAKE.length)}`
 }
 
 function mirrorAttribute(element: HTMLElement, name: string): void {

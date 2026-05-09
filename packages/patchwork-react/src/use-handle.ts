@@ -1,14 +1,14 @@
 import { useSyncExternalStore } from "react"
 
 import type { Doc, DocHandle } from "@automerge/automerge-repo"
-import { StateHandle } from "patchwork-dom"
+import { isStateHandle, type StateHandleLike } from "patchwork-dom"
 
-export function useHandle<T>(handle: StateHandle<T>): T
+export function useHandle<T>(handle: StateHandleLike<T>): T
 export function useHandle<T extends object>(handle: DocHandle<T>): Doc<T>
 export function useHandle(
-  handle: StateHandle<unknown> | DocHandle<object>,
+  handle: StateHandleLike<unknown> | DocHandle<object>,
 ): unknown {
-  if (handle instanceof StateHandle) {
+  if (isStateHandle(handle)) {
     return useSyncExternalStore(
       (cb) => {
         handle.addEventListener("change", cb)
