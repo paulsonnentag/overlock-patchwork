@@ -114,15 +114,16 @@ async function syncSubfolder(absPath) {
   if (await pathExists(pushworkDir)) {
     console.log(`\n=== pushwork sync ${absPath} ===`);
     await runPushwork(["sync"], absPath);
-  } else {
-    console.log(
-      `\n=== pushwork init --sub --no-branches --shape patchwork-folder ${absPath} ===`
-    );
-    await runPushwork(
-      ["init", "--sub", "--no-branches", "--shape", "patchwork-folder"],
-      absPath
-    );
+    return "synced";
   }
+  console.log(
+    `\n=== pushwork init --sub --no-branches --shape patchwork-folder ${absPath} ===`
+  );
+  await runPushwork(
+    ["init", "--sub", "--no-branches", "--shape", "patchwork-folder"],
+    absPath
+  );
+  return "added";
 }
 
 function runYarn(args, cwd) {
@@ -407,9 +408,10 @@ async function main() {
 
     if (skip) {
       console.log(`(unchanged) skipping pushwork sync for ${sub.name}`);
+      sub.action = "skipped";
     } else {
       await buildSubfolderIfNeeded(sub.absPath);
-      await syncSubfolder(sub.absPath);
+      sub.action = await syncSubfolder(sub.absPath);
       await touchLastPushedMarker(sub.absPath);
     }
 
@@ -484,10 +486,29 @@ async function main() {
 
   await writeRootSnapshot(rootSnapshotPath, { rootFolderUrl: rootHandle.url });
 
-  console.log(`\nRoot folder URL: ${rootHandle.url}`);
+  printSummary(folderName, rootHandle.url, subfolders);
 
   await safeRepoShutdown(repo);
   process.exit(0);
+}
+
+function printSummary(folderName, rootUrl, subfolders) {
+  const changed = subfolders.filter((s) => s.action !== "skipped");
+  if (changed.length === 0) {
+    console.log("\nEverything up-to-date");
+    return;
+  }
+
+  const nameWidth = Math.max(...changed.map((s) => s.name.length));
+  const actionWidth = Math.max(...changed.map((s) => s.action.length));
+
+  console.log(`\n=== Push summary: ${folderName} ===`);
+  console.log(`Root folder: ${rootUrl}\n`);
+  for (const s of changed) {
+    console.log(
+      `  ${s.name.padEnd(nameWidth)}  ${s.action.padEnd(actionWidth)}  ${s.url}`
+    );
+  }
 }
 
 main().catch((err) => {
