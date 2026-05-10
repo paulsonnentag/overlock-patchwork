@@ -12,11 +12,14 @@
  * Usage:
  *   yarn push <folder>
  *   yarn push <folder> --force
+ *   yarn push <folder> --verbose
  *
  *   --force      Always run pushwork on every subfolder. By default a
  *                subfolder is skipped when no file under it has been
  *                modified since the mtime of its `.pushwork/snapshot.json`
  *                (which pushwork rewrites on each sync).
+ *   --verbose    Stream all pushwork/yarn output. Default is a compact
+ *                live tree that only surfaces output on failure.
  *
  * Whenever a subfolder *is* about to be synced (i.e. not skipped) and
  * has a top-level `package.json` with a `scripts.build` entry, we run
@@ -38,11 +41,13 @@ const TOLERATED_TOP_LEVEL_ENTRIES = new Set([".pushwork", ".DS_Store"]);
 
 function printHelpAndExit(code) {
   const msg = [
-    "Usage: yarn push <folder> [--force]",
+    "Usage: yarn push <folder> [--force] [--verbose]",
     "",
     "  <folder>     Folder containing subfolders to push (required).",
     "  --force      Run pushwork on every subfolder even if no local files",
     "               have changed since the last sync.",
+    "  --verbose    Stream all pushwork/yarn output. Default is a compact",
+    "               live tree that only surfaces output on failure.",
   ].join("\n");
   console.log(msg);
   process.exit(code);
@@ -52,9 +57,12 @@ function parseArgs(argv) {
   const args = argv.slice(2);
   let folder = null;
   let force = false;
+  let verbose = false;
   for (const a of args) {
     if (a === "--force") {
       force = true;
+    } else if (a === "--verbose" || a === "-v") {
+      verbose = true;
     } else if (a === "--help" || a === "-h") {
       printHelpAndExit(0);
     } else if (a.startsWith("--")) {
@@ -71,7 +79,7 @@ function parseArgs(argv) {
     console.error("Missing required <folder> argument.");
     printHelpAndExit(1);
   }
-  return { folder, force };
+  return { folder, force, verbose };
 }
 
 async function pathExists(p) {
@@ -83,69 +91,72 @@ async function pathExists(p) {
   }
 }
 
-function runPushwork(args, cwd) {
+// In capture mode we buffer stdout/stderr and only flush them on
+// failure, so the live tree renderer can keep its cursor math correct.
+function runChild(cmd, args, cwd, { capture, missingMessage }) {
   return new Promise((resolve, reject) => {
-    const child = spawn("pushwork", args, { stdio: "inherit", cwd });
+    const stdio = capture ? ["ignore", "pipe", "pipe"] : "inherit";
+    const env = capture
+      ? { ...process.env, NODE_NO_WARNINGS: "1" }
+      : process.env;
+    const child = spawn(cmd, args, { cwd, stdio, env });
+    let buf = "";
+    if (capture) {
+      child.stdout.on("data", (d) => (buf += d.toString()));
+      child.stderr.on("data", (d) => (buf += d.toString()));
+    }
     child.on("error", (err) => {
-      if (err.code === "ENOENT") {
-        reject(
-          new Error(
-            "Could not find `pushwork` on PATH. Build and link it from /Users/paulsonnentag/repos/pushwork (`yarn install && yarn build && yarn link`)."
-          )
-        );
+      if (err.code === "ENOENT" && missingMessage) {
+        reject(new Error(missingMessage));
       } else {
         reject(err);
       }
     });
     child.on("exit", (code, signal) => {
-      if (code === 0) resolve();
-      else
-        reject(
-          new Error(
-            `pushwork ${args.join(" ")} (in ${cwd ?? process.cwd()}) exited with ${code ?? `signal ${signal}`}`
-          )
-        );
+      if (code === 0) return resolve();
+      if (capture && buf) process.stderr.write(buf);
+      reject(
+        new Error(
+          `${cmd} ${args.join(" ")} (in ${cwd ?? process.cwd()}) exited with ${code ?? `signal ${signal}`}`
+        )
+      );
     });
   });
 }
 
-async function syncSubfolder(absPath) {
+function runPushwork(args, cwd, { verbose }) {
+  return runChild("pushwork", args, cwd, {
+    capture: !verbose,
+    missingMessage:
+      "Could not find `pushwork` on PATH. Build and link it from /Users/paulsonnentag/repos/pushwork (`yarn install && yarn build && yarn link`).",
+  });
+}
+
+function runYarn(args, cwd, { verbose }) {
+  return runChild("yarn", args, cwd, {
+    capture: !verbose,
+    missingMessage: "Could not find `yarn` on PATH.",
+  });
+}
+
+async function syncSubfolder(absPath, { verbose }) {
   const pushworkDir = path.join(absPath, ".pushwork");
   if (await pathExists(pushworkDir)) {
-    console.log(`\n=== pushwork sync ${absPath} ===`);
-    await runPushwork(["sync"], absPath);
+    if (verbose) console.log(`\n=== pushwork sync ${absPath} ===`);
+    await runPushwork(["sync"], absPath, { verbose });
     return "synced";
   }
-  console.log(
-    `\n=== pushwork init --sub --no-branches --shape patchwork-folder ${absPath} ===`
-  );
+  if (verbose) {
+    console.log(
+      `\n=== pushwork init --shape patchwork-folder ${absPath} ===`
+    );
+  }
   await runPushwork(
-    ["init", "--sub", "--no-branches", "--shape", "patchwork-folder"],
-    absPath
+    ["init", "--shape", "patchwork-folder"],
+    absPath,
+    { verbose }
   );
   return "added";
-}
-
-function runYarn(args, cwd) {
-  return new Promise((resolve, reject) => {
-    const child = spawn("yarn", args, { stdio: "inherit", cwd });
-    child.on("error", (err) => {
-      if (err.code === "ENOENT") {
-        reject(new Error("Could not find `yarn` on PATH."));
-      } else {
-        reject(err);
-      }
-    });
-    child.on("exit", (code, signal) => {
-      if (code === 0) resolve();
-      else
-        reject(
-          new Error(
-            `yarn ${args.join(" ")} (in ${cwd}) exited with ${code ?? `signal ${signal}`}`
-          )
-        );
-    });
-  });
 }
 
 async function readPackageJson(absPath) {
@@ -162,70 +173,65 @@ async function readPackageJson(absPath) {
   }
 }
 
-async function orderSubfoldersByPackageDeps(subfolders) {
-  const byPackageName = new Map();
-  const packageBySubfolder = new Map();
-
-  for (const sub of subfolders) {
-    const pkg = await readPackageJson(sub.absPath);
-    packageBySubfolder.set(sub.name, pkg);
-    if (!pkg?.name) continue;
-    const existing = byPackageName.get(pkg.name);
-    if (existing) {
-      throw new Error(
-        `Duplicate package name "${pkg.name}" in ${existing.name} and ${sub.name}`
-      );
-    }
-    byPackageName.set(pkg.name, sub);
-  }
-
-  const ordered = [];
-  const visiting = new Set();
-  const visited = new Set();
-  const alphabetical = [...subfolders].sort((a, b) => a.name.localeCompare(b.name));
-
-  for (const sub of alphabetical) visitSubfolder(sub);
-  return ordered;
-
-  function visitSubfolder(sub) {
-    if (visited.has(sub.name)) return;
-    if (visiting.has(sub.name)) {
-      throw new Error(`Package dependency cycle involving ${sub.name}`);
-    }
-
-    visiting.add(sub.name);
-    const pkg = packageBySubfolder.get(sub.name);
-    for (const depName of packageDependencyNames(pkg)) {
-      const dep = byPackageName.get(depName);
-      if (dep && dep.name !== sub.name) visitSubfolder(dep);
-    }
-    visiting.delete(sub.name);
-    visited.add(sub.name);
-    ordered.push(sub);
-  }
-}
-
-function packageDependencyNames(pkg) {
-  if (!pkg) return [];
-  return [
-    ...Object.keys(pkg.dependencies ?? {}),
-    ...Object.keys(pkg.devDependencies ?? {}),
-    ...Object.keys(pkg.peerDependencies ?? {}),
-    ...Object.keys(pkg.optionalDependencies ?? {}),
-  ];
-}
-
 // Run `yarn install` then `yarn build` in the subfolder if its
 // package.json has a build script. Called only when we've already
 // decided to sync — building when nothing changed would just churn the
 // dist mtimes and force a noop sync next time.
-async function buildSubfolderIfNeeded(absPath) {
+async function buildSubfolderIfNeeded(absPath, { verbose }) {
   const pkg = await readPackageJson(absPath);
   if (!pkg || typeof pkg.scripts?.build !== "string") return;
-  console.log(`\n=== yarn install ${absPath} ===`);
-  await runYarn(["install"], absPath);
-  console.log(`\n=== yarn build ${absPath} ===`);
-  await runYarn(["build"], absPath);
+  if (verbose) console.log(`\n=== yarn install ${absPath} ===`);
+  await runYarn(["install"], absPath, { verbose });
+  if (verbose) console.log(`\n=== yarn build ${absPath} ===`);
+  await runYarn(["build"], absPath, { verbose });
+}
+
+async function processSubfolder(sub, { force, verbose, renderer }) {
+  const lastPushedMarker = path.join(
+    sub.absPath,
+    ".pushwork",
+    LAST_PUSHED_MARKER
+  );
+  const hasMarker = await pathExists(lastPushedMarker);
+
+  let skip = false;
+  if (!force && hasMarker) {
+    const lastPushMs = (await fs.stat(lastPushedMarker)).mtimeMs;
+    const maxMs = await findMaxMtimeMs(sub.absPath);
+    if (maxMs <= lastPushMs) skip = true;
+  }
+
+  if (skip) {
+    if (verbose) {
+      console.log(`(unchanged) skipping pushwork sync for ${sub.name}`);
+    }
+    sub.status = "done";
+    sub.action = "unchanged";
+    renderer?.render();
+  } else {
+    sub.status = "building";
+    renderer?.render();
+    try {
+      await buildSubfolderIfNeeded(sub.absPath, { verbose });
+      sub.status = "syncing";
+      renderer?.render();
+      sub.action = await syncSubfolder(sub.absPath, { verbose });
+      await touchLastPushedMarker(sub.absPath);
+      sub.status = "done";
+    } catch (err) {
+      sub.status = "failed";
+      renderer?.render();
+      throw err;
+    }
+    renderer?.render();
+  }
+
+  sub.url = await readSubfolderRootUrl(sub.absPath);
+  if (!sub.url) {
+    throw new Error(
+      `Subfolder ${sub.name} has no rootUrl in .pushwork/config.json after sync`
+    );
+  }
 }
 
 async function readSubfolderRootUrl(absPath) {
@@ -351,8 +357,116 @@ async function waitForHandleStable(handle, {
   );
 }
 
+const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+function statusGlyph(sub, frame) {
+  switch (sub.status) {
+    case "pending":
+      return "·";
+    case "building":
+    case "syncing":
+      return SPINNER_FRAMES[frame % SPINNER_FRAMES.length];
+    case "failed":
+      return "❌";
+    case "done":
+      if (sub.action === "unchanged") return "⚪";
+      if (sub.action === "added") return "➕";
+      if (sub.action === "synced") return "✅";
+      return "·";
+    default:
+      return "·";
+  }
+}
+
+function statusLabel(sub) {
+  if (sub.status === "building") return "building…";
+  if (sub.status === "syncing") return "syncing…";
+  if (sub.status === "done") {
+    return sub.action === "unchanged" ? "" : sub.action;
+  }
+  if (sub.status === "failed") return "failed";
+  return "";
+}
+
+// Live tree renderer for non-verbose mode. Re-renders the whole block
+// each tick by jumping the cursor up `lineCount` lines and overwriting.
+// Falls back to plain per-transition log lines on non-TTY stdout (so
+// piping to a file or running in CI still produces readable output).
+function createTreeRenderer(folderName, subs) {
+  const isTTY = Boolean(process.stdout.isTTY);
+  const lineCount = subs.length + 1;
+  let printed = false;
+  let frame = 0;
+  let timer = null;
+  const lastPlain = new Map();
+
+  function draw() {
+    const out = [];
+    if (printed) out.push(`\x1b[${lineCount}A`);
+    out.push(`\x1b[2K📦 ${folderName}\n`);
+    for (const s of subs) {
+      const label = statusLabel(s);
+      const labelPart = label ? `  \x1b[2m${label}\x1b[0m` : "";
+      out.push(`\x1b[2K  ${statusGlyph(s, frame)} ${s.name}${labelPart}\n`);
+    }
+    process.stdout.write(out.join(""));
+    printed = true;
+  }
+
+  function plainTransitions() {
+    for (const s of subs) {
+      const key = `${s.status}:${s.action ?? ""}`;
+      if (lastPlain.get(s.name) === key) continue;
+      lastPlain.set(s.name, key);
+      const label = statusLabel(s);
+      if (label) process.stdout.write(`  ${s.name}: ${label}\n`);
+    }
+  }
+
+  return {
+    start() {
+      if (!isTTY) {
+        process.stdout.write(`📦 ${folderName}\n`);
+        plainTransitions();
+        return;
+      }
+      draw();
+      timer = setInterval(() => {
+        frame++;
+        draw();
+      }, 80);
+    },
+    render() {
+      if (!isTTY) {
+        plainTransitions();
+        return;
+      }
+      draw();
+    },
+    stop() {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+      if (isTTY) draw();
+      else plainTransitions();
+    },
+  };
+}
+
 async function main() {
-  const { folder, force } = parseArgs(process.argv);
+  const { folder, force, verbose } = parseArgs(process.argv);
+
+  if (!verbose) {
+    // Drop Node's default "warning" listener so noisy in-process
+    // warnings (e.g. TimeoutNegativeWarning from automerge-repo) don't
+    // leak through the compact tree output. Setting NODE_NO_WARNINGS=1
+    // wouldn't help here — the script is already running.
+    for (const fn of process.listeners("warning")) {
+      process.removeListener("warning", fn);
+    }
+  }
+
   const absFolder = path.resolve(folder);
 
   const stat = await fs.stat(absFolder).catch(() => null);
@@ -387,40 +501,34 @@ async function main() {
     process.exit(1);
   }
 
-  subfolders = await orderSubfoldersByPackageDeps(subfolders);
-
+  subfolders.sort((a, b) => a.name.localeCompare(b.name));
   for (const sub of subfolders) {
-    const lastPushedMarker = path.join(
-      sub.absPath,
-      ".pushwork",
-      LAST_PUSHED_MARKER
+    sub.status = "pending";
+    sub.action = null;
+  }
+
+  const renderer = verbose ? null : createTreeRenderer(folderName, subfolders);
+  renderer?.start();
+
+  try {
+    const results = await Promise.allSettled(
+      subfolders.map((sub) =>
+        processSubfolder(sub, { force, verbose, renderer })
+      )
     );
-    const hasMarker = await pathExists(lastPushedMarker);
-
-    let skip = false;
-    if (!force && hasMarker) {
-      // We touch this marker ourselves after every successful sync, so
-      // its mtime is a reliable "last successful sync" timestamp.
-      const lastPushMs = (await fs.stat(lastPushedMarker)).mtimeMs;
-      const maxMs = await findMaxMtimeMs(sub.absPath);
-      if (maxMs <= lastPushMs) skip = true;
+    const failures = results.flatMap((r, i) =>
+      r.status === "rejected" ? [{ sub: subfolders[i], reason: r.reason }] : []
+    );
+    if (failures.length > 0) {
+      renderer?.stop();
+      for (const f of failures) {
+        const msg = f.reason?.stack ?? f.reason?.message ?? String(f.reason);
+        console.error(`\n[${f.sub.name}] ${msg}`);
+      }
+      throw new Error(`${failures.length} subfolder(s) failed to sync`);
     }
-
-    if (skip) {
-      console.log(`(unchanged) skipping pushwork sync for ${sub.name}`);
-      sub.action = "skipped";
-    } else {
-      await buildSubfolderIfNeeded(sub.absPath);
-      sub.action = await syncSubfolder(sub.absPath);
-      await touchLastPushedMarker(sub.absPath);
-    }
-
-    sub.url = await readSubfolderRootUrl(sub.absPath);
-    if (!sub.url) {
-      throw new Error(
-        `Subfolder ${sub.name} has no rootUrl in .pushwork/config.json after sync`
-      );
-    }
+  } finally {
+    renderer?.stop();
   }
 
   await initSubduction();
@@ -431,11 +539,15 @@ async function main() {
   const rootSnapshot = (await readRootSnapshot(rootSnapshotPath)) ?? {};
   let rootHandle;
   if (rootSnapshot.rootFolderUrl) {
-    console.log(`\nLoading root folder doc ${rootSnapshot.rootFolderUrl}`);
+    if (verbose) {
+      console.log(`\nLoading root folder doc ${rootSnapshot.rootFolderUrl}`);
+    }
     rootHandle = await repo.find(rootSnapshot.rootFolderUrl);
     await rootHandle.whenReady();
   } else {
-    console.log(`\nCreating new root folder doc for "${folderName}"`);
+    if (verbose) {
+      console.log(`\nCreating new root folder doc for "${folderName}"`);
+    }
     rootHandle = repo.create({
       "@patchwork": { type: "folder" },
       name: folderName,
@@ -481,19 +593,23 @@ async function main() {
     }
   });
 
-  console.log("\nWaiting for sync...");
+  if (verbose) console.log("\nWaiting for sync...");
   await waitForHandleStable(rootHandle);
 
   await writeRootSnapshot(rootSnapshotPath, { rootFolderUrl: rootHandle.url });
 
-  printSummary(folderName, rootHandle.url, subfolders);
+  if (verbose) {
+    printVerboseSummary(folderName, rootHandle.url, subfolders);
+  } else {
+    console.log(`\nRoot folder: ${rootHandle.url}`);
+  }
 
   await safeRepoShutdown(repo);
   process.exit(0);
 }
 
-function printSummary(folderName, rootUrl, subfolders) {
-  const changed = subfolders.filter((s) => s.action !== "skipped");
+function printVerboseSummary(folderName, rootUrl, subfolders) {
+  const changed = subfolders.filter((s) => s.action !== "unchanged");
   if (changed.length === 0) {
     console.log("\nEverything up-to-date");
     return;
