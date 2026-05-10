@@ -18,7 +18,7 @@ export default (element: HTMLElement) => {
     return (
       <Show when={doc()} fallback={<EmptyState />}>
         {(d) => (
-          <pre class="patchwork-view__json">
+          <pre>
             {JSON.stringify(d(), null, 2)}
           </pre>
         )}
@@ -34,7 +34,7 @@ export default (element: HTMLElement) => {
 
 function EmptyState() {
   return (
-    <div class="patchwork-view__empty">
+    <div>
       <em>No document.</em>
     </div>
   )
