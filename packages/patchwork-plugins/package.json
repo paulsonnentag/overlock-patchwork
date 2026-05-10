@@ -1,5 +1,5 @@
 {
-  "name": "patchwork-plugins-provider",
+  "name": "patchwork-plugins",
   "private": true,
   "version": "0.0.0",
   "type": "module",

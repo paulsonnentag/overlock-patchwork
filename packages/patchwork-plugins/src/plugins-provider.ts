@@ -18,6 +18,8 @@ import type {
   UnixFileEntry,
 } from "@inkandswitch/patchwork-filesystem"
 
+export { loadPluginExport, resolvePluginAssetUrl } from "./load-plugin-export"
+
 export type PluginManifest = { name: string } & Record<string, unknown>
 
 export type Plugins = {

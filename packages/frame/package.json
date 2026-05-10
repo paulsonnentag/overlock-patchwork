@@ -44,7 +44,7 @@
   "dependencies": {
     "@inkandswitch/patchwork-filesystem": "^0.0.5",
     "patchwork-dom": "link:../patchwork-dom",
-    "patchwork-plugins-provider": "link:../patchwork-plugins-provider",
+    "patchwork-plugins": "link:../patchwork-plugins",
     "patchwork-schemas": "link:../patchwork-schemas",
     "patchwork-solid": "link:../patchwork-solid"
   },

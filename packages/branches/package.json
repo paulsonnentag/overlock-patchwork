@@ -17,8 +17,7 @@
       },
       {
         "name": "branch-picker",
-        "module": "./src/branch-picker.tsx",
-        "schema": "./src/schemas/any.ts"
+        "module": "./src/branch-picker.tsx"
       }
     ]
   },

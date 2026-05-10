@@ -1,41 +1,35 @@
-import { Show, createSignal } from "solid-js"
-import { render } from "solid-js/web"
+import { Show } from "solid-js"
+import { Dynamic, render } from "solid-js/web"
 
-import type { AutomergeUrl } from "@automerge/automerge-repo"
-import { useDocument } from "@automerge/automerge-repo-solid-primitives"
+import { withDocHandle } from "patchwork-dom"
+import { useHandle } from "patchwork-solid"
 
-import { getRepo, observeAttributes } from "patchwork-dom"
+import { pickComponentForDoc } from "./pick-component-for-doc"
 
-export default (element: HTMLElement) => {
-  const repo = getRepo(element)
-
-  const [url, setUrl] = createSignal<string | null>(null)
-  const stopObserving = observeAttributes(element, { url: setUrl })
-  setUrl(element.getAttribute("url"))
+export default withDocHandle(({ element }) => {
+  const abort = new AbortController()
+  const tagHandle = pickComponentForDoc(element, abort.signal)
+  const url = element.getAttribute("url") ?? undefined
 
   const dispose = render(() => {
-    const [doc] = useDocument(() => url() as AutomergeUrl, { repo })
+    const tag = useHandle(tagHandle)
     return (
-      <Show when={doc()} fallback={<EmptyState />}>
-        {(d) => (
-          <pre>
-            {JSON.stringify(d(), null, 2)}
-          </pre>
-        )}
+      <Show when={tag()} fallback={<EmptyState />}>
+        {(t) => <Dynamic component={t()} url={url} />}
       </Show>
     )
   }, element)
 
   return () => {
-    stopObserving()
+    abort.abort()
     dispose()
   }
-}
+})
 
 function EmptyState() {
   return (
     <div>
-      <em>No document.</em>
+      <em>No component matches this document.</em>
     </div>
   )
 }
