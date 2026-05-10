@@ -9,6 +9,13 @@
   "patchwork": {
     "server": "wss://subduction.sync.inkandswitch.com"
   },
+  "exports": {
+    "./app-root-component.json": "./dist/app-root-component.json",
+    "./account-provider-component.json": "./dist/account-provider-component.json",
+    "./document-selection-provider-component.json": "./dist/document-selection-provider-component.json",
+    "./document-selection-url-sync-component.json": "./dist/document-selection-url-sync-component.json",
+    "./folder-list-component.json": "./dist/folder-list-component.json"
+  },
   "plugins": {
     "component": [
       {

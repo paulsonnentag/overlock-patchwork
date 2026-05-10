@@ -1,13 +1,15 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const ID_RE = /^[A-Za-z0-9_-]+$/;
 
 export function patchwork(config = {}) {
   let packageRoot = "";
+  let pkgPath = "";
   let pkgJson = null;
   let entries = [];
   let records = [];
+  let outDirAbs = "";
 
   return {
     name: "patchwork",
@@ -18,7 +20,7 @@ export function patchwork(config = {}) {
       records = [];
       pkgJson = null;
       packageRoot = path.resolve(process.cwd(), viteConfig.root ?? ".");
-      const pkgPath = path.resolve(packageRoot, "package.json");
+      pkgPath = path.resolve(packageRoot, "package.json");
       pkgJson = JSON.parse(readFileSync(pkgPath, "utf8"));
       const plugins = pkgJson.plugins;
       if (plugins === undefined) return;
@@ -101,6 +103,10 @@ export function patchwork(config = {}) {
       };
     },
 
+    configResolved(resolved) {
+      outDirAbs = path.resolve(packageRoot, resolved.build.outDir);
+    },
+
     buildStart() {
       if (entries.length === 0) return;
       const declared = new Set(Object.keys(config));
@@ -137,9 +143,6 @@ export function patchwork(config = {}) {
         );
       }
 
-      const out = JSON.parse(JSON.stringify(pkgJson));
-      out.plugins = entries.map((e) => `./${e.name}-${e.kind}.json`);
-
       entries.forEach((e, i) => {
         this.emitFile({
           type: "asset",
@@ -147,14 +150,42 @@ export function patchwork(config = {}) {
           source: JSON.stringify(rewritten[i], null, 2) + "\n",
         });
       });
+    },
 
-      this.emitFile({
-        type: "asset",
-        fileName: "package.json",
-        source: JSON.stringify(out, null, 2) + "\n",
-      });
+    writeBundle() {
+      if (!pkgJson || !pkgPath || !outDirAbs) return;
+
+      const onDisk = JSON.parse(readFileSync(pkgPath, "utf8"));
+      const nextExports = { ...(onDisk.exports ?? {}) };
+
+      for (const [key, value] of Object.entries(nextExports)) {
+        if (typeof value !== "string") continue;
+        const abs = path.resolve(packageRoot, value);
+        if (!isInside(abs, outDirAbs)) continue;
+        if (!existsSync(abs)) delete nextExports[key];
+      }
+
+      const outDirRel = toPosixRelative(packageRoot, outDirAbs);
+      for (const e of entries) {
+        const fileName = `${e.name}-${e.kind}.json`;
+        nextExports[`./${fileName}`] = `${outDirRel}/${fileName}`;
+      }
+
+      const updated = { ...onDisk, exports: nextExports };
+      writeFileSync(pkgPath, JSON.stringify(updated, null, 2) + "\n");
     },
   };
+}
+
+function isInside(child, parent) {
+  if (child === parent) return true;
+  return child.startsWith(parent + path.sep);
+}
+
+function toPosixRelative(from, to) {
+  const rel = path.relative(from, to);
+  if (rel === "") return ".";
+  return "./" + rel.split(path.sep).join("/");
 }
 
 function getDottedField(obj, dotted) {

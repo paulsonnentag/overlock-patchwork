@@ -7,7 +7,8 @@
   "module": "./src/plugins-provider.ts",
   "types": "./src/plugins-provider.ts",
   "exports": {
-    ".": "./src/plugins-provider.ts"
+    ".": "./src/plugins-provider.ts",
+    "./plugins-provider-component.json": "./dist/plugins-provider-component.json"
   },
   "scripts": {
     "build": "vite build"
