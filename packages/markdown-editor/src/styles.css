@@ -19,7 +19,12 @@ markdown-editor textarea {
   box-sizing: border-box;
   padding: 1rem 1.25rem;
   margin: 0;
-  font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font:
+    14px/1.55 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
   color: inherit;
   background: transparent;
   border: 0;

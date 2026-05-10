@@ -1,4 +1,4 @@
-export { BranchableRepo, BranchedDocHandle } from "./branchable-repo"
+export { BranchableRepo, BranchedDocHandle } from "./branchable-repo";
 export {
   BRANCH_MARKER,
   BRANCH_TYPE,
@@ -7,4 +7,4 @@ export {
   type BranchIndexDoc,
   type DocWithBranchIndex,
   type ForkOpts,
-} from "./types"
+} from "./types";

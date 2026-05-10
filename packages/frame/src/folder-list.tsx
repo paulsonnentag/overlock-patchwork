@@ -1,12 +1,12 @@
-import { For } from "solid-js"
-import { render } from "solid-js/web"
+import { For } from "solid-js";
+import { render } from "solid-js/web";
 
-import { withDocHandle } from "patchwork-dom"
-import { useHandle } from "patchwork-solid"
-import type { FolderDoc } from "patchwork-schemas"
+import { withDocHandle } from "patchwork-dom";
+import { useHandle } from "patchwork-solid";
+import type { FolderDoc } from "patchwork-schemas";
 
 export default withDocHandle<FolderDoc>(({ element, handle }) => {
-  const folder = useHandle(handle)
+  const folder = useHandle(handle);
 
   return render(
     () => (
@@ -20,7 +20,7 @@ export default withDocHandle<FolderDoc>(({ element, handle }) => {
                   new CustomEvent("open-document", {
                     bubbles: true,
                     detail: { url: link.url },
-                  }),
+                  })
                 )
               }
             >
@@ -30,6 +30,6 @@ export default withDocHandle<FolderDoc>(({ element, handle }) => {
         </For>
       </ul>
     ),
-    element,
-  )
-})
+    element
+  );
+});

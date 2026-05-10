@@ -1,2 +1,2 @@
-export * from "./register-component"
-export * from "./use-handle"
+export * from "./register-component";
+export * from "./use-handle";

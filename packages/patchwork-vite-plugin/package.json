@@ -12,7 +12,9 @@
       "import": "./src/index.js"
     }
   },
-  "files": ["src"],
+  "files": [
+    "src"
+  ],
   "peerDependencies": {
     "vite": "^5.4.10"
   }

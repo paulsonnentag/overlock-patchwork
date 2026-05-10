@@ -8,7 +8,6 @@ import {
 import { Step } from "./music/instrument-scheduler";
 import { DRUM_PIECES_COUNT } from "./music/drum";
 
-
 export type SequencerDoc = {
   title: string;
   toggleRows: Toggle[][];

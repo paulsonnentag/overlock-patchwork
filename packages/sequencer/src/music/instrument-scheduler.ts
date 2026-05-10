@@ -1,7 +1,14 @@
-import { SongConfig, barCountFromConfig, stepDurationFromConfig } from "../config";
+import {
+  SongConfig,
+  barCountFromConfig,
+  stepDurationFromConfig,
+} from "../config";
 import { DrumSamplePlayerConfig } from "./drum";
 import { Instrument } from "./instrument";
-import { InstrumentSamplePlayerConfig, SampleInstrumentConfig } from "./sample-instrument";
+import {
+  InstrumentSamplePlayerConfig,
+  SampleInstrumentConfig,
+} from "./sample-instrument";
 import { SamplePlayer } from "./sample-player";
 
 // TODO: We're currently using this as a global value in order to enable changing
@@ -9,11 +16,11 @@ import { SamplePlayer } from "./sample-player";
 // Ideally, we'd find a cleaner solution.
 export const globalInstrumentSchedulers: InstrumentScheduler[] = [];
 
-export const STEP_DURATION = 0.250
+export const STEP_DURATION = 0.25;
 
 export type Step = {
-  "instrument": Record<string, Note>,
-  "drum": Record<string, Note>,
+  instrument: Record<string, Note>;
+  drum: Record<string, Note>;
 };
 
 export class Note {
@@ -22,9 +29,9 @@ export class Note {
   offset: number;
 
   constructor(note: string, duration: number, offset: number) {
-    this.duration = duration
-    this.note = note
-    this.offset = offset
+    this.duration = duration;
+    this.note = note;
+    this.offset = offset;
   }
 }
 
@@ -41,8 +48,12 @@ class EmptySchedule implements Scheduleable {
   start() {}
   stop() {}
   playNext(instrument: Instrument, drum: Instrument) {}
-  nextScheduledTime(): number { return 0 }
-  stillPlaying(): boolean { return false }
+  nextScheduledTime(): number {
+    return 0;
+  }
+  stillPlaying(): boolean {
+    return false;
+  }
   updateConfig(config: SongConfig) {}
 }
 
@@ -55,7 +66,12 @@ class FullSchedule implements Scheduleable {
   setPlayingIdx: (idx: number) => void;
   config: SongConfig;
 
-  constructor(startTime: number, steps: Step[], setPlayingIdx: (idx: number) => void, config: SongConfig) {
+  constructor(
+    startTime: number,
+    steps: Step[],
+    setPlayingIdx: (idx: number) => void,
+    config: SongConfig
+  ) {
     this.stopped = false;
     this.startTime = startTime;
     this.steps = steps;
@@ -85,40 +101,41 @@ class FullSchedule implements Scheduleable {
     let startAt = this.startTime + this.nextTimeOffset;
     Object.entries(nextNoteGroup).forEach(([_noteName, note]) => {
       instrument.playSound(note.note, startAt, note.duration, 0.5);
-    })
+    });
     Object.entries(nextDrumGroup).forEach(([_noteName, note]) => {
       drum.playSound(note.note, startAt, note.duration, 0.5);
-    })
+    });
 
     let next_idx = this.idx + 1;
     if (this.config.stepDirection && this.config.stepDirection < 0) {
       next_idx -= 2;
     }
     if (next_idx < 0) {
-      next_idx = (this.steps.length * this.config.bars) - 1;
+      next_idx = this.steps.length * this.config.bars - 1;
     }
     let stepCount = barCountFromConfig(this.config);
     this.idx = next_idx % stepCount;
     this.setPlayingIdx(this.idx);
-    this.nextTimeOffset = this.nextTimeOffset + stepDurationFromConfig(this.config);
+    this.nextTimeOffset =
+      this.nextTimeOffset + stepDurationFromConfig(this.config);
   }
 
   // TODO: This is a clunky way to get around a UI issue where starting to type
   // in a tempo starting with 1 creates a problem that freezes the song.
   getTempo(): number {
     if (this.config.tempo > 20) {
-      return this.config.tempo
+      return this.config.tempo;
     } else {
-      return 20
+      return 20;
     }
   }
 
   nextScheduledTime(): number {
-    return this.startTime + this.nextTimeOffset
+    return this.startTime + this.nextTimeOffset;
   }
 
   stillPlaying(): boolean {
-    return !this.stopped && (this.idx < this.steps.length)
+    return !this.stopped && this.idx < this.steps.length;
   }
 }
 
@@ -133,7 +150,11 @@ export class InstrumentScheduler {
   fullSchedule: Scheduleable;
   setPlayingIdx: (idx: number) => void;
 
-  constructor(setPlayingIdx: (idx: number) => void, instrument: Instrument, drum: Instrument) {
+  constructor(
+    setPlayingIdx: (idx: number) => void,
+    instrument: Instrument,
+    drum: Instrument
+  ) {
     this.isLoaded = false;
     this.instrumentLoaded = false;
     this.drumLoaded = false;
@@ -146,7 +167,12 @@ export class InstrumentScheduler {
 
   prepare_new_schedule(steps: Step[], startTime: number, config: SongConfig) {
     this.fullSchedule.stop();
-    this.fullSchedule = new FullSchedule(startTime, steps, this.setPlayingIdx, config);
+    this.fullSchedule = new FullSchedule(
+      startTime,
+      steps,
+      this.setPlayingIdx,
+      config
+    );
   }
 
   updateConfig(config: SongConfig) {
@@ -163,22 +189,28 @@ export class InstrumentScheduler {
 
   initContext(context: AudioContext) {
     this.context = context;
-    this.instrument.initContext(context, this.completeLoadedInstrument.bind(this));
+    this.instrument.initContext(
+      context,
+      this.completeLoadedInstrument.bind(this)
+    );
     this.drum.initContext(context, this.completeLoadedDrum.bind(this));
   }
 
   updateInstrument(instrument: Instrument) {
     if (!this.context) {
       console.error("InstrumentScheduler expected AudioContext");
-      return
+      return;
     }
-    instrument.initContext(this.context, this.completeLoadedInstrument.bind(this));
+    instrument.initContext(
+      this.context,
+      this.completeLoadedInstrument.bind(this)
+    );
   }
 
   updateDrum(drum: Instrument) {
     if (!this.context) {
       console.error("InstrumentScheduler expected AudioContext");
-      return
+      return;
     }
     drum.initContext(this.context, this.completeLoadedDrum.bind(this));
   }
@@ -206,10 +238,13 @@ export class InstrumentScheduler {
   playNext() {
     if (!this.context) {
       console.error("InstrumentScheduler expected AudioContext");
-      return
+      return;
     }
     this.fullSchedule.playNext(this.instrument, this.drum);
-    if ((this.fullSchedule.nextScheduledTime() - this.context.currentTime) < 0.050) {
+    if (
+      this.fullSchedule.nextScheduledTime() - this.context.currentTime <
+      0.05
+    ) {
       this.playNext();
     }
   }
@@ -219,9 +254,11 @@ export class InstrumentScheduler {
   is_time_to_play() {
     if (!this.context) {
       console.error("InstrumentScheduler expected AudioContext");
-      return
+      return;
     }
-    return (this.fullSchedule.nextScheduledTime() - this.context.currentTime) < 0.050
+    return (
+      this.fullSchedule.nextScheduledTime() - this.context.currentTime < 0.05
+    );
   }
 
   schedule_next() {
@@ -229,8 +266,8 @@ export class InstrumentScheduler {
       if (this.is_time_to_play()) {
         this.playNext();
       }
-      return true
+      return true;
     }
-    return false
+    return false;
   }
 }

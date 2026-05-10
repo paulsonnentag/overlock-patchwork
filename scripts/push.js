@@ -147,15 +147,11 @@ async function syncSubfolder(absPath, { verbose }) {
     return "synced";
   }
   if (verbose) {
-    console.log(
-      `\n=== pushwork init --shape patchwork-folder ${absPath} ===`
-    );
+    console.log(`\n=== pushwork init --shape patchwork-folder ${absPath} ===`);
   }
-  await runPushwork(
-    ["init", "--shape", "patchwork-folder"],
-    absPath,
-    { verbose }
-  );
+  await runPushwork(["init", "--shape", "patchwork-folder"], absPath, {
+    verbose,
+  });
   return "added";
 }
 
@@ -166,9 +162,7 @@ async function readPackageJson(absPath) {
     const raw = await fs.readFile(pkgPath, "utf8");
     return JSON.parse(raw);
   } catch (err) {
-    console.warn(
-      `warning: could not parse ${pkgPath}: ${err?.message ?? err}`
-    );
+    console.warn(`warning: could not parse ${pkgPath}: ${err?.message ?? err}`);
     return null;
   }
 }
@@ -333,11 +327,10 @@ async function safeRepoShutdown(repo) {
 // Subduction has no StorageId we can verify against, so we wait for the
 // document's heads to stop moving for a few consecutive checks. Mirrors
 // pushwork's waitForSyncViaHeadStability.
-async function waitForHandleStable(handle, {
-  timeoutMs = 30000,
-  pollIntervalMs = 100,
-  stableRequired = 5,
-} = {}) {
+async function waitForHandleStable(
+  handle,
+  { timeoutMs = 30000, pollIntervalMs = 100, stableRequired = 5 } = {}
+) {
   const start = Date.now();
   let last = JSON.stringify(handle.heads());
   let stable = 0;

@@ -1,7 +1,7 @@
-import { render } from "solid-js/web"
+import { render } from "solid-js/web";
 
-import { withDocHandle } from "patchwork-dom"
-import type { FolderDoc } from "patchwork-schemas"
+import { withDocHandle } from "patchwork-dom";
+import type { FolderDoc } from "patchwork-schemas";
 
 export default withDocHandle<FolderDoc>(({ element, repo, handle }) => {
   const onClick = () => {
@@ -9,17 +9,17 @@ export default withDocHandle<FolderDoc>(({ element, repo, handle }) => {
       "@patchwork": { type: "markdown" },
       title: "Untitled",
       content: "# Untitled",
-    })
+    });
     handle.change((d) => {
-      d.docs.push({ name: "Untitled", type: "markdown", url: doc.url })
-    })
+      d.docs.push({ name: "Untitled", type: "markdown", url: doc.url });
+    });
     element.dispatchEvent(
       new CustomEvent("open-document", {
         bubbles: true,
         detail: { url: doc.url },
-      }),
-    )
-  }
+      })
+    );
+  };
 
   return render(
     () => (
@@ -27,6 +27,6 @@ export default withDocHandle<FolderDoc>(({ element, repo, handle }) => {
         + markdown
       </button>
     ),
-    element,
-  )
-})
+    element
+  );
+});

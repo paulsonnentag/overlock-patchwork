@@ -14,7 +14,7 @@ type TextDoc = { content?: string };
 
 export function createDiffDecorations(
   handle: () => DocHandle<TextDoc> | undefined,
-  path: Prop[],
+  path: Prop[]
 ): () => DecorationSet {
   const [version, setVersion] = createSignal(0);
 
@@ -47,10 +47,8 @@ export function createDiffDecorations(
   // TODO: `cloneUrl` will move onto DocHandle itself; drop the cast then.
   const cloneUrl = createMemo<AutomergeUrl | null>(() => {
     version();
-    return (
-      ((handle() as unknown as { cloneUrl?: AutomergeUrl | null })?.cloneUrl ??
-        null) as AutomergeUrl | null
-    );
+    return ((handle() as unknown as { cloneUrl?: AutomergeUrl | null })
+      ?.cloneUrl ?? null) as AutomergeUrl | null;
   });
 
   const preForkText = createMemo<string | undefined>(() => {
@@ -76,7 +74,7 @@ export function createDiffDecorations(
 function buildDecorations(
   patches: Patch[],
   path: Prop[],
-  preForkText: string | undefined,
+  preForkText: string | undefined
 ): DecorationSet {
   const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
 

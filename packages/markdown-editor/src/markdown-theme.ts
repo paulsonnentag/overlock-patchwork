@@ -208,7 +208,7 @@ const bullets = ViewPlugin.fromClass(
               builder.add(
                 from,
                 from + 1,
-                Decoration.replace({ widget: new BulletWidget() }),
+                Decoration.replace({ widget: new BulletWidget() })
               );
             }
           }
@@ -219,7 +219,7 @@ const bullets = ViewPlugin.fromClass(
   },
   {
     decorations: (v) => v.decorations,
-  },
+  }
 );
 
 class BulletWidget extends WidgetType {

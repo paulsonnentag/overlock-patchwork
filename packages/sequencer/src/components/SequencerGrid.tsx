@@ -185,7 +185,7 @@ export function UIGrid({
 function diffStatus(
   diff: DiffSets,
   y: number,
-  x: number,
+  x: number
 ): "added" | "deleted" | null {
   const key = `${y}:${x}`;
   if (diff.added.has(key)) return "added";

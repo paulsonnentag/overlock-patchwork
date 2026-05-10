@@ -1,5 +1,5 @@
-import { defineConfig } from "vite"
-import solid from "vite-plugin-solid"
+import { defineConfig } from "vite";
+import solid from "vite-plugin-solid";
 
 export default defineConfig({
   plugins: [solid()],
@@ -11,12 +11,7 @@ export default defineConfig({
       fileName: () => "index.js",
     },
     rollupOptions: {
-      external: [
-        "solid-js",
-        "solid-js/web",
-        "solid-js/store",
-        "patchwork-dom",
-      ],
+      external: ["solid-js", "solid-js/web", "solid-js/store", "patchwork-dom"],
     },
   },
-})
+});

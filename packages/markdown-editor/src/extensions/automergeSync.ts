@@ -12,14 +12,16 @@ import type { DocHandle } from "@automerge/automerge-repo";
 export function createSyncExtension<T>(
   handle: () => DocHandle<T>,
   path: () => AutomergeProp[],
-  initialDoc: () => string,
+  initialDoc: () => string
 ) {
   const sync = new Compartment();
 
   const syncExtension = () =>
     handle() && path()
       ? automergeSyncPlugin({
-          handle: handle() as Parameters<typeof automergeSyncPlugin>[0]["handle"],
+          handle: handle() as Parameters<
+            typeof automergeSyncPlugin
+          >[0]["handle"],
           path: path(),
         })
       : [];

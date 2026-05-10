@@ -24,7 +24,11 @@ export function patchwork(config = {}) {
       pkgJson = JSON.parse(readFileSync(pkgPath, "utf8"));
       const plugins = pkgJson.plugins;
       if (plugins === undefined) return;
-      if (plugins == null || typeof plugins !== "object" || Array.isArray(plugins)) {
+      if (
+        plugins == null ||
+        typeof plugins !== "object" ||
+        Array.isArray(plugins)
+      ) {
         throw new Error(`patchwork: /plugins must be an object`);
       }
 
@@ -33,7 +37,7 @@ export function patchwork(config = {}) {
       for (const [kind, arr] of Object.entries(plugins)) {
         if (!ID_RE.test(kind)) {
           throw new Error(
-            `patchwork: /plugins/${kind} kind must match ${ID_RE} (got "${kind}")`,
+            `patchwork: /plugins/${kind} kind must match ${ID_RE} (got "${kind}")`
           );
         }
         if (!Array.isArray(arr)) {
@@ -42,20 +46,24 @@ export function patchwork(config = {}) {
         const fieldPaths = config[kind];
         arr.forEach((entry, idx) => {
           const pointer = `/plugins/${kind}/${idx}`;
-          if (entry == null || typeof entry !== "object" || Array.isArray(entry)) {
+          if (
+            entry == null ||
+            typeof entry !== "object" ||
+            Array.isArray(entry)
+          ) {
             throw new Error(`patchwork: ${pointer} must be an object`);
           }
           const name = entry.name;
           if (typeof name !== "string" || !ID_RE.test(name)) {
             throw new Error(
-              `patchwork: ${pointer}/name must match ${ID_RE} (got ${JSON.stringify(name)})`,
+              `patchwork: ${pointer}/name must match ${ID_RE} (got ${JSON.stringify(name)})`
             );
           }
           const id = `${name}-${kind}`;
           const prev = seenIds.get(id);
           if (prev !== undefined) {
             throw new Error(
-              `patchwork: duplicate plugin (kind="${kind}", name="${name}") at ${prev} and ${pointer}`,
+              `patchwork: duplicate plugin (kind="${kind}", name="${name}") at ${prev} and ${pointer}`
             );
           }
           seenIds.set(id, pointer);
@@ -73,13 +81,13 @@ export function patchwork(config = {}) {
             }
             if (!value.startsWith("./") && !value.startsWith("../")) {
               throw new Error(
-                `patchwork: ${fieldPointer} must start with "./" or "../" (got "${value}")`,
+                `patchwork: ${fieldPointer} must start with "./" or "../" (got "${value}")`
               );
             }
             const absolute = path.resolve(packageRoot, value);
             if (!existsSync(absolute)) {
               throw new Error(
-                `patchwork: ${fieldPointer} resolves to missing file ${absolute}`,
+                `patchwork: ${fieldPointer} resolves to missing file ${absolute}`
               );
             }
             const entryName = stripExt(path.relative(packageRoot, absolute));
@@ -115,7 +123,7 @@ export function patchwork(config = {}) {
         if (declared.has(e.kind) || seenUnknown.has(e.kind)) continue;
         seenUnknown.add(e.kind);
         this.warn(
-          `plugins.${e.kind} is present but no plugin config declared it; URLs in this kind will not be bundled or rewritten`,
+          `plugins.${e.kind} is present but no plugin config declared it; URLs in this kind will not be bundled or rewritten`
         );
       }
     },
@@ -132,14 +140,14 @@ export function patchwork(config = {}) {
         const chunk = findEntryChunk(bundle, record.entryName);
         if (!chunk) {
           this.error(
-            `patchwork: could not find built chunk for entry "${record.entryName}"`,
+            `patchwork: could not find built chunk for entry "${record.entryName}"`
           );
           return;
         }
         setDottedField(
           rewritten[record.orderIdx],
           record.fieldPath,
-          `./${chunk.fileName}`,
+          `./${chunk.fileName}`
         );
       }
 

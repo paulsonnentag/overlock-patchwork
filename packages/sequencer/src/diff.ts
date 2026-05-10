@@ -52,7 +52,10 @@ export function useDiff(handle: DocHandle<SequencerDoc>): GridDiff {
       if (!sets) continue;
 
       const key = `${y}:${x}`;
-      if (patch.action === "put" && (patch as { value?: unknown }).value === true) {
+      if (
+        patch.action === "put" &&
+        (patch as { value?: unknown }).value === true
+      ) {
         sets.added.add(key);
       } else if (
         patch.action === "put" &&

@@ -12,7 +12,7 @@ import { createDecorationsExtension } from "./extensions/decorations";
 
 const lookup = <T = unknown,>(
   doc: unknown,
-  path: AutomergeProp[],
+  path: AutomergeProp[]
 ): T | undefined => {
   let current = doc as Record<string, unknown> | undefined;
   for (const key of path) {
@@ -37,7 +37,7 @@ export function CodeMirror<T>(props: CodeMirrorProps<T>) {
   const [syncExtension, createEffectReconfigureSync] = createSyncExtension(
     () => props.handle,
     () => props.path,
-    initialDoc,
+    initialDoc
   );
 
   const [readOnlyExtension, createEffectReconfigureReadOnly] =

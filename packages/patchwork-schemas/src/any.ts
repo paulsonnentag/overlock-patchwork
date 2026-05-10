@@ -1,3 +1,3 @@
-import { z } from "zod"
+import { z } from "zod";
 
-export const anySchema = z.unknown()
+export const anySchema = z.unknown();

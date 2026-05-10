@@ -1,3 +1,3 @@
-import { anySchema } from "patchwork-schemas"
+import { anySchema } from "patchwork-schemas";
 
-export default anySchema
+export default anySchema;

@@ -1,4 +1,4 @@
-import { z } from "zod"
+import { z } from "zod";
 
 export const folderSchema = z.object({
   title: z.string(),
@@ -8,9 +8,9 @@ export const folderSchema = z.object({
       type: z.string(),
       url: z.string(),
       icon: z.string().optional(),
-    }),
+    })
   ),
-})
+});
 
-export type FolderDoc = z.infer<typeof folderSchema>
-export type FolderDocLink = FolderDoc["docs"][number]
+export type FolderDoc = z.infer<typeof folderSchema>;
+export type FolderDocLink = FolderDoc["docs"][number];

@@ -1,54 +1,54 @@
-import type { AutomergeUrl } from "@automerge/automerge-repo"
+import type { AutomergeUrl } from "@automerge/automerge-repo";
 
-import { StateHandle } from "patchwork-dom"
+import { StateHandle } from "patchwork-dom";
 
-import type { DocumentSelection } from "./types"
+import type { DocumentSelection } from "./types";
 
 export default (element: HTMLElement) => {
   const handle = new StateHandle<DocumentSelection>(
     { activeDocumentUrl: null, openedDocumentUrls: [] },
-    selectionEquals,
-  )
-  Object.assign(element, { handle })
-  element.style.display = "contents"
+    selectionEquals
+  );
+  Object.assign(element, { handle });
+  element.style.display = "contents";
 
   const onOpen = (e: Event) => {
-    const url = (e as CustomEvent<{ url: AutomergeUrl }>).detail.url
-    const cur = handle.value
+    const url = (e as CustomEvent<{ url: AutomergeUrl }>).detail.url;
+    const cur = handle.value;
     handle.change({
       activeDocumentUrl: url,
       openedDocumentUrls: cur.openedDocumentUrls.includes(url)
         ? cur.openedDocumentUrls
         : [...cur.openedDocumentUrls, url],
-    })
-  }
+    });
+  };
 
   const onClose = (e: Event) => {
-    const url = (e as CustomEvent<{ url: AutomergeUrl }>).detail.url
-    const cur = handle.value
-    const opened = cur.openedDocumentUrls.filter((u) => u !== url)
+    const url = (e as CustomEvent<{ url: AutomergeUrl }>).detail.url;
+    const cur = handle.value;
+    const opened = cur.openedDocumentUrls.filter((u) => u !== url);
     handle.change({
       openedDocumentUrls: opened,
       activeDocumentUrl:
         cur.activeDocumentUrl === url
           ? (opened[opened.length - 1] ?? null)
           : cur.activeDocumentUrl,
-    })
-  }
+    });
+  };
 
-  element.addEventListener("open-document", onOpen)
-  element.addEventListener("close-document", onClose)
+  element.addEventListener("open-document", onOpen);
+  element.addEventListener("close-document", onClose);
   return () => {
-    element.removeEventListener("open-document", onOpen)
-    element.removeEventListener("close-document", onClose)
-  }
-}
+    element.removeEventListener("open-document", onOpen);
+    element.removeEventListener("close-document", onClose);
+  };
+};
 
 function selectionEquals(a: DocumentSelection, b: DocumentSelection): boolean {
-  if (a.activeDocumentUrl !== b.activeDocumentUrl) return false
-  if (a.openedDocumentUrls.length !== b.openedDocumentUrls.length) return false
+  if (a.activeDocumentUrl !== b.activeDocumentUrl) return false;
+  if (a.openedDocumentUrls.length !== b.openedDocumentUrls.length) return false;
   for (let i = 0; i < a.openedDocumentUrls.length; i++) {
-    if (a.openedDocumentUrls[i] !== b.openedDocumentUrls[i]) return false
+    if (a.openedDocumentUrls[i] !== b.openedDocumentUrls[i]) return false;
   }
-  return true
+  return true;
 }

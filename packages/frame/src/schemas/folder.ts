@@ -1,3 +1,3 @@
-import { folderSchema } from "patchwork-schemas"
+import { folderSchema } from "patchwork-schemas";
 
-export default folderSchema
+export default folderSchema;

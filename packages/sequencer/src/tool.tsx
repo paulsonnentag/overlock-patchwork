@@ -29,7 +29,7 @@ function updateToggle(
   toggleRows: Toggle[][],
   x: number,
   y: number,
-  isToggled: boolean,
+  isToggled: boolean
 ) {
   toggleRows[y][x].toggled = isToggled;
   if (isToggled) {
@@ -80,11 +80,11 @@ export const Sequencer = ({ handle }: SequencerProps) => {
   }
 
   const fetchOverridingInstrument = (
-    overridingInstrumentUrl: string,
+    overridingInstrumentUrl: string
   ): boolean => {
     if (
       confirm(
-        "WARNING: This song includes an external instrument script that could contain malicious code. Press cancel to use the default sample player instead. Only press OK if you know what you're doing.",
+        "WARNING: This song includes an external instrument script that could contain malicious code. Press cancel to use the default sample player instead. Only press OK if you know what you're doing."
       )
     ) {
       console.log(overridingInstrumentUrl);
@@ -114,7 +114,7 @@ export const Sequencer = ({ handle }: SequencerProps) => {
     setPlayStartTime,
     setOverridingInstrumentChosen,
     fetchOverridingInstrument,
-    doc.config,
+    doc.config
   );
 
   const handleToggleChange = (isToggled: boolean, x: number, y: number) => {
@@ -163,11 +163,11 @@ export const Sequencer = ({ handle }: SequencerProps) => {
       d.config.instrument = sampleInstrumentConfigs[instrumentName];
       if (globalInstrumentSchedulers.length > 0) {
         const instrumentSamplePlayerConfig = new InstrumentSamplePlayerConfig(
-          d.config.instrument,
+          d.config.instrument
         );
         const samplePlayer = new SamplePlayer(
           instrumentSamplePlayerConfig,
-          instrumentVolume,
+          instrumentVolume
         );
         globalInstrumentSchedulers[0].updateInstrument(samplePlayer);
       }
@@ -178,10 +178,12 @@ export const Sequencer = ({ handle }: SequencerProps) => {
     changeDoc((d) => {
       d.config.drum = drumConfigs[drumName];
       if (globalInstrumentSchedulers.length > 0) {
-        const drumSamplePlayerConfig = new DrumSamplePlayerConfig(d.config.drum);
+        const drumSamplePlayerConfig = new DrumSamplePlayerConfig(
+          d.config.drum
+        );
         const drumSamplePlayer = new SamplePlayer(
           drumSamplePlayerConfig,
-          drumVolume,
+          drumVolume
         );
         globalInstrumentSchedulers[0].updateDrum(drumSamplePlayer);
       }
@@ -191,7 +193,7 @@ export const Sequencer = ({ handle }: SequencerProps) => {
   const duplicateFirstBarDrums = (
     isPlaying: boolean,
     instrumentVolume: number,
-    drumVolume: number,
+    drumVolume: number
   ) => {
     if (isPlaying) {
       togglePlay(instrumentVolume, drumVolume, overridingInstrumentChosen);
@@ -233,7 +235,7 @@ export const Sequencer = ({ handle }: SequencerProps) => {
   const duplicateFirstBarNotes = (
     isPlaying: boolean,
     instrumentVolume: number,
-    drumVolume: number,
+    drumVolume: number
   ) => {
     if (isPlaying) {
       togglePlay(instrumentVolume, drumVolume, overridingInstrumentChosen);
@@ -275,7 +277,7 @@ export const Sequencer = ({ handle }: SequencerProps) => {
   const clearGrid = (
     isPlaying: boolean,
     instrumentVolume: number,
-    drumVolume: number,
+    drumVolume: number
   ) => {
     if (!confirm("WARNING: Are you sure you want to clear the entire grid?")) {
       return;
@@ -296,7 +298,7 @@ export const Sequencer = ({ handle }: SequencerProps) => {
   const resetGrid = (
     isPlaying: boolean,
     instrumentVolume: number,
-    drumVolume: number,
+    drumVolume: number
   ) => {
     if (isPlaying) {
       togglePlay(instrumentVolume, drumVolume, overridingInstrumentChosen);
@@ -308,14 +310,14 @@ export const Sequencer = ({ handle }: SequencerProps) => {
           toggled: false,
           contactUrl: null,
           toggleOnTime: 0,
-        })),
+        }))
       );
       d.drumToggleRows = Array.from({ length: DRUM_PIECES_COUNT }, () =>
         Array.from({ length: totalSteps }, () => ({
           toggled: false,
           contactUrl: null,
           toggleOnTime: 0,
-        })),
+        }))
       );
       d.stepGrid = Array.from({ length: totalSteps }, () => ({
         instrument: {},
