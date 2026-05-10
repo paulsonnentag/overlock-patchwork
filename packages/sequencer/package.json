@@ -13,7 +13,10 @@
   },
   "plugins": {
     "component": [
-      { "name": "sequencer", "module": "./src/sequencer.tsx" },
+      {
+        "name": "sequencer",
+        "module": "./src/sequencer.tsx"
+      },
       {
         "name": "new-sequencer-button",
         "module": "./src/new-sequencer-button.tsx",
@@ -42,5 +45,9 @@
     "typescript": "^5.6.3",
     "vite": "^5.4.10",
     "vite-plugin-css-injected-by-js": "^4.0.1"
+  },
+  "exports": {
+    "./sequencer-component.json": "./dist/sequencer-component.json",
+    "./new-sequencer-button-component.json": "./dist/new-sequencer-button-component.json"
   }
 }
