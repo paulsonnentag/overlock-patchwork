@@ -13,7 +13,7 @@ import { hasAccountHandle, hasDocumentSelection } from "./types"
 
 const FRAME_PKG = "automerge:2beoANHD3SCwKVs5EwktStnU8qYn"
 const MD_PKG = "automerge:2SPq6hhJpxHLi34fHwS7s91DUzpG"
-const SEQ_PKG = "automerge:Aywi33GmoDMhdrvDAggSktc3bnE"
+const SEQ_PKG = "automerge:LW8gWWCBHd5EneM5HXFPCis7koF"
 const BRANCHES_PKG = "automerge:WBPRF3RFAw2zdErhVtb7hY64Uag"
 const PLUGINS_PROVIDER_PKG = "automerge:29zNxHF4HDm5fk62Yb2ECnKP4Kxi"
 const PATCHWORK_VIEW_PKG = "automerge:2GJUXWeXXtSuEEmuRcThJ85TgLBv"
@@ -73,7 +73,6 @@ export default (element: HTMLElement) => {
                   <div class="frame__sidebar">
                     <NewMarkdownButton url={account.rootFolderUrl} />
                     <NewSequencerButton url={account.rootFolderUrl} />
-                    Here are all your docs:
                     <FolderList url={account.rootFolderUrl} />
                   </div>
                   <CheckedOutBranchProvider>
