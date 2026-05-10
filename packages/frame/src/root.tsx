@@ -11,12 +11,12 @@ import "./styles.css"
 import type { AccountDoc, DocumentSelection } from "./types"
 import { hasAccountHandle, hasDocumentSelection } from "./types"
 
-const FRAME_PKG = "automerge:2Q6XWP6H1soyS1RFW7bzm6rabjnZ"
-const MD_PKG = "automerge:MgZABPTTW3m3xzAyBhEX4SMJ5ao"
-const SEQ_PKG = "automerge:3W3MzsQTqGqw9cpuHEezd7EAB365"
-const BRANCHES_PKG = "automerge:YPhgkbKsr2zAzZgc5h9UuauZCux"
-const PLUGINS_PROVIDER_PKG = "automerge:3LdPUwM4U8Tbje9YWJoRmKQbDzVm"
-const PATCHWORK_VIEW_PKG = "automerge:xaKTpEarZWtWpeiihMD4XLDkq8g"
+const FRAME_PKG = "automerge:2beoANHD3SCwKVs5EwktStnU8qYn"
+const MD_PKG = "automerge:2SPq6hhJpxHLi34fHwS7s91DUzpG"
+const SEQ_PKG = "automerge:Aywi33GmoDMhdrvDAggSktc3bnE"
+const BRANCHES_PKG = "automerge:WBPRF3RFAw2zdErhVtb7hY64Uag"
+const PLUGINS_PROVIDER_PKG = "automerge:29zNxHF4HDm5fk62Yb2ECnKP4Kxi"
+const PATCHWORK_VIEW_PKG = "automerge:2GJUXWeXXtSuEEmuRcThJ85TgLBv"
 
 const ACCOUNT_PROVIDER_URL = `${FRAME_PKG}/dist/account-provider-component.json`
 const SELECTION_PROVIDER_URL = `${FRAME_PKG}/dist/document-selection-provider-component.json`
@@ -73,6 +73,7 @@ export default (element: HTMLElement) => {
                   <div class="frame__sidebar">
                     <NewMarkdownButton url={account.rootFolderUrl} />
                     <NewSequencerButton url={account.rootFolderUrl} />
+                    Here are all your docs:
                     <FolderList url={account.rootFolderUrl} />
                   </div>
                   <CheckedOutBranchProvider>
