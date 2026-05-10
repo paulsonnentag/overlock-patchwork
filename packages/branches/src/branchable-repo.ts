@@ -93,6 +93,23 @@ export class BranchableRepo {
     return this.repo.create<T>(initialValue)
   }
 
+  // Mirrors `Repo.handles` for consumers (e.g. automerge-repo-solid-primitives)
+  // that probe synchronously by documentId. Only already-wrapped handles
+  // are exposed; unknown ids fall through to the async `findWithProgress`
+  // path on those consumers.
+  get handles(): Record<DocumentId, DocHandle<unknown>> {
+    const out: Record<string, DocHandle<unknown>> = {}
+    for (const [url, wrapped] of this.#wrapped) {
+      const { documentId } = parseAutomergeUrl(url)
+      out[documentId] = wrapped as unknown as DocHandle<unknown>
+    }
+    return out
+  }
+
+  findWithProgress<T>(id: AnyDocumentId): { whenReady(): Promise<DocHandle<T>> } {
+    return { whenReady: () => this.find<T>(id) }
+  }
+
   // Always returns a wrapped handle (even on main) so that subsequent
   // fork/checkout/reset can rewire the same reference consumers are
   // already holding. On main the wrapper has no clone and reads/writes
