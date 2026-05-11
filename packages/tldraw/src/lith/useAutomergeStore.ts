@@ -74,6 +74,16 @@ export function useAutomergeStore({
       })
     );
 
+    const loadSnapshotFromDoc = (doc: TLStoreSnapshot) => {
+      if (!doc.store) throw new Error("Document store not initialized");
+      store.mergeRemoteChanges(() => {
+        store.loadStoreSnapshot({
+          store: JSON.parse(JSON.stringify(doc.store)),
+          schema: JSON.parse(JSON.stringify(doc.schema)),
+        });
+      });
+    };
+
     const syncAutomergeDocChangesToStore = () => {
       if (preventPatchApplications) return;
       if (reconciledHeads === null) return;
@@ -82,8 +92,17 @@ export function useAutomergeStore({
       const currentHeads = A.getHeads(doc);
       if (A.equals(currentHeads, reconciledHeads)) return;
 
-      const patches = A.diff(doc, reconciledHeads, currentHeads);
-      applyAutomergePatchesToTLStore(patches, store);
+      // BranchableRepo swaps the inner handle in place on
+      // checkout/reset, so the same wrapper can suddenly point at an
+      // unrelated history. `A.diff` only works when `before` is
+      // reachable from `doc`; on a cross-history swap fall back to a
+      // full snapshot reload.
+      if (A.hasHeads(doc, reconciledHeads)) {
+        const patches = A.diff(doc, reconciledHeads, currentHeads);
+        applyAutomergePatchesToTLStore(patches, store);
+      } else {
+        loadSnapshotFromDoc(doc);
+      }
       reconciledHeads = currentHeads;
     };
 
@@ -93,14 +112,8 @@ export function useAutomergeStore({
     handle.whenReady().then(() => {
       const doc = handle.doc();
       if (!doc) throw new Error("Document not found");
-      if (!doc.store) throw new Error("Document store not initialized");
 
-      store.mergeRemoteChanges(() => {
-        store.loadStoreSnapshot({
-          store: JSON.parse(JSON.stringify(doc.store)),
-          schema: JSON.parse(JSON.stringify(doc.schema)),
-        });
-      });
+      loadSnapshotFromDoc(doc);
       reconciledHeads = A.getHeads(doc);
 
       setStoreWithStatus({
