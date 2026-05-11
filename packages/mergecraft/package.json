@@ -1,0 +1,65 @@
+{
+  "name": "mergecraft",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Automerge-backed voxel playground (Three.js / Rapier). Vite builds the src manifest into a dist manifest and JS bundle.",
+  "scripts": {
+    "build": "vite build",
+    "watch": "vite build --watch"
+  },
+  "patchwork": {
+    "server": "wss://subduction.sync.inkandswitch.com"
+  },
+  "plugins": {
+    "component": [
+      {
+        "name": "mergecraft-editor",
+        "module": "./src/mergecraft.tsx",
+        "schema": "./src/schemas/mergecraft.ts"
+      },
+      {
+        "name": "new-mergecraft-button",
+        "module": "./src/new-mergecraft-button.tsx",
+        "schema": "./src/schemas/folder.ts"
+      }
+    ]
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.14.0",
+    "@pmndrs/branding": "0.0.8",
+    "@react-three/drei": "9.120.4",
+    "@react-three/fiber": "8.17.10",
+    "@react-three/rapier": "1.5.0",
+    "@react-three/xr": "^6.4.12",
+    "patchwork-schemas": "link:../patchwork-schemas",
+    "simplex-noise": "4.0.1",
+    "three": "0.171.0",
+    "three-stdlib": "^2.36.0",
+    "zod": "^3.25.76",
+    "zustand": "4.4.7"
+  },
+  "devDependencies": {
+    "@automerge/automerge": "3.2.5",
+    "@automerge/automerge-repo": "2.6.0-subduction.13",
+    "@automerge/automerge-repo-react-hooks": "2.5.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@types/three": "^0.171.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "patchwork-dom": "link:../patchwork-dom",
+    "patchwork-react": "link:../patchwork-react",
+    "patchwork-vite-plugin": "link:../patchwork-vite-plugin",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10",
+    "vite-plugin-css-injected-by-js": "^4.0.1",
+    "vite-plugin-top-level-await": "^1.5.0",
+    "vite-plugin-wasm": "^3.4.1"
+  },
+  "exports": {
+    "./mergecraft-editor-component.json": "./dist/mergecraft-editor-component.json",
+    "./new-mergecraft-button-component.json": "./dist/new-mergecraft-button-component.json"
+  }
+}
