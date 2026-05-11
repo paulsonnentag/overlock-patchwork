@@ -8,7 +8,9 @@ import {
   type Doc,
   type DocHandle,
   type DocumentId,
+  type DocumentProgress,
   type Patch,
+  type QueryState,
   type Repo,
   type UrlHeads,
 } from "@automerge/automerge-repo";
@@ -109,10 +111,64 @@ export class BranchableRepo {
     return out;
   }
 
-  findWithProgress<T>(id: AnyDocumentId): {
-    whenReady(): Promise<DocHandle<T>>;
-  } {
-    return { whenReady: () => this.find<T>(id) };
+  // Mirrors `Repo.findWithProgress` but substitutes our wrapped handle for
+  // the underlying one once branch-side resolution (cache lookup, clone
+  // hydration) finishes. Until then we report `loading` even if the inner
+  // progress is already `ready`, so consumers never observe an unwrapped
+  // handle that bypasses fork/checkout/reset rewiring.
+  findWithProgress<T>(id: AnyDocumentId): DocumentProgress<T> {
+    const original = anyIdToCanonicalUrl(id);
+    const documentId = parseAutomergeUrl(original).documentId;
+    const inner = this.repo.findWithProgress<T>(original);
+    const wrappedPromise = this.find<T>(id);
+    wrappedPromise.catch(() => {});
+
+    const peek = (): QueryState<T> => {
+      const innerState = inner.peek();
+      if (innerState.state !== "ready") return innerState;
+      const wrapped = this.#wrapped.get(original);
+      if (!wrapped) return { state: "loading" };
+      return { state: "ready", handle: wrapped as unknown as DocHandle<T> };
+    };
+
+    return {
+      documentId,
+      peek,
+      subscribe: (callback) => {
+        let last: string | null = null;
+        const dispatch = () => {
+          const state = peek();
+          const sig =
+            state.state === "failed"
+              ? `failed:${state.error.message}`
+              : state.state;
+          if (sig === last) return;
+          last = sig;
+          callback(state);
+        };
+        const unsubscribeInner = inner.subscribe(dispatch);
+        wrappedPromise.then(dispatch, dispatch);
+        return unsubscribeInner;
+      },
+      whenReady: ({ signal } = {}) => {
+        if (signal?.aborted) return Promise.reject(signal.reason);
+        if (!signal) return wrappedPromise;
+        return new Promise<DocHandle<T>>((resolve, reject) => {
+          const onAbort = () => reject(signal.reason);
+          signal.addEventListener("abort", onAbort, { once: true });
+          wrappedPromise.then(
+            (handle) => {
+              signal.removeEventListener("abort", onAbort);
+              resolve(handle);
+            },
+            (err) => {
+              signal.removeEventListener("abort", onAbort);
+              reject(err);
+            }
+          );
+        });
+      },
+    };
   }
 
   // Always returns a wrapped handle (even on main) so that subsequent
