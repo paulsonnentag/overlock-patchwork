@@ -22,7 +22,10 @@ type MergecraftProps = {
 };
 
 export default function Mergecraft({ handle }: MergecraftProps) {
-  const store = createXRStore();
+  // `emulate: false` suppresses the iwer devui ("Enter XR" button)
+  // that createXRStore auto-injects on localhost when the browser
+  // has no native WebXR.
+  const store = createXRStore({ emulate: false });
 
   return (
     <div className="mergecraft">

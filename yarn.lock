@@ -932,6 +932,10 @@ onetime@^5.1.2:
   dependencies:
     mimic-fn "^2.1.0"
 
+"patchwork-dom@link:./packages/patchwork-dom":
+  version "0.0.0"
+  uid ""
+
 path-is-inside@1.0.2:
   version "1.0.2"
   resolved "https://registry.yarnpkg.com/path-is-inside/-/path-is-inside-1.0.2.tgz#365417dede44430d1c11af61027facf074bdfc53"

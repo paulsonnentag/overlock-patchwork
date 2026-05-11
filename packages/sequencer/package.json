@@ -32,9 +32,11 @@
     "patchwork-schemas": "link:../patchwork-schemas",
     "zod": "^3.25.76"
   },
+  "peerDependencies": {
+    "@automerge/automerge-repo": "*"
+  },
   "devDependencies": {
     "@automerge/automerge": "3.2.5",
-    "@automerge/automerge-repo": "2.6.0-subduction.13",
     "@types/lodash": "^4.17.7",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",

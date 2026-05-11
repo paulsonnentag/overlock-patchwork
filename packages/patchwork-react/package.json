@@ -24,11 +24,11 @@
     "server": "wss://subduction.sync.inkandswitch.com"
   },
   "peerDependencies": {
+    "@automerge/automerge-repo": "*",
     "patchwork-dom": "*",
     "react": "^18"
   },
   "devDependencies": {
-    "@automerge/automerge-repo": "2.6.0-subduction.13",
     "@types/react": "^18.3.3",
     "@vitejs/plugin-react": "^4.3.1",
     "patchwork-dom": "link:../patchwork-dom",

@@ -16,10 +16,8 @@ import {
   sortById,
 } from "@tldraw/tldraw";
 import { useEffect, useState } from "react";
-import {
-  type DocHandle,
-  type DocHandleChangePayload,
-} from "@automerge/automerge-repo";
+import { type DocHandle } from "@automerge/automerge-repo";
+import * as A from "@automerge/automerge";
 import {
   useLocalAwareness,
   useRemoteAwareness,
@@ -52,6 +50,11 @@ export function useAutomergeStore({
     // Local writes flow tldraw -> automerge. The roundtripped patch
     // would re-enter as a remote change; guard against re-applying it.
     let preventPatchApplications = false;
+    // Recompute patches from heads on every change event rather than
+    // trusting the payload. BranchableRepo._rewire fires a synthetic
+    // `change` with `patches: []` on branch checkout/reset; without a
+    // heads-based fallback the store would never observe the swap.
+    let reconciledHeads: A.Heads | null = null;
 
     function syncStoreChangesToAutomergeDoc({
       changes,
@@ -60,6 +63,7 @@ export function useAutomergeStore({
       handle.change((doc) => {
         applyTLStoreChangesToAutomerge(doc, changes);
       });
+      reconciledHeads = A.getHeads(handle.doc());
       preventPatchApplications = false;
     }
 
@@ -70,12 +74,17 @@ export function useAutomergeStore({
       })
     );
 
-    const syncAutomergeDocChangesToStore = ({
-      patches,
-    }: DocHandleChangePayload<any>) => {
+    const syncAutomergeDocChangesToStore = () => {
       if (preventPatchApplications) return;
+      if (reconciledHeads === null) return;
 
+      const doc = handle.doc();
+      const currentHeads = A.getHeads(doc);
+      if (A.equals(currentHeads, reconciledHeads)) return;
+
+      const patches = A.diff(doc, reconciledHeads, currentHeads);
       applyAutomergePatchesToTLStore(patches, store);
+      reconciledHeads = currentHeads;
     };
 
     handle.on("change", syncAutomergeDocChangesToStore);
@@ -92,6 +101,7 @@ export function useAutomergeStore({
           schema: JSON.parse(JSON.stringify(doc.schema)),
         });
       });
+      reconciledHeads = A.getHeads(doc);
 
       setStoreWithStatus({
         store,

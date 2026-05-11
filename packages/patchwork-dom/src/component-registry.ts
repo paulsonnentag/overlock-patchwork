@@ -1,6 +1,4 @@
-export type MountFn = (
-  element: HTMLElement
-) => undefined | (() => void) | Promise<undefined | (() => void)>;
+import type { Cleanup, MountFn } from "./types";
 
 export type ComponentRegistryOptions = {
   root: HTMLElement;
@@ -14,10 +12,7 @@ export class ComponentRegistry {
   // return one). Stored synchronously when mount starts so a second
   // discovery path hitting the same element while mount is in flight can
   // dedupe on its identity.
-  readonly #unmountByElement = new WeakMap<
-    HTMLElement,
-    Promise<(() => void) | undefined>
-  >();
+  readonly #unmountByElement = new WeakMap<HTMLElement, Promise<Cleanup>>();
   readonly #nameByComponentUrl = new Map<string, Promise<string>>();
   readonly #abort = new AbortController();
 

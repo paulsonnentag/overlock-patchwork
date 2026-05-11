@@ -360,6 +360,12 @@ export class BranchedDocHandle<T> {
   view(heads: UrlHeads): DocHandle<T> {
     return this.#active.view(heads);
   }
+  // Read-only handle at the fork point. Null off-branch (or before
+  // the clone exists), which lets consumers gate diff UI on it.
+  forkSnapshot(): DocHandle<T> | null {
+    if (!this.#cloneHandle || !this.#forkHeads) return null;
+    return this.#cloneHandle.view(this.#forkHeads);
+  }
   isReadOnly(): boolean {
     return this.#active.isReadOnly();
   }

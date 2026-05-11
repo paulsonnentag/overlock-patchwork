@@ -31,8 +31,10 @@
     "patchwork-plugins": "link:../patchwork-plugins",
     "patchwork-solid": "link:../patchwork-solid"
   },
+  "peerDependencies": {
+    "@automerge/automerge-repo": "*"
+  },
   "devDependencies": {
-    "@automerge/automerge-repo": "2.6.0-subduction.13",
     "patchwork-vite-plugin": "link:../patchwork-vite-plugin",
     "solid-js": "^1.9.5",
     "typescript": "^5.6.3",

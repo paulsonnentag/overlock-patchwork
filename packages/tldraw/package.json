@@ -35,9 +35,11 @@
     "tldraw": "4.3.1",
     "zod": "^3.25.76"
   },
+  "peerDependencies": {
+    "@automerge/automerge-repo": "*"
+  },
   "devDependencies": {
     "@automerge/automerge": "3.2.6",
-    "@automerge/automerge-repo": "2.6.0-subduction.17",
     "@inkandswitch/patchwork-bootloader": "0.0.9",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",

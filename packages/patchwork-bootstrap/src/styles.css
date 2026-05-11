@@ -4,11 +4,6 @@ body {
   margin: 0;
 }
 
-repo-provider,
-view-registry-provider {
-  display: contents;
-}
-
 account-provider,
 plugins-provider {
   display: contents;

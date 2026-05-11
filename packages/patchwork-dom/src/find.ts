@@ -1,14 +1,11 @@
 import type { Repo } from "@automerge/automerge-repo";
 
+import type { ComponentRegistry } from "./component-registry";
 import {
   readValue,
   type ElementWithHandle,
   type ElementWithValue,
 } from "./types";
-
-export type ComponentRegistry = {
-  register(componentUrl: string): Promise<string>;
-};
 
 export function findElement<T extends HTMLElement>(
   start: HTMLElement,

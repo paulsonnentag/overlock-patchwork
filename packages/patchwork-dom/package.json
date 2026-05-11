@@ -20,8 +20,10 @@
   "scripts": {
     "build": "vite build && tsc -p tsconfig.build.json"
   },
+  "peerDependencies": {
+    "@automerge/automerge-repo": "*"
+  },
   "devDependencies": {
-    "@automerge/automerge-repo": "2.6.0-subduction.13",
     "typescript": "^5.6.3",
     "vite": "^5.4.10"
   },

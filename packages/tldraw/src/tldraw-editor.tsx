@@ -10,7 +10,7 @@ import type { TLDrawDoc } from "./datatype";
 import "./styles.css";
 
 // Bump on every change so the console shows which build is live.
-const BUILD = 4;
+const BUILD = 6;
 
 console.log(`[tldraw-editor] loaded build ${BUILD}`);
 
