@@ -4,14 +4,20 @@ import { Dynamic, render } from "solid-js/web";
 import { withDocHandle } from "patchwork-dom";
 import { useHandle } from "patchwork-solid";
 
-import { pickComponentForDoc } from "./pick-component-for-doc";
+import { findCompatibleComponent } from "./find-compatible-component";
 
-export default withDocHandle(({ element }) => {
-  const abort = new AbortController();
-  const tagHandle = pickComponentForDoc(element, abort.signal);
+export default withDocHandle(({ element, handle }) => {
+  // Custom elements default to `display: inline` with no size, which
+  // collapses any plugin component (R3F canvas, codemirror, etc.) to
+  // zero height. Make the host fill its parent.
+  element.style.display = "block";
+  element.style.width = "100%";
+  element.style.height = "100%";
+
+  const tagHandle = findCompatibleComponent(element, handle);
   const url = element.getAttribute("url") ?? undefined;
 
-  const dispose = render(() => {
+  return render(() => {
     const tag = useHandle(tagHandle);
     return (
       <Show when={tag()} fallback={<EmptyState />}>
@@ -19,12 +25,7 @@ export default withDocHandle(({ element }) => {
       </Show>
     );
   }, element);
-
-  return () => {
-    abort.abort();
-    dispose();
-  };
-});
+})
 
 function EmptyState() {
   return (
