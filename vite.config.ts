@@ -21,17 +21,25 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      // Pin bare and /slim specifiers to the slim entry so every importer
+      // shares one wasm-bindgen glue module. The fullfat/bundler/web entries
+      // ship a *different* glue file (web/ vs bundler/), and mixing them
+      // produces "expected instance of SyncState" because each glue has its
+      // own interner table. Wasm is initialized once in src/main.ts.
       // Subpath aliases must come before the bare specifier (longest-prefix wins).
       "@automerge/automerge/slim": resolve(automergeEntryDir, "slim.js"),
-      "@automerge/automerge": resolve(automergeEntryDir, "fullfat_bundler.js"),
+      "@automerge/automerge": resolve(automergeEntryDir, "slim.js"),
       "@automerge/automerge-subduction/slim": resolve(subductionDir, "slim.js"),
-      "@automerge/automerge-subduction": resolve(subductionDir, "web.js"),
+      "@automerge/automerge-subduction": resolve(subductionDir, "slim.js"),
     },
   },
   optimizeDeps: {
-    // Prevent Vite from pre-bundling automerge-subduction (which ignores the
-    // resolve alias and picks the bundler target whose .wasm import gets dropped).
+    // Keep Vite's dep pre-bundler out of these packages: esbuild would resolve
+    // them via the package's `browser` export (fullfat / bundler), bypassing
+    // the slim aliases above and reintroducing the dual-glue bug in dev.
     exclude: [
+      "@automerge/automerge",
+      "@automerge/automerge/slim",
       "@automerge/automerge-subduction",
       "@automerge/automerge-subduction/slim",
     ],
