@@ -1,5 +1,5 @@
 {
-  "name": "root",
+  "name": "patchwork-bootstrap",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -11,27 +11,17 @@
   },
   "exports": {
     "./app-root-component.json": "./dist/app-root-component.json",
-    "./account-provider-component.json": "./dist/account-provider-component.json",
-    "./document-selection-provider-component.json": "./dist/document-selection-provider-component.json",
-    "./document-selection-url-sync-component.json": "./dist/document-selection-url-sync-component.json"
+    "./account-provider-component.json": "./dist/account-provider-component.json"
   },
   "plugins": {
     "component": [
       {
         "name": "app-root",
-        "module": "./src/root.tsx"
+        "module": "./src/app-root.tsx"
       },
       {
         "name": "account-provider",
         "module": "./src/account-provider.tsx"
-      },
-      {
-        "name": "document-selection-provider",
-        "module": "./src/document-selection-provider.tsx"
-      },
-      {
-        "name": "document-selection-url-sync",
-        "module": "./src/document-selection-url-sync.tsx"
       }
     ]
   },
