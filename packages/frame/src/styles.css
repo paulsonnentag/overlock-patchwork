@@ -44,7 +44,7 @@ checked-out-branch-provider {
   padding: 12px;
   width: 240px;
   border-right: 1px solid #e5e5e5;
-  background: #fafafa;
+  background: oklch(from #99eeff l c h);
   overflow-y: auto;
   flex: 0 0 auto;
 }
@@ -61,24 +61,6 @@ checked-out-branch-provider {
 
 .new-markdown-button:hover {
   background: #f0f0f0;
-}
-
-.folder-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.folder-list__item {
-  padding: 4px 8px;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.folder-list__item:hover {
-  background: #ececec;
 }
 
 single-view {

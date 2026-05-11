@@ -13,8 +13,7 @@
     "./app-root-component.json": "./dist/app-root-component.json",
     "./account-provider-component.json": "./dist/account-provider-component.json",
     "./document-selection-provider-component.json": "./dist/document-selection-provider-component.json",
-    "./document-selection-url-sync-component.json": "./dist/document-selection-url-sync-component.json",
-    "./folder-list-component.json": "./dist/folder-list-component.json"
+    "./document-selection-url-sync-component.json": "./dist/document-selection-url-sync-component.json"
   },
   "plugins": {
     "component": [
@@ -33,11 +32,6 @@
       {
         "name": "document-selection-url-sync",
         "module": "./src/document-selection-url-sync.tsx"
-      },
-      {
-        "name": "folder-list",
-        "module": "./src/folder-list.tsx",
-        "schema": "./src/schemas/folder.ts"
       }
     ]
   },
@@ -45,7 +39,6 @@
     "@inkandswitch/patchwork-filesystem": "^0.0.5",
     "patchwork-dom": "link:../patchwork-dom",
     "patchwork-plugins": "link:../patchwork-plugins",
-    "patchwork-schemas": "link:../patchwork-schemas",
     "patchwork-solid": "link:../patchwork-solid"
   },
   "devDependencies": {
