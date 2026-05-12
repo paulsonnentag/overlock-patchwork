@@ -3,3 +3,21 @@
 .tlui-layout {
   padding: 0px;
 }
+
+.tl-container .diff-added {
+  filter: drop-shadow(0 0 6px rgba(34, 197, 94, 0.55));
+}
+
+.tl-container .diff-modified {
+  filter: drop-shadow(0 0 4px rgba(234, 179, 8, 0.45));
+}
+
+/* Greyscale strips most color, then sepia + negative hue-rotate +
+   saturate steer whatever is left toward red, regardless of the
+   shape's original fill. */
+.tl-container .diff-deleted {
+  opacity: 0.35;
+  pointer-events: none;
+  filter: grayscale(0.7) sepia(0.9) hue-rotate(-40deg) saturate(2.5);
+}
+

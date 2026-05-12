@@ -21,6 +21,7 @@ import {
   useAutomergeStore,
   useAutomergePresence,
 } from "./lith/useAutomergeStore";
+import { DiffShapeWrapper, useTldrawDiff } from "./diff";
 import type { TLDrawDoc } from "./datatype";
 
 const MIME_TO_EXT: Record<string, string> = {
@@ -59,17 +60,32 @@ export function TldrawTool({ docUrl }: { docUrl: AutomergeUrl }) {
   });
 
   return (
-    <Tldraw inferDarkMode autoFocus store={store}>
-      <TldrawInner docUrl={docUrl} />
+    <Tldraw
+      inferDarkMode
+      autoFocus
+      store={store}
+      components={DIFF_COMPONENTS}
+    >
+      <TldrawInner docUrl={docUrl} handle={handle} />
     </Tldraw>
   );
 }
 
-function TldrawInner(props: { docUrl: AutomergeUrl }) {
+const DIFF_COMPONENTS = {
+  ShapeWrapper: DiffShapeWrapper,
+  MenuPanel: null,
+};
+
+function TldrawInner(props: {
+  docUrl: AutomergeUrl;
+  handle: DocHandle<TLDrawDoc>;
+}) {
   const key = useMemo(() => `${props.docUrl}-camera`, [props.docUrl]);
 
   const editor = useEditor();
   const repo = useRepo();
+
+  useTldrawDiff({ handle: props.handle, store: editor.store });
 
   const onChange = useCallback(() => {
     if (!editor) return;
