@@ -213,10 +213,10 @@
   /* Cursor on hover */
 }
 
-.cell.diff-added {
+.grid-container .cell.diff-added {
   background: #16a34a;
 }
-.cell.diff-deleted {
+.grid-container .cell.diff-deleted {
   background: #d4c4c4;
 }
 
