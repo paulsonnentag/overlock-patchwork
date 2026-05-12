@@ -1,0 +1,439 @@
+frame-todd {
+  display: contents;
+}
+
+document-selection-provider {
+  display: contents;
+}
+
+checked-out-branch-provider {
+  display: contents;
+}
+
+.todd {
+  --todd-bg: #e5e7eb;
+  --todd-card: #ffffff;
+  --todd-card-header: #f9fafb;
+  --todd-border: #e5e7eb;
+  --todd-border-soft: #f1f5f9;
+  --todd-text: #1f2937;
+  --todd-text-muted: #6b7280;
+  --todd-text-subtle: #9ca3af;
+  --todd-accent: #2563eb;
+  --todd-accent-bg: #eff6ff;
+  --todd-accent-border: #bfdbfe;
+  --todd-success: #16a34a;
+  --todd-radius: 8px;
+  --todd-radius-sm: 6px;
+
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  grid-template-rows: 1fr;
+  gap: 16px;
+  padding: 16px;
+  box-sizing: border-box;
+  height: 100%;
+  width: 100%;
+  background: var(--todd-bg);
+  color: var(--todd-text);
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  font-size: 14px;
+  overflow: hidden;
+}
+
+.todd--sidebar-closed {
+  grid-template-columns: 0 1fr;
+  gap: 0;
+}
+
+.todd--sidebar-closed .todd__sidebar {
+  display: none;
+}
+
+/* ---------- Sidebar ---------- */
+
+.todd__sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  background: transparent;
+}
+
+.todd__account {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 12px;
+}
+
+.todd__avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: var(--todd-accent-bg);
+  color: var(--todd-accent);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.todd__account-name {
+  font-weight: 500;
+  color: var(--todd-text);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Create-new button group ---------- */
+
+.todd__create-new {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 4px 8px;
+}
+
+.todd__section-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--todd-text-subtle);
+  padding: 4px 8px;
+}
+
+/*
+  The four create-new buttons each render a <button> inside their own
+  custom element with classes named after the doc type. We restyle all
+  of them with one rule keyed on the parent group so the visual matches
+  Todd's blue-pill theme regardless of which package rendered them.
+*/
+.todd__create-new .new-markdown-button,
+.todd__create-new .new-sequencer-button,
+.todd__create-new .new-mergecraft-button,
+.todd__create-new .new-tldraw-button {
+  width: 100%;
+  text-align: left;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--todd-accent);
+  background: var(--todd-accent-bg);
+  border: 1px solid var(--todd-accent-border);
+  border-radius: var(--todd-radius-sm);
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.todd__create-new .new-markdown-button:hover,
+.todd__create-new .new-sequencer-button:hover,
+.todd__create-new .new-mergecraft-button:hover,
+.todd__create-new .new-tldraw-button:hover {
+  background: #dbeafe;
+}
+
+/* ---------- Sideboard (search + doc list) ---------- */
+
+/*
+  The embedded sideboard ships its own oklch-cyan stylesheet via
+  injected <style>. Override the few public hooks so it blends into
+  Todd's gray panel instead of sitting in a cyan card. !important is
+  necessary because the injected stylesheet wins on specificity-ties
+  by source order.
+*/
+.todd__sidebar .sideboard {
+  background: transparent !important;
+  padding-inline: 4px !important;
+  gap: 8px !important;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.todd__sidebar .sideboard-widget {
+  margin-top: 0 !important;
+}
+
+.todd__sidebar .sideboard__filter {
+  background: #fff !important;
+  border-radius: var(--todd-radius-sm) !important;
+}
+
+.todd__sidebar .sideboard__doclist {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.todd__tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 8px;
+  margin-top: 4px;
+  background: transparent;
+  border: none;
+  color: var(--todd-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--todd-radius-sm);
+}
+
+.todd__tools:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+/* ---------- Main card ---------- */
+
+.todd__card {
+  display: flex;
+  flex-direction: column;
+  background: var(--todd-card);
+  border-radius: var(--todd-radius);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.06),
+    0 8px 24px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+}
+
+.todd__card > checked-out-branch-provider {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* ---------- Topbar ---------- */
+
+.todd__topbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  padding: 0 12px;
+  background: var(--todd-card-header);
+  border-bottom: 1px solid var(--todd-border-soft);
+  flex: 0 0 auto;
+}
+
+.todd__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: transparent;
+  border: none;
+  border-radius: var(--todd-radius-sm);
+  font: inherit;
+  font-weight: 500;
+  color: var(--todd-text);
+  cursor: pointer;
+}
+
+.todd__title:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.todd__title-icon {
+  color: var(--todd-text-muted);
+}
+
+.todd__caret {
+  color: var(--todd-text-subtle);
+  font-size: 10px;
+}
+
+.todd__sync {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--todd-success);
+  font-size: 12px;
+}
+
+.todd__sync-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.todd__view-toggle {
+  display: inline-flex;
+  margin: 0 auto;
+  border: 1px solid var(--todd-border);
+  border-radius: var(--todd-radius-sm);
+  overflow: hidden;
+  background: #fff;
+}
+
+.todd__view-toggle button {
+  padding: 4px 12px;
+  background: #fff;
+  color: var(--todd-text-muted);
+  border: none;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.todd__view-toggle button.is-active {
+  background: #f3f4f6;
+  color: var(--todd-text);
+  font-weight: 500;
+}
+
+.todd__topbar-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.todd__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: #fff;
+  border: 1px solid var(--todd-border);
+  border-radius: var(--todd-radius-sm);
+  color: var(--todd-text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.todd__pill:hover {
+  background: var(--todd-card-header);
+}
+
+.todd__branch-picker {
+  display: inline-flex;
+}
+
+.todd__icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--todd-text-muted);
+  border-radius: var(--todd-radius-sm);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.todd__icon-button:hover {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--todd-text);
+}
+
+.todd__icon-button.is-active {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--todd-text);
+}
+
+/* ---------- Body ---------- */
+
+.todd__body {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.todd__body > patchwork-view {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.todd__body > .todd__empty {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.todd__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--todd-text-subtle);
+  padding: 32px;
+}
+
+/* ---------- Right doc sidebar ---------- */
+
+.todd__doc-sidebar {
+  width: 320px;
+  flex: 0 0 320px;
+  background: var(--todd-card-header);
+  border-left: 1px solid var(--todd-border-soft);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.todd__doc-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--todd-border-soft);
+}
+
+.todd__doc-sidebar-body {
+  padding: 16px;
+  color: var(--todd-text-muted);
+  font-size: 13px;
+  overflow: auto;
+}
+
+/* ---------- Tool drawer ---------- */
+
+.todd__tool-drawer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 256px;
+  background: var(--todd-bg);
+  border-top: 1px solid var(--todd-border);
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  z-index: 30;
+}
+
+.todd__tool-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--todd-border);
+  font-weight: 500;
+}
+
+.todd__tool-drawer-body {
+  padding: 16px;
+  color: var(--todd-text-muted);
+  overflow: auto;
+}
