@@ -127,7 +127,9 @@ function SolidCube({ addCube, removeCube, variant, ...props }: SolidCubeProps) {
             attach={`material-${index}`}
             key={index}
             map={texture}
-            color={hover === index ? "hotpink" : baseTint}
+            color={baseTint}
+            emissive="#ffffff"
+            emissiveIntensity={hover === index ? 0.15 : 0}
           />
         ))}
         <boxGeometry />
