@@ -41,13 +41,16 @@ const TOLERATED_TOP_LEVEL_ENTRIES = new Set([".pushwork", ".DS_Store"]);
 
 function printHelpAndExit(code) {
   const msg = [
-    "Usage: yarn push <folder> [--force] [--verbose]",
+    "Usage: yarn push <folder> [--force [names...]] [--verbose]",
     "",
-    "  <folder>     Folder containing subfolders to push (required).",
-    "  --force      Run pushwork on every subfolder even if no local files",
-    "               have changed since the last sync.",
-    "  --verbose    Stream all pushwork/yarn output. Default is a compact",
-    "               live tree that only surfaces output on failure.",
+    "  <folder>          Folder containing subfolders to push (required).",
+    "  --force           Run pushwork on every subfolder even if no local",
+    "                    files have changed since the last sync.",
+    "  --force a b c     Same as --force but only for the listed subfolder",
+    "                    names.",
+    "  --verbose         Stream all pushwork/yarn output. Default is a",
+    "                    compact live tree that only surfaces output on",
+    "                    failure.",
   ].join("\n");
   console.log(msg);
   process.exit(code);
@@ -56,18 +59,31 @@ function printHelpAndExit(code) {
 function parseArgs(argv) {
   const args = argv.slice(2);
   let folder = null;
+  // false = no force, true = force all, Set<string> = force only those names.
+  // --force followed by positional names switches `true` to a Set.
   let force = false;
   let verbose = false;
+  // True while consuming positional names that belong to a bare `--force`.
+  // Reset by any other flag.
+  let collectingForce = false;
+
   for (const a of args) {
     if (a === "--force") {
-      force = true;
+      if (force === false) force = true;
+      collectingForce = true;
     } else if (a === "--verbose" || a === "-v") {
       verbose = true;
+      collectingForce = false;
     } else if (a === "--help" || a === "-h") {
       printHelpAndExit(0);
     } else if (a.startsWith("--")) {
       console.error(`Unknown flag: ${a}`);
       printHelpAndExit(1);
+    } else if (collectingForce && folder !== null) {
+      // Positional after a bare `--force`: treat as a forced name. Once we
+      // see at least one, downgrade "force all" to "force just these".
+      if (!(force instanceof Set)) force = new Set();
+      force.add(a);
     } else if (folder === null) {
       folder = a;
     } else {
@@ -80,6 +96,12 @@ function parseArgs(argv) {
     printHelpAndExit(1);
   }
   return { folder, force, verbose };
+}
+
+function shouldForce(force, name) {
+  if (force === true) return true;
+  if (force instanceof Set) return force.has(name);
+  return false;
 }
 
 async function pathExists(p) {
@@ -189,7 +211,7 @@ async function processSubfolder(sub, { force, verbose, renderer }) {
   const hasMarker = await pathExists(lastPushedMarker);
 
   let skip = false;
-  if (!force && hasMarker) {
+  if (!shouldForce(force, sub.name) && hasMarker) {
     const lastPushMs = (await fs.stat(lastPushedMarker)).mtimeMs;
     const maxMs = await findMaxMtimeMs(sub.absPath);
     if (maxMs <= lastPushMs) skip = true;
@@ -498,6 +520,17 @@ async function main() {
   for (const sub of subfolders) {
     sub.status = "pending";
     sub.action = null;
+  }
+
+  if (force instanceof Set) {
+    const known = new Set(subfolders.map((s) => s.name));
+    const unknown = [...force].filter((n) => !known.has(n));
+    if (unknown.length > 0) {
+      console.error(
+        `--force names not found in ${absFolder}: ${unknown.join(", ")}`
+      );
+      process.exit(1);
+    }
   }
 
   const renderer = verbose ? null : createTreeRenderer(folderName, subfolders);
