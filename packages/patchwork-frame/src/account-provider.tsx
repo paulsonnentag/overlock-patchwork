@@ -9,7 +9,7 @@ const STORAGE_KEY = "overlock-patchwork:root:account-url";
 const PACKAGES_FOLDER_URL = "automerge:mExaJTQKBs6CHpzZtZYYzc2YDXr";
 
 const DEFAULT_FRAME_URL =
-  "automerge:2beoANHD3SCwKVs5EwktStnU8qYn/dist/patchwork-frame-component.json";
+  "automerge:jdzc7uxAMQzWx5v2MBSZjzvBnMA/dist/patchwork-frame-component.json";
 
 export default async (element: HTMLElement) => {
   const repo = getRepo(element);

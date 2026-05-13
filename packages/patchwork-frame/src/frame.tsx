@@ -9,6 +9,7 @@ import "./styles.css";
 import type { DocumentSelection } from "./types";
 import { hasDocumentSelection } from "./types";
 
+const FRAME_PKG = "automerge:jdzc7uxAMQzWx5v2MBSZjzvBnMA";
 const MD_PKG = "automerge:2SPq6hhJpxHLi34fHwS7s91DUzpG";
 const SEQ_PKG = "automerge:LW8gWWCBHd5EneM5HXFPCis7koF";
 const MERGECRAFT_PKG = "automerge:3CbLFi7qkMd7X8N8BsqEdAocRRuX";
@@ -16,8 +17,6 @@ const TLDRAW_PKG = "automerge:2xKiheqTrAvxhr6Mx7uyvHh24xPG";
 const BRANCHES_PKG = "automerge:WBPRF3RFAw2zdErhVtb7hY64Uag";
 const PATCHWORK_VIEW_PKG = "automerge:2GJUXWeXXtSuEEmuRcThJ85TgLBv";
 const SIDEBOARD_PKG = "automerge:4478ripYLMdHptnqfgibXj2LVhbb";
-
-const FRAME_PKG = "automerge:2beoANHD3SCwKVs5EwktStnU8qYn";
 
 const SELECTION_PROVIDER_URL = `${FRAME_PKG}/dist/document-selection-provider-component.json`;
 const SELECTION_URL_SYNC_URL = `${FRAME_PKG}/dist/document-selection-url-sync-component.json`;
@@ -45,6 +44,7 @@ export default (element: HTMLElement) => {
     NEW_MERGECRAFT_BUTTON_URL
   );
   const NewTldrawButton = registerComponent(element, NEW_TLDRAW_BUTTON_URL);
+
   const CheckedOutBranchProvider = registerComponent(
     element,
     CHECKED_OUT_BRANCH_PROVIDER_URL
@@ -69,6 +69,7 @@ export default (element: HTMLElement) => {
       <SelectionProvider onMounted={onSelectionMounted}>
         <SelectionUrlSync />
         <div class="frame__sidebar">
+          v 0.3
           <NewMarkdownButton url={rootFolderUrl()} />
           <NewSequencerButton url={rootFolderUrl()} />
           <NewMergecraftButton url={rootFolderUrl()} />

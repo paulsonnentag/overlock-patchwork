@@ -10,12 +10,22 @@
     "server": "wss://subduction.sync.inkandswitch.com"
   },
   "exports": {
+    "./app-root-component.json": "./dist/app-root-component.json",
+    "./account-provider-component.json": "./dist/account-provider-component.json",
     "./patchwork-frame-component.json": "./dist/patchwork-frame-component.json",
     "./document-selection-provider-component.json": "./dist/document-selection-provider-component.json",
     "./document-selection-url-sync-component.json": "./dist/document-selection-url-sync-component.json"
   },
   "plugins": {
     "component": [
+      {
+        "name": "app-root",
+        "module": "./src/app-root.tsx"
+      },
+      {
+        "name": "account-provider",
+        "module": "./src/account-provider.tsx"
+      },
       {
         "name": "patchwork-frame",
         "module": "./src/frame.tsx"
@@ -31,7 +41,9 @@
     ]
   },
   "dependencies": {
+    "@inkandswitch/patchwork-filesystem": "^0.0.5",
     "patchwork-dom": "link:../patchwork-dom",
+    "patchwork-plugins": "link:../patchwork-plugins",
     "patchwork-solid": "link:../patchwork-solid"
   },
   "peerDependencies": {

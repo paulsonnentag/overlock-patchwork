@@ -10,10 +10,10 @@ import "./styles.css";
 import type { AccountDoc } from "./types";
 import { hasAccountHandle } from "./types";
 
-const BOOTSTRAP_PKG = "automerge:jdzc7uxAMQzWx5v2MBSZjzvBnMA";
+const FRAME_PKG = "automerge:jdzc7uxAMQzWx5v2MBSZjzvBnMA";
 const PLUGINS_PROVIDER_PKG = "automerge:29zNxHF4HDm5fk62Yb2ECnKP4Kxi";
 
-const ACCOUNT_PROVIDER_URL = `${BOOTSTRAP_PKG}/dist/account-provider-component.json`;
+const ACCOUNT_PROVIDER_URL = `${FRAME_PKG}/dist/account-provider-component.json`;
 const PLUGINS_PROVIDER_URL = `${PLUGINS_PROVIDER_PKG}/dist/plugins-provider-component.json`;
 
 export default (element: HTMLElement) => {
